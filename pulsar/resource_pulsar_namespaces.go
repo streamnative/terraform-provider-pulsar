@@ -11,6 +11,7 @@ import (
 )
 
 func resourcePulsarNamespace() *schema.Resource {
+
 	return &schema.Resource{
 		Create: resourcePulsarNamespaceCreate,
 		Read:   resourcePulsarNamespaceRead,
@@ -186,7 +187,7 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err)
 	}
 
-	_ = d.Set("namespace", namespace)
+	_ = d.Set("namespace", ns)
 
 	return resourcePulsarNamespaceRead(d, meta)
 }
