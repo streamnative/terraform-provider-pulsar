@@ -35,6 +35,7 @@ func Provider() terraform.ResourceProvider {
 		ResourcesMap: map[string]*schema.Resource{
 			"pulsar_tenant":    resourcePulsarTenant(),
 			"pulsar_namespace": resourcePulsarNamespace(),
+			"pulsar_cluster":   resourcePulsarCluster(),
 		},
 	}
 
@@ -110,10 +111,21 @@ var descriptions map[string]string
 
 func init() {
 	descriptions = map[string]string{
-		"web_service_url":  "Web service url is used to connect to your apache pulsar cluster",
-		"token":            "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
-		"api_version":      "Api Version to be used for the pulsar admin interaction",
-		"admin_roles":      "Admin roles to be attached to tenant",
-		"allowed_clusters": "Tenant will be able to interact with these clusters",
+		"web_service_url":                "Web service url is used to connect to your apache pulsar cluster",
+		"token":                          "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
+		"api_version":                    "Api Version to be used for the pulsar admin interaction",
+		"admin_roles":                    "Admin roles to be attached to tenant",
+		"allowed_clusters":               "Tenant will be able to interact with these clusters",
+		"namespace":                      "",
+		"tenant":                         "",
+		"namespace_list":                 "",
+		"enable_duplication":             "",
+		"encrypt_topics":                 "",
+		"max_producers_per_topic":        "",
+		"max_consumers_per_subscription": "",
+		"max_consumers_per_topic":        "",
+		"dispatch_rate":                  "",
+		"persistence_policy":             "",
+		"backlog_quota":                  "",
 	}
 }

@@ -19,6 +19,10 @@ func resourcePulsarTenant() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
+			"cluster_name": {
+				Type:     schema.TypeString,
+				Required: true,
+			},
 			"allowed_clusters": {
 				Type:        schema.TypeList,
 				Optional:    true,
@@ -114,6 +118,20 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 
 func handleHCLArray(d *schema.ResourceData, key string) []string {
 	hclArray := d.Get(key).([]interface{})
+	out := make([]string, 0)
+
+	if len(hclArray) == 0 {
+		return out
+	}
+
+	for _, value := range hclArray {
+		out = append(out, value.(string))
+	}
+
+	return out
+}
+
+func handleHCLArrayV2(hclArray []interface{}) []string {
 	out := make([]string, 0)
 
 	if len(hclArray) == 0 {
