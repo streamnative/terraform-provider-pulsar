@@ -186,7 +186,7 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err)
 	}
 
-	d.Set("namespace", namespace)
+	_ = d.Set("namespace", namespace)
 
 	return resourcePulsarNamespaceRead(d, meta)
 }
@@ -202,9 +202,9 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 		return fmt.Errorf("ERROR_READ_NAMESPACE: %w", err)
 	}
 
-	d.Set("namespace", namespace)
-	d.Set("namespace_list", nsList)
-	d.Set("tenant", tenant)
+	_ = d.Set("namespace", namespace)
+	_ = d.Set("namespace_list", nsList)
+	_ = d.Set("tenant", tenant)
 	d.SetId(namespace)
 
 	return nil
@@ -213,6 +213,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) error {
 	//client := meta.(pulsar.Client).Namespaces()
 
+	_ = meta
 	//enableDuplication := d.Get("enable_duplication").(bool)
 	//encryptTopics := d.Get("encrypt_topics").(bool)
 	//
@@ -244,8 +245,8 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 	//client.SetSubscriptionDispatchRate(*nsInfo, dispatchRate)
 	//client.SetCompactionThreshold(*nsInfo, compactionThreshold)
 
-	d.Set("tenant", tenant)
-	d.Set("namespace", namespace)
+	_ = d.Set("tenant", tenant)
+	_ = d.Set("namespace", namespace)
 	d.SetId(namespace)
 	return nil
 }
@@ -259,8 +260,8 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 		return err
 	}
 
-	d.Set("namespace", "")
-	d.Set("namespace_list", nil)
+	_ = d.Set("namespace", "")
+	_ = d.Set("namespace_list", nil)
 
 	return nil
 }

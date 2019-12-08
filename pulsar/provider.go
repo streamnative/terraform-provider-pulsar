@@ -88,19 +88,19 @@ func validatePulsarConfig(d *schema.ResourceData) error {
 
 	apiVersion, ok := d.Get("api_version").(string)
 	if !ok {
-		d.Set("api_version", "1")
+		_ = d.Set("api_version", "1")
 	}
 
 	switch apiVersion {
 	case "0":
-		d.Set("api_version", "0")
+		_ = d.Set("api_version", "0")
 	case "1":
 		// (@TODO pulsarctl) 1 is for v2, in pulsarctl, Version is set with iota, it should be iota+1
-		d.Set("api_version", "1")
+		_ = d.Set("api_version", "1")
 	case "2":
-		d.Set("api_version", "2")
+		_ = d.Set("api_version", "2")
 	default:
-		d.Set("api_version", "1")
+		_ = d.Set("api_version", "1")
 	}
 
 	return nil

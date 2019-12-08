@@ -65,9 +65,9 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	d.Set("tenant", tenant)
-	d.Set("admin_roles", td.AdminRoles)
-	d.Set("allowed_clusters", td.AllowedClusters)
+	_ = d.Set("tenant", tenant)
+	_ = d.Set("admin_roles", td.AdminRoles)
+	_ = d.Set("allowed_clusters", td.AllowedClusters)
 	d.SetId(tenant)
 
 	return nil
@@ -107,7 +107,7 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 		return err
 	}
 
-	d.Set("tenant", "")
+	_ = d.Set("tenant", "")
 
 	return nil
 }
