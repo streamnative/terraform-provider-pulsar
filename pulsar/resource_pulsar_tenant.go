@@ -13,7 +13,6 @@ func resourcePulsarTenant() *schema.Resource {
 		Read:   resourcePulsarTenantRead,
 		Update: resourcePulsarTenantUpdate,
 		Delete: resourcePulsarTenantDelete,
-		//Exists: resourcePulsarTenantExists,
 
 		Schema: map[string]*schema.Schema{
 			"tenant": {
@@ -24,26 +23,23 @@ func resourcePulsarTenant() *schema.Resource {
 				Type:        schema.TypeList,
 				Optional:    true,
 				Description: descriptions["allowed_clusters"],
-				//Default:     []string{},
-				Elem: &schema.Schema{Type: schema.TypeString},
+				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"admin_roles": {
 				Type:        schema.TypeList,
 				Optional:    true,
 				Description: descriptions["admin_roles"],
-				//Default:     []string{},
-				Elem: &schema.Schema{Type: schema.TypeString},
+				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 		},
 	}
 }
 
 func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client)
+	client := meta.(pulsar.Client).Tenants()
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
-	//allowedClusters := d.Get("allowed_clusters").([]interface{})
 	allowedClusters := handleHCLArray(d, "allowed_clusters")
 
 	input := utils.TenantData{
@@ -52,7 +48,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 		AdminRoles:      adminRoles,
 	}
 
-	if err := client.Tenants().Create(input); err != nil {
+	if err := client.Create(input); err != nil {
 		return err
 	}
 
@@ -60,12 +56,11 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client)
-	log.Println("[INFO] deleted tenant")
+	client := meta.(pulsar.Client).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
-	td, err := client.Tenants().Get(tenant)
+	td, err := client.Get(tenant)
 	if err != nil {
 		return err
 	}
@@ -79,14 +74,11 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client)
-	log.Println("[INFO] deleted tenant")
+	client := meta.(pulsar.Client).Tenants()
 
 	d.Partial(true)
 	tenant := d.Get("tenant").(string)
-	//adminRoles := d.Get("admin_roles").([]interface{})
 	adminRoles := handleHCLArray(d, "admin_roles")
-	//allowedClusters := d.Get("allowed_clusters").([]interface{})
 	allowedClusters := handleHCLArray(d, "allowed_clusters")
 
 	input := utils.TenantData{
@@ -95,7 +87,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 		AdminRoles:      adminRoles,
 	}
 
-	if err := client.Tenants().Update(input); err != nil {
+	if err := client.Update(input); err != nil {
 		return err
 	}
 
@@ -105,31 +97,20 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client)
+	client := meta.(pulsar.Client).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
-	err := client.Tenants().Delete(tenant)
+	err := client.Delete(tenant)
 	if err != nil {
 		log.Printf("[INFO] error deleting tenant: %s", err)
 		return err
 	}
-	log.Println("[INFO] deleted tenant")
 
 	d.Set("tenant", "")
-	//d.Set("tenant", "")
-	//d.Set("tenant", "")
 
 	return nil
 }
-
-//func resourcePulsarTenantExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-//	client := meta.(pulsar.Client)
-//
-//	tenant := d.Get("tenant").(string)
-//
-//	client.Tenants().Get(tenant)
-//}
 
 func handleHCLArray(d *schema.ResourceData, key string) []string {
 	hclArray := d.Get(key).([]interface{})

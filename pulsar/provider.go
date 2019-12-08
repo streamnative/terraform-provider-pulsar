@@ -33,7 +33,8 @@ func Provider() terraform.ResourceProvider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"pulsar_tenant": resourcePulsarTenant(),
+			"pulsar_tenant":    resourcePulsarTenant(),
+			"pulsar_namespace": resourcePulsarNamespace(),
 		},
 	}
 
