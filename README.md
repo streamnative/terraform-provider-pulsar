@@ -20,7 +20,6 @@ Requirements
 Installation
 ------------
 
-* Make sure you have Go installed on your system, follow instructions for installation on [golang.org][install-go]
 * Clone this repository and cd into the directory 
 * Run `make build`, it will out a file named `terraform-provider-pulsar` 
 * Copy this `terraform-provider-pulsar` bin file to your [terraform plugin directory][third-party-plugins] 
