@@ -10,6 +10,7 @@ import (
 	"strconv"
 )
 
+// Provider returns a terraform.ResourceProvider
 func Provider() terraform.ResourceProvider {
 
 	provider := &schema.Provider{
@@ -56,6 +57,9 @@ func Provider() terraform.ResourceProvider {
 }
 
 func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, error) {
+
+	// can be used for version locking or version specific feature sets
+	_ = tfVersion
 	clusterURL := d.Get("web_service_url").(string)
 	token := d.Get("token").(string)
 	pulsarApiVersion := d.Get("api_version").(string)
@@ -76,10 +80,7 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 }
 
 func validatePulsarConfig(d *schema.ResourceData) error {
-	webServiceURL, ok := d.Get("web_service_url").(string)
-	if !ok {
-		return fmt.Errorf("ERROR_PULSAR_CONFIG_INVALID")
-	}
+	webServiceURL := d.Get("web_service_url").(string)
 
 	if _, err := url.Parse(webServiceURL); err != nil {
 		return fmt.Errorf("ERROR_PULSAR_CONFIG_INVALID_WEB_SERVICE_URL")
@@ -87,19 +88,19 @@ func validatePulsarConfig(d *schema.ResourceData) error {
 
 	apiVersion, ok := d.Get("api_version").(string)
 	if !ok {
-		d.Set("api_version", "1")
+		_ = d.Set("api_version", "1")
 	}
 
 	switch apiVersion {
 	case "0":
-		d.Set("api_version", "0")
+		_ = d.Set("api_version", "0")
 	case "1":
 		// (@TODO pulsarctl) 1 is for v2, in pulsarctl, Version is set with iota, it should be iota+1
-		d.Set("api_version", "1")
+		_ = d.Set("api_version", "1")
 	case "2":
-		d.Set("api_version", "2")
+		_ = d.Set("api_version", "2")
 	default:
-		d.Set("api_version", "1")
+		_ = d.Set("api_version", "1")
 	}
 
 	return nil

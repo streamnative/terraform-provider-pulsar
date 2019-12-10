@@ -1,6 +1,7 @@
 package pulsar
 
 import (
+	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
@@ -13,7 +14,6 @@ func resourcePulsarTenant() *schema.Resource {
 		Read:   resourcePulsarTenantRead,
 		Update: resourcePulsarTenantUpdate,
 		Delete: resourcePulsarTenantDelete,
-		//Exists: resourcePulsarTenantExists,
 
 		Schema: map[string]*schema.Schema{
 			"tenant": {
@@ -24,15 +24,13 @@ func resourcePulsarTenant() *schema.Resource {
 				Type:        schema.TypeList,
 				Optional:    true,
 				Description: descriptions["allowed_clusters"],
-				//Default:     []string{},
-				Elem: &schema.Schema{Type: schema.TypeString},
+				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"admin_roles": {
 				Type:        schema.TypeList,
 				Optional:    true,
 				Description: descriptions["admin_roles"],
-				//Default:     []string{},
-				Elem: &schema.Schema{Type: schema.TypeString},
+				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 		},
 	}
@@ -43,7 +41,6 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
-	//allowedClusters := d.Get("allowed_clusters").([]interface{})
 	allowedClusters := handleHCLArray(d, "allowed_clusters")
 
 	input := utils.TenantData{
@@ -53,7 +50,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Tenants().Create(input); err != nil {
-		return err
+		return fmt.Errorf("ERROR_CREATE_NEW_TENANT: \n%w", err)
 	}
 
 	return resourcePulsarTenantRead(d, meta)
@@ -61,18 +58,17 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 
 func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client)
-	log.Println("[INFO] deleted tenant")
 
 	tenant := d.Get("tenant").(string)
 
 	td, err := client.Tenants().Get(tenant)
 	if err != nil {
-		return err
+		return fmt.Errorf("ERROR_READ_TENANT: \n%w", err)
 	}
 
-	d.Set("tenant", tenant)
-	d.Set("admin_roles", td.AdminRoles)
-	d.Set("allowed_clusters", td.AllowedClusters)
+	_ = d.Set("tenant", tenant)
+	_ = d.Set("admin_roles", td.AdminRoles)
+	_ = d.Set("allowed_clusters", td.AllowedClusters)
 	d.SetId(tenant)
 
 	return nil
@@ -84,9 +80,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 
 	d.Partial(true)
 	tenant := d.Get("tenant").(string)
-	//adminRoles := d.Get("admin_roles").([]interface{})
 	adminRoles := handleHCLArray(d, "admin_roles")
-	//allowedClusters := d.Get("allowed_clusters").([]interface{})
 	allowedClusters := handleHCLArray(d, "allowed_clusters")
 
 	input := utils.TenantData{
@@ -96,7 +90,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Tenants().Update(input); err != nil {
-		return err
+		return fmt.Errorf("ERROR_UPDATE_TENANT:  \n%w", err)
 	}
 
 	d.SetId(tenant)
@@ -111,36 +105,23 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 
 	err := client.Tenants().Delete(tenant)
 	if err != nil {
-		log.Printf("[INFO] error deleting tenant: %s", err)
-		return err
+		return fmt.Errorf("ERROR_DELETE_TENANT: \n%w", err)
 	}
-	log.Println("[INFO] deleted tenant")
 
-	d.Set("tenant", "")
-	//d.Set("tenant", "")
-	//d.Set("tenant", "")
+	_ = d.Set("tenant", "")
 
 	return nil
 }
 
-//func resourcePulsarTenantExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-//	client := meta.(pulsar.Client)
-//
-//	tenant := d.Get("tenant").(string)
-//
-//	client.Tenants().Get(tenant)
-//}
-
 func handleHCLArray(d *schema.ResourceData, key string) []string {
 	hclArray := d.Get(key).([]interface{})
-	out := make([]string, 0)
+	out := make([]string, len(hclArray))
 
-	if len(hclArray) == 0 {
-		return out
-	}
+	if len(hclArray) > 0 {
 
-	for _, value := range hclArray {
-		out = append(out, value.(string))
+		for _, value := range hclArray {
+			out = append(out, value.(string))
+		}
 	}
 
 	return out
