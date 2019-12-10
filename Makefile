@@ -5,7 +5,7 @@ PKG_NAME=pulsar
 default: build
 
 build: fmtcheck
-	go install
+	go build -o terraform-provider-pulsar
 
 test: fmtcheck
 	go test $(TEST) -timeout=30s -parallel=4
