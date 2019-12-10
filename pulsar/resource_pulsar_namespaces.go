@@ -142,41 +142,17 @@ func resourcePulsarNamespace() *schema.Resource {
 	}
 }
 
-func backlogQuotaToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(strconv.Itoa(m["limit"].(int)))
-	buf.WriteString(fmt.Sprintf("%s", m["policy"].(string)))
-
-	return hashcode.String(buf.String())
-}
-
-func persistencePolicyToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(strconv.Itoa(m["bk_ensemble"].(int)))
-	buf.WriteString(strconv.Itoa(m["bk_write_quorum"].(int)))
-	buf.WriteString(strconv.Itoa(m["bk_ack_quorum"].(int)))
-	buf.WriteString(fmt.Sprintf("%f", m["managed_ledger_max_mark_delete_rate"].(float64)))
-
-	return hashcode.String(buf.String())
-}
-
-func dispatchRateToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(strconv.Itoa(m["dispatch_msg_throttling_rate"].(int)))
-	buf.WriteString(strconv.Itoa(m["rate_period_seconds"].(int)))
-	buf.WriteString(strconv.Itoa(m["dispatch_byte_throttling_rate"].(int)))
-
-	return hashcode.String(buf.String())
-}
-
 func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Namespaces()
+
+	ok, err := resourcePulsarNamespaceExists(d, meta)
+	if err != nil {
+		return err
+	}
+
+	if ok {
+		return resourcePulsarNamespaceRead(d, meta)
+	}
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
@@ -184,10 +160,11 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 	ns := fmt.Sprintf("%s/%s", tenant, namespace)
 
 	if err := client.CreateNamespace(ns); err != nil {
-		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err)
+		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w \n request_input: %v", err, ok)
 	}
 
-	_ = d.Set("namespace", ns)
+	_ = d.Set("namespace", namespace)
+	_ = d.Set("tenant", tenant)
 
 	return resourcePulsarNamespaceRead(d, meta)
 }
@@ -203,10 +180,10 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 		return fmt.Errorf("ERROR_READ_NAMESPACE: %w", err)
 	}
 
-	_ = d.Set("namespace", namespace)
-	_ = d.Set("namespace_list", nsList)
-	_ = d.Set("tenant", tenant)
 	d.SetId(namespace)
+	_ = d.Set("namespace", namespace)
+	_ = storeNamespaceList(d, nsList)
+	_ = d.Set("tenant", tenant)
 
 	return nil
 }
@@ -256,13 +233,24 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 	client := meta.(pulsar.Client).Namespaces()
 
 	namespace := d.Get("namespace").(string)
+	tenant := d.Get("tenant").(string)
 
-	if err := client.DeleteNamespace(namespace); err != nil {
-		return err
+	ns := fmt.Sprintf("%s/%s", tenant, namespace)
+
+	if err := client.DeleteNamespace(ns); err != nil {
+		return fmt.Errorf("ERROR_DELETE_NAMESPACE: %w", err)
 	}
 
+	emptyNSList := make([]interface{}, 0)
 	_ = d.Set("namespace", "")
-	_ = d.Set("namespace_list", nil)
+	_ = d.Set("tenant", "")
+	_ = d.Set("backlog_quota", nil)
+	_ = d.Set("persistence_policy", nil)
+	_ = d.Set("dispatch_rate", nil)
+	_ = d.Set("max_consumers_per_topic", "")
+	_ = d.Set("namespace_list", emptyNSList)
+	_ = d.Set("max_consumers_per_subscription", "")
+	_ = d.Set("max_producers_per_topic", "")
 
 	return nil
 }
@@ -273,16 +261,61 @@ func resourcePulsarNamespaceExists(d *schema.ResourceData, meta interface{}) (bo
 	tenant := d.Get("tenant").(string)
 	namespace := d.Get("namespace").(string)
 
+	namespaceFullPath := fmt.Sprintf("%s/%s", tenant, namespace)
+
 	nsList, err := client.GetNamespaces(tenant)
 	if err != nil {
 		return false, err
 	}
 
 	for _, ns := range nsList {
-		if ns == namespace {
+		if ns == namespaceFullPath {
 			return true, nil
 		}
 	}
 
 	return false, nil
+}
+
+func storeNamespaceList(d *schema.ResourceData, nsList []string) error {
+	data := make([]interface{}, len(nsList))
+
+	for i, ns := range nsList {
+		data[i] = ns
+	}
+
+	return d.Set("namespace_list", data)
+}
+
+func backlogQuotaToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%d-", m["limit"].(int)))
+	buf.WriteString(fmt.Sprintf("%s-", m["policy"].(string)))
+
+	return hashcode.String(buf.String())
+}
+
+func persistencePolicyToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%d-", m["bk_ensemble"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["bk_write_quorum"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["bk_ack_quorum"].(int)))
+	buf.WriteString(fmt.Sprintf("%f-", m["managed_ledger_max_mark_delete_rate"].(float64)))
+
+	return hashcode.String(buf.String())
+}
+
+func dispatchRateToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%d-", m["dispatch_msg_throttling_rate"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["rate_period_seconds"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["dispatch_byte_throttling_rate"].(int)))
+
+	return hashcode.String(buf.String())
 }
