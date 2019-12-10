@@ -19,6 +19,7 @@ func Provider() terraform.ResourceProvider {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: descriptions["web_service_url"],
+				DefaultFunc: schema.EnvDefaultFunc("WEB_SERVICE_URL", nil),
 			},
 			"token": {
 				Type:        schema.TypeString,

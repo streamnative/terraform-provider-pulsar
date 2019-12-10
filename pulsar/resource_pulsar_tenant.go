@@ -5,7 +5,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
-	"log"
 )
 
 func resourcePulsarTenant() *schema.Resource {
@@ -50,7 +49,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Tenants().Create(input); err != nil {
-		return fmt.Errorf("ERROR_CREATE_NEW_TENANT: \n%w", err)
+		return fmt.Errorf("ERROR_CREATE_NEW_TENANT: \n%w \n request_input: %s", err, input)
 	}
 
 	return resourcePulsarTenantRead(d, meta)
@@ -76,24 +75,26 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 
 func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client)
-	log.Println("[INFO] deleted tenant")
 
-	d.Partial(true)
-	tenant := d.Get("tenant").(string)
-	adminRoles := handleHCLArray(d, "admin_roles")
-	allowedClusters := handleHCLArray(d, "allowed_clusters")
+	if d.HasChanges("admin_roles", "allowed_clusters") {
+		tenant := d.Get("tenant").(string)
+		adminRoles := handleHCLArray(d, "admin_roles")
+		allowedClusters := handleHCLArray(d, "allowed_clusters")
 
-	input := utils.TenantData{
-		Name:            tenant,
-		AllowedClusters: allowedClusters,
-		AdminRoles:      adminRoles,
+		input := utils.TenantData{
+			Name:            tenant,
+			AllowedClusters: allowedClusters,
+			AdminRoles:      adminRoles,
+		}
+
+		if err := client.Tenants().Update(input); err != nil {
+			return fmt.Errorf("ERROR_UPDATE_TENANT:  \n%w", err)
+		}
+
+		d.SetId(tenant)
+
+		return resourcePulsarTenantRead(d, meta)
 	}
-
-	if err := client.Tenants().Update(input); err != nil {
-		return fmt.Errorf("ERROR_UPDATE_TENANT:  \n%w", err)
-	}
-
-	d.SetId(tenant)
 
 	return nil
 }
