@@ -18,12 +18,14 @@ func Provider() terraform.ResourceProvider {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: descriptions["web_service_url"],
+				DefaultFunc: schema.EnvDefaultFunc("WEB_SERVICE_URL", nil),
 			},
-			"token": {
+			"pulsar_auth_token": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Default:     "",
-				Description: descriptions["token"],
+				DefaultFunc: schema.EnvDefaultFunc("PULSAR_AUTH_TOKEN", nil),
+				Description: descriptions["pulsar_auth_token"],
 			},
 			"api_version": {
 				Type:        schema.TypeString,
@@ -59,7 +61,7 @@ func Provider() terraform.ResourceProvider {
 
 func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, error) {
 	clusterURL := d.Get("web_service_url").(string)
-	token := d.Get("token").(string)
+	token := d.Get("pulsar_auth_token").(string)
 	pulsarApiVersion := d.Get("api_version").(string)
 
 	apiVersion, err := strconv.Atoi(pulsarApiVersion)
@@ -112,7 +114,7 @@ var descriptions map[string]string
 func init() {
 	descriptions = map[string]string{
 		"web_service_url":                "Web service url is used to connect to your apache pulsar cluster",
-		"token":                          "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
+		"pulsar_auth_token":              "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
 		"api_version":                    "Api Version to be used for the pulsar admin interaction",
 		"admin_roles":                    "Admin roles to be attached to tenant",
 		"allowed_clusters":               "Tenant will be able to interact with these clusters",

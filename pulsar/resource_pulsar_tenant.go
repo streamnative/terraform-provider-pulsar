@@ -1,10 +1,11 @@
 package pulsar
 
 import (
+	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
-	"log"
+	"strings"
 )
 
 func resourcePulsarTenant() *schema.Resource {
@@ -53,7 +54,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Create(input); err != nil {
-		return err
+		return fmt.Errorf("ERROR_CREATE_TENANT: %w\n request_input: %s", err, input)
 	}
 
 	return resourcePulsarTenantRead(d, meta)
@@ -105,13 +106,43 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 
 	tenant := d.Get("tenant").(string)
 
-	err := client.Delete(tenant)
-	if err != nil {
-		log.Printf("[INFO] error deleting tenant: %s", err)
+	if err := deleteExistingNamespacesForTenant(tenant, meta); err != nil {
+		return fmt.Errorf("ERROR_DELETING_EXISTING_NAMESPACES_FOR_TENANT: %w", err)
+	}
+
+	if err := client.Delete(tenant); err != nil {
 		return err
 	}
 
 	_ = d.Set("tenant", "")
+
+	return nil
+}
+
+func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
+	client := meta.(pulsar.Client).Namespaces()
+
+	nsList, err := client.GetNamespaces(tenant)
+	if err != nil {
+		return err
+	}
+
+	if len(nsList) > 0 {
+		for _, ns := range nsList {
+			if strings.Contains(ns, tenant) {
+				if err = client.DeleteNamespace(ns); err != nil {
+					return err
+				}
+
+				return nil
+			}
+
+			fullNamespacePath := fmt.Sprintf("%s/%s", tenant, ns)
+			if err = client.DeleteNamespace(fullNamespacePath); err != nil {
+				return err
+			}
+		}
+	}
 
 	return nil
 }
@@ -144,3 +175,13 @@ func handleHCLArrayV2(hclArray []interface{}) []string {
 
 	return out
 }
+
+//
+//func tenantNuke(d *schema.ResourceData, meta interface{}) error {
+//	nsClient := meta.(pulsar.Client).Namespaces()
+//	tenantClient := meta.(pulsar.Client).Tenants()
+//
+//
+//
+//	return nil
+//}

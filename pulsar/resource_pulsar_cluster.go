@@ -115,14 +115,27 @@ func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
 func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Clusters()
 
-	clusterData := d.Get("cluster_data").(utils.ClusterData)
+	clusterDataSet := d.Get("cluster_data").(*schema.Set)
+	cluster := d.Get("cluster").(string)
+
+	clusterData := utils.ClusterData{
+		Name: cluster,
+	}
+	// @TODO code cleanup and add helper methods for code beautification
+	for _, cd := range clusterDataSet.List() {
+		data := cd.(map[string]interface{})
+
+		clusterData.ServiceURL = data["web_service_url"].(string)
+		clusterData.BrokerServiceURL = data["broker_service_url"].(string)
+		clusterData.PeerClusterNames = handleHCLArrayV2(data["peer_clusters"].([]interface{}))
+	}
 
 	if err := client.Update(clusterData); err != nil {
 		return fmt.Errorf("ERROR_UPDATE_CLUSTER_DATA: %w", err)
 	}
 
-	_ = d.Set("cluster_data", clusterData)
-	d.SetId(clusterData.Name)
+	_ = d.Set("cluster_data", clusterDataSet)
+	d.SetId(cluster)
 
 	return nil
 }
@@ -130,7 +143,7 @@ func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error
 func resourcePulsarClusterDelete(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Clusters()
 
-	Cluster := d.Get("Cluster").(string)
+	Cluster := d.Get("cluster").(string)
 
 	if err := client.Delete(Cluster); err != nil {
 		return err
