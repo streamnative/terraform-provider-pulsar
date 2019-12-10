@@ -24,7 +24,7 @@ func Provider() terraform.ResourceProvider {
 			"token": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Default:     "",
+				DefaultFunc: schema.EnvDefaultFunc("TOKEN", nil),
 				Description: descriptions["token"],
 			},
 			"api_version": {

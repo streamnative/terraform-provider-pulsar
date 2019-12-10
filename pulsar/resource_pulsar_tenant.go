@@ -5,6 +5,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"strings"
 )
 
 func resourcePulsarTenant() *schema.Resource {
@@ -36,7 +37,7 @@ func resourcePulsarTenant() *schema.Resource {
 }
 
 func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client)
+	client := meta.(pulsar.Client).Tenants()
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
@@ -48,21 +49,21 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 		AdminRoles:      adminRoles,
 	}
 
-	if err := client.Tenants().Create(input); err != nil {
-		return fmt.Errorf("ERROR_CREATE_NEW_TENANT: \n%w \n request_input: %s", err, input)
+	if err := client.Create(input); err != nil {
+		return fmt.Errorf("ERROR_CREATE_TENANT: %w\n request_input: %s", err, input)
 	}
 
 	return resourcePulsarTenantRead(d, meta)
 }
 
 func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client)
+	client := meta.(pulsar.Client).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
-	td, err := client.Tenants().Get(tenant)
+	td, err := client.Get(tenant)
 	if err != nil {
-		return fmt.Errorf("ERROR_READ_TENANT: \n%w", err)
+		return err
 	}
 
 	_ = d.Set("tenant", tenant)
@@ -74,39 +75,39 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client)
+	client := meta.(pulsar.Client).Tenants()
 
-	if d.HasChanges("admin_roles", "allowed_clusters") {
-		tenant := d.Get("tenant").(string)
-		adminRoles := handleHCLArray(d, "admin_roles")
-		allowedClusters := handleHCLArray(d, "allowed_clusters")
+	d.Partial(true)
+	tenant := d.Get("tenant").(string)
+	adminRoles := handleHCLArray(d, "admin_roles")
+	allowedClusters := handleHCLArray(d, "allowed_clusters")
 
-		input := utils.TenantData{
-			Name:            tenant,
-			AllowedClusters: allowedClusters,
-			AdminRoles:      adminRoles,
-		}
-
-		if err := client.Tenants().Update(input); err != nil {
-			return fmt.Errorf("ERROR_UPDATE_TENANT:  \n%w", err)
-		}
-
-		d.SetId(tenant)
-
-		return resourcePulsarTenantRead(d, meta)
+	input := utils.TenantData{
+		Name:            tenant,
+		AllowedClusters: allowedClusters,
+		AdminRoles:      adminRoles,
 	}
+
+	if err := client.Update(input); err != nil {
+		return err
+	}
+
+	d.SetId(tenant)
 
 	return nil
 }
 
 func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client)
+	client := meta.(pulsar.Client).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
-	err := client.Tenants().Delete(tenant)
-	if err != nil {
-		return fmt.Errorf("ERROR_DELETE_TENANT: \n%w", err)
+	if err := deleteExistingNamespacesForTenant(tenant, meta); err != nil {
+		return fmt.Errorf("ERROR_DELETING_EXISTING_NAMESPACES_FOR_TENANT: %w", err)
+	}
+
+	if err := client.Delete(tenant); err != nil {
+		return err
 	}
 
 	_ = d.Set("tenant", "")
@@ -114,15 +115,44 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 	return nil
 }
 
+func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
+	client := meta.(pulsar.Client).Namespaces()
+
+	nsList, err := client.GetNamespaces(tenant)
+	if err != nil {
+		return err
+	}
+
+	if len(nsList) > 0 {
+		for _, ns := range nsList {
+			if strings.Contains(ns, tenant) {
+				if err = client.DeleteNamespace(ns); err != nil {
+					return err
+				}
+
+				return nil
+			}
+
+			fullNamespacePath := fmt.Sprintf("%s/%s", tenant, ns)
+			if err = client.DeleteNamespace(fullNamespacePath); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func handleHCLArray(d *schema.ResourceData, key string) []string {
 	hclArray := d.Get(key).([]interface{})
-	out := make([]string, len(hclArray))
+	out := make([]string, 0)
 
-	if len(hclArray) > 0 {
+	if len(hclArray) == 0 {
+		return out
+	}
 
-		for _, value := range hclArray {
-			out = append(out, value.(string))
-		}
+	for _, value := range hclArray {
+		out = append(out, value.(string))
 	}
 
 	return out
