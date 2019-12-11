@@ -39,12 +39,11 @@ func Provider() terraform.ResourceProvider {
 				Description: descriptions["web_service_url"],
 				DefaultFunc: schema.EnvDefaultFunc("WEB_SERVICE_URL", nil),
 			},
-			"pulsar_auth_token": {
+			"token": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Default:     "",
-				DefaultFunc: schema.EnvDefaultFunc("PULSAR_AUTH_TOKEN", nil),
-				Description: descriptions["pulsar_auth_token"],
+				DefaultFunc: schema.EnvDefaultFunc("TOKEN", nil),
+				Description: descriptions["token"],
 			},
 			"api_version": {
 				Type:        schema.TypeString,
@@ -54,9 +53,7 @@ func Provider() terraform.ResourceProvider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"pulsar_tenant":    resourcePulsarTenant(),
-			"pulsar_cluster":   resourcePulsarCluster(),
-			"pulsar_namespace": resourcePulsarNamespace(),
+			"pulsar_tenant": resourcePulsarTenant(),
 		},
 	}
 
@@ -83,7 +80,7 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 	// can be used for version locking or version specific feature sets
 	_ = tfVersion
 	clusterURL := d.Get("web_service_url").(string)
-	token := d.Get("pulsar_auth_token").(string)
+	token := d.Get("token").(string)
 	pulsarAPIVersion := d.Get("api_version").(string)
 
 	apiVersion, err := strconv.Atoi(pulsarAPIVersion)
@@ -132,24 +129,10 @@ var descriptions map[string]string
 
 func init() {
 	descriptions = map[string]string{
-		"web_service_url": "Web service url is used to connect to your apache pulsar cluster",
-		"pulsar_auth_token": `Authentication Token is used to grant permissions to the terraform provider to modify 
-Apace Pulsar Entities`,
+		"web_service_url":  "Web service url is used to connect to your apache pulsar cluster",
+		"token":            "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
 		"api_version":      "Api Version to be used for the pulsar admin interaction",
 		"admin_roles":      "Admin roles to be attached to tenant",
 		"allowed_clusters": "Tenant will be able to interact with these clusters",
-		"namespace":        "Pulsar namespaces are logical groupings of topics",
-		"tenant": `An administrative unit for allocating capacity and enforcing an 
-authentication/authorization scheme`,
-		"namespace_list": "List of namespaces for a given tenant",
-		"enable_duplication": `ensures that each message produced on Pulsar topics is persisted to disk 
-only once, even if the message is produced more than once`,
-		"encrypt_topics":                 "encrypt messages at the producer and decrypt at the consumer",
-		"max_producers_per_topic":        "Max number of producers per topic",
-		"max_consumers_per_subscription": "Max number of consumers per subscription",
-		"max_consumers_per_topic":        "Max number of consumers per topic",
-		"dispatch_rate":                  "Data transfer rate, in and out of the Pulsar Broker",
-		"persistence_policy":             "Policy for the namespace for data persistence",
-		"backlog_quota":                  "",
 	}
 }

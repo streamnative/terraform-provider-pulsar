@@ -16,13 +16,12 @@
 // under the License.
 
 provider "pulsar" {
-  web_service_url   = "http://localhost:8080"
-  pulsar_auth_token = "your_auth_token"
+  web_service_url = "http://localhost:8080"
 }
 
 resource "pulsar_tenant" "my_tenant" {
   tenant = "thanos"
   allowed_cluster = [
-    "titan"
-  ]
+  "titan"]
+
 }
