@@ -1,4 +1,4 @@
-name: terraform-provider-pulsar Unit Tests Check
+name: terraform-provider-pulsar -> Code Style & Acceptance Tests
 on: [pull_request]
 jobs:
 
@@ -25,20 +25,25 @@ jobs:
           mkdir -p $HOME/.terraform.d/plugins/linux_amd64
           sleep 10
 
-      - name: Build
+      - name: Setup Linter
+        run: |
+          wget -O - -q https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s v1.21.0
+          sudo mv ./bin/golangci-lint /usr/local/bin
+
+      - name: Linter Check
+        run: |
+          make tools
+          echo "looking for linter" && whereis golangci-lint
+          golangci-lint run -c ./golangci.yaml ./...
+
+      - name: Building the terraform-provider-pulsar
         run: |
           make tools
           make build
           sudo mv terraform-provider-pulsar $HOME/.terraform.d/plugins/linux_amd64/
           echo "looking for terraform provider -> pulsar: " && ls $HOME/.terraform.d/plugins/linux_amd64/
 
-      - name: Linter
-        run: |
-          make tools
-          echo "looking for linter" && whereis golangci-lint
-          golangci-lint run -c ./golangci.yaml ./...
-
-      - name: Test
+      - name: Running Acceptance Tests for the Proivder on Standalone Instance
         run: |
           docker ps
           make testacc
