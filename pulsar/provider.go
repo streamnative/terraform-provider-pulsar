@@ -19,12 +19,13 @@ package pulsar
 
 import (
 	"fmt"
+	"net/url"
+	"strconv"
+
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
-	"net/url"
-	"strconv"
 )
 
 // Provider returns a terraform.ResourceProvider
@@ -80,9 +81,9 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 	_ = tfVersion
 	clusterURL := d.Get("web_service_url").(string)
 	token := d.Get("token").(string)
-	pulsarApiVersion := d.Get("api_version").(string)
+	pulsarAPIVersion := d.Get("api_version").(string)
 
-	apiVersion, err := strconv.Atoi(pulsarApiVersion)
+	apiVersion, err := strconv.Atoi(pulsarAPIVersion)
 	if err != nil {
 		apiVersion = 1
 	}

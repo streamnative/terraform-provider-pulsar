@@ -1,0 +1,44 @@
+name: terraform-provider-pulsar Unit Tests Check
+on: [pull_request]
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Set up Go 1.13
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.13
+        id: go
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v1
+
+      - name: Get dependencies
+        run: |
+          export PATH=$PATH:$(pwd)/bin
+          wget https://releases.hashicorp.com/terraform/0.12.17/terraform_0.12.17_linux_amd64.zip
+          unzip terraform_0.12.17_linux_amd64.zip && sudo mv terraform /usr/local/bin
+          docker run -d -p 6650:6650 -p 8080:8080 -v $PWD/data:/pulsar/data apachepulsar/pulsar:2.4.1 bin/pulsar standalone
+          mkdir -p $HOME/.terraform.d/plugins/linux_amd64
+          sleep 10
+
+      - name: Build
+        run: |
+          make tools
+          make build
+          sudo mv terraform-provider-pulsar $HOME/.terraform.d/plugins/linux_amd64/
+          echo "looking for terraform provider -> pulsar: " && ls $HOME/.terraform.d/plugins/linux_amd64/
+
+      - name: Linter
+        run: |
+          make tools
+          echo "looking for linter" && whereis golangci-lint
+          golangci-lint run -c ./golangci.yaml ./...
+
+      - name: Test
+        run: |
+          docker ps
+          make testacc
