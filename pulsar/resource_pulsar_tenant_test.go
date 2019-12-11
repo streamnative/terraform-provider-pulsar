@@ -103,12 +103,10 @@ func testPulsarTenantDestroy(s *terraform.State) error {
 var (
 	testPulsarTenant = fmt.Sprintf(`
 provider "pulsar" {
-	web_service_url = %s 
+  web_service_url = "%s"
 }
+
 resource "pulsar_tenant" "test" {
-	tenant           = "test-my-tenant"
-    allowed_clusters = []
-    admin_roles = []
-}
-`, webServiceURL)
+  tenant = "thanos"
+}`, webServiceURL)
 )
