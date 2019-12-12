@@ -1,13 +1,31 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 package pulsar
 
 import (
 	"fmt"
+	"net/url"
+	"strconv"
+
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
-	"net/url"
-	"strconv"
 )
 
 func Provider() terraform.ResourceProvider {
@@ -60,11 +78,14 @@ func Provider() terraform.ResourceProvider {
 }
 
 func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, error) {
+
+	// can be used for version locking or version specific feature sets
+	_ = tfVersion
 	clusterURL := d.Get("web_service_url").(string)
 	token := d.Get("pulsar_auth_token").(string)
-	pulsarApiVersion := d.Get("api_version").(string)
+	pulsarAPIVersion := d.Get("api_version").(string)
 
-	apiVersion, err := strconv.Atoi(pulsarApiVersion)
+	apiVersion, err := strconv.Atoi(pulsarAPIVersion)
 	if err != nil {
 		apiVersion = 1
 	}
@@ -86,7 +107,7 @@ func validatePulsarConfig(d *schema.ResourceData) error {
 	}
 
 	if _, err := url.Parse(webServiceURL); err != nil {
-		return fmt.Errorf("ERROR_PULSAR_CONFIG_INVALID_WEB_SERVICE_URL")
+		return fmt.Errorf("ERROR_PULSAR_CONFIG_INVALID_WEB_SERVICE_URL: %w", err)
 	}
 
 	apiVersion, ok := d.Get("api_version").(string)
@@ -113,21 +134,24 @@ var descriptions map[string]string
 
 func init() {
 	descriptions = map[string]string{
-		"web_service_url":                "Web service url is used to connect to your apache pulsar cluster",
-		"pulsar_auth_token":              "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
-		"api_version":                    "Api Version to be used for the pulsar admin interaction",
-		"admin_roles":                    "Admin roles to be attached to tenant",
-		"allowed_clusters":               "Tenant will be able to interact with these clusters",
-		"namespace":                      "",
-		"tenant":                         "",
-		"namespace_list":                 "",
-		"enable_duplication":             "",
-		"encrypt_topics":                 "",
-		"max_producers_per_topic":        "",
-		"max_consumers_per_subscription": "",
-		"max_consumers_per_topic":        "",
-		"dispatch_rate":                  "",
-		"persistence_policy":             "",
+		"web_service_url": "Web service url is used to connect to your apache pulsar cluster",
+		"pulsar_auth_token": `Authentication Token is used to grant permissions to the terraform provider to modify 
+Apace Pulsar Entities`,
+		"api_version":      "Api Version to be used for the pulsar admin interaction",
+		"admin_roles":      "Admin roles to be attached to tenant",
+		"allowed_clusters": "Tenant will be able to interact with these clusters",
+		"namespace":        "Pulsar namespaces are logical groupings of topics",
+		"tenant": `An administrative unit for allocating capacity and enforcing an 
+authentication/authorization scheme`,
+		"namespace_list": "List of namespaces for a given tenant",
+		"enable_duplication": `ensures that each message produced on Pulsar topics is persisted to disk 
+only once, even if the message is produced more than once`,
+		"encrypt_topics":                 "encrypt messages at the producer and decrypt at the consumer",
+		"max_producers_per_topic":        "Max number of producers per topic",
+		"max_consumers_per_subscription": "Max number of consumers per subscription",
+		"max_consumers_per_topic":        "Max number of consumers per topic",
+		"dispatch_rate":                  "Data transfer rate, in and out of the Pulsar Broker",
+		"persistence_policy":             "Policy for the namespace for data persistence",
 		"backlog_quota":                  "",
 	}
 }

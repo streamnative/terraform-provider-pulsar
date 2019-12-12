@@ -38,10 +38,6 @@ func resourcePulsarTenant() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"cluster_name": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
 			"allowed_clusters": {
 				Type:        schema.TypeList,
 				Optional:    true,
@@ -85,7 +81,7 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 
 	td, err := client.Get(tenant)
 	if err != nil {
-		return err
+		return fmt.Errorf("ERROR_READ_TENANT: %w", err)
 	}
 
 	_ = d.Set("tenant", tenant)
@@ -111,7 +107,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Update(input); err != nil {
-		return err
+		return fmt.Errorf("ERROR_UPDATE_TENANT: %w", err)
 	}
 
 	d.SetId(tenant)
@@ -129,7 +125,7 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Delete(tenant); err != nil {
-		return err
+		return fmt.Errorf("ERROR_DELETE_TENANT: %w", err)
 	}
 
 	_ = d.Set("tenant", "")
@@ -151,7 +147,6 @@ func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
 				if err = client.DeleteNamespace(ns); err != nil {
 					return err
 				}
-
 				return nil
 			}
 
@@ -193,13 +188,3 @@ func handleHCLArrayV2(hclArray []interface{}) []string {
 
 	return out
 }
-
-//
-//func tenantNuke(d *schema.ResourceData, meta interface{}) error {
-//	nsClient := meta.(pulsar.Client).Namespaces()
-//	tenantClient := meta.(pulsar.Client).Tenants()
-//
-//
-//
-//	return nil
-//}

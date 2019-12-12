@@ -15,13 +15,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-provider "pulsar" {
-  web_service_url   = "http://localhost:8080"
-  pulsar_auth_token = "your_auth_token"
-}
+provider "pulsar" {}
 
-resource "pulsar_tenant" "my_tenant" {
-  tenant = "thanos"
-  allowed_cluster = [
-  "titan"]
+resource "pulsar_cluster" "my_cluster" {
+  cluster = "eternals"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters = [
+      "skrulls",
+    "krees"]
+  }
+
 }
