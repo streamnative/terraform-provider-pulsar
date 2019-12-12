@@ -21,7 +21,7 @@ under the License.
 
 A [Terraform][1] provider for managing [Apache Pulsar Entities][2].
 
-<img alt="" src="https://cdn.rawgit.com/hashicorp/terraform-website/master/content/source/assets/images/logo-hashicorp.svg" width="600px">
+<img src="https://cdn.rawgit.com/hashicorp/terraform-website/master/content/source/assets/images/logo-hashicorp.svg" width="600px">
 
 ## Contents
 
@@ -71,14 +71,13 @@ Example provider with apache pulsar cluster, running locally with authentication
 ```hcl
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
-  pulsar_auth_token = "my_auth_token"
 }
 ```
 
-| Property                      | Description                                                                                                           | Required    |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `web_service_url`             | URL of your Apache Pulsar Cluster                             | `Yes` |
-| `pulsar_auth_token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled| `No`       |
+| Property            | Description                                                                                                           | Default    |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `web_service_url` | URL of your Apache Pulsar Cluster                             | `Required` |
+| `token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled                              | `""`       |
 
 Resources
 ------------
@@ -153,45 +152,25 @@ provider "pulsar" {
   web_service_url = "http://localhost:8080"
 }
 
-resource "pulsar_cluster" "test_cluster" {
-  cluster = "skrulls"
+resource "pulsar_cluster" "my_cluster" {
+  cluster = "eternals"
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
     broker_service_url = "http://localhost:6050"
-    peer_clusters      = ["standalone"]
+    peer_clusters      = ["skrulls", "krees"]
   }
 
 }
 
-resource "pulsar_tenant" "test_tenant" {
+resource "pulsar_tenant" "my_tenant" {
   tenant           = "thanos"
-  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+  allowed_clusters = [pulsar_cluster.my_cluster.cluster, "standalone"]
 }
 
-resource "pulsar_namespace" "test" {
-  tenant    = pulsar_tenant.test_tenant.tenant
-  namespace = "eternals"
-
-  namespace_config {
-    anti_affinity                  = "anti-aff"
-    max_consumers_per_subscription = "50"
-    max_consumers_per_topic        = "50"
-    max_producers_per_topic        = "50"
-    replication_clusters           = ["standalone"]
-  }
-
-  dispatch_rate {
-    dispatch_msg_throttling_rate  = 50
-    rate_period_seconds           = 50
-    dispatch_byte_throttling_rate = 2048
-  }
-
-  retention_policies {
-    retention_minutes    = "1600"
-    retention_size_in_mb = "10000"
-  }
-  
+resource "pulsar_namespace" "my_ns" {
+  tenant             = pulsar_tenant.my_tenant.tenant
+  namespace          = "black-order"
 }
 ```
 
@@ -201,19 +180,6 @@ resource "pulsar_namespace" "test" {
 | ----------------------------- | ----------------------------------------------------------------- |----------------------------|
 | `tenant`                      | Name of the Tenant managing this namespace                        | Yes
 | `namespace`                   | name of the namespace                                             | Yes
-| `namespace_config`            | Configuration for your namespaces like max allowed producers to produce messages | No |
-| `dispatch_rate`               | Apache Pulsar throttling config                                   | No |
-| `retention_policcies`         | Data retention policies                                           | No |
-
-Contributing
----------------------------
-
-Terraform is the work of thousands of contributors. We appreciate your help!
-
-To contribute, please read the contribution guidelines: [Contributing to Terraform - Apache Pulsar Provider](.github/CONTRIBUTING.md)
-
-Issues on GitHub are intended to be related to bugs or feature requests with provider codebase.
-See https://www.terraform.io/docs/extend/community/index.html for a list of community resources to ask questions about Terraform.
 
 
 
