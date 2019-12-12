@@ -234,31 +234,36 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 	var errs error
 
 	if err = client.SetNamespaceAntiAffinityGroup(nsName.String(), nsCfg.AntiAffinity); err != nil {
-		err = multierror.Append(errs, fmt.Errorf("SetNamespaceAntiAffinityGroup"))
+		errs = multierror.Append(errs, fmt.Errorf("SetNamespaceAntiAffinityGroup"), err)
 	}
+
 	if err = client.SetDispatchRate(*nsName, nsCfg.DispatchRate); err != nil {
-		err = multierror.Append(errs, fmt.Errorf("SetDispatchRate"))
-
+		errs = multierror.Append(errs, fmt.Errorf("SetDispatchRate"), err)
 	}
+
 	if err = client.SetNamespaceReplicationClusters(nsName.String(), nsCfg.ReplicationClusters); err != nil {
-		err = multierror.Append(errs, fmt.Errorf("SetNamespaceReplicationClusters"))
-
+		errs = multierror.Append(errs, fmt.Errorf("SetNamespaceReplicationClusters"), err)
 	}
+
 	if err = client.SetRetention(nsName.String(), nsCfg.RetentionPolicies); err != nil {
-		err = multierror.Append(errs, fmt.Errorf("SetRetention"))
+		errs = multierror.Append(errs, fmt.Errorf("SetRetention"), err)
+	}
 
+	if err = client.SplitNamespaceBundle(nsName.String(), nsCfg.SplitNamespaces.Bundle,
+		nsCfg.SplitNamespaces.UnloadSplitBundles); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("SplitNamespaceBundle"), err)
 	}
-	if err = client.SplitNamespaceBundle(nsName.String(), nsCfg.SplitNamespaces.Bundle, nsCfg.SplitNamespaces.UnloadSplitBundles); err != nil {
-		err = multierror.Append(errs, fmt.Errorf("SplitNamespaceBundle"))
-	}
+
 	if err = client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic); err != nil {
-		err = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerTopic"))
+		errs = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerTopic"), err)
 	}
+
 	if err = client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription); err != nil {
-		err = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerSubscription"))
+		errs = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerSubscript1ion"), err)
 	}
+
 	if err = client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic); err != nil {
-		err = multierror.Append(errs, fmt.Errorf("SetMaxProducersPerTopic"))
+		errs = multierror.Append(errs, fmt.Errorf("SetMaxProducersPerTopic"), err)
 	}
 
 	if errs != nil {
