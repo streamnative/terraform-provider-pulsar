@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/hashicorp/go-multierror"
+
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 	"github.com/streamnative/terraform-provider-pulsar/types"
 
@@ -210,7 +212,6 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 
 		nsCfg.SplitNamespaces.Bundle = data["bundle"].(string)
 		nsCfg.SplitNamespaces.UnloadSplitBundles = false
-		break
 
 	}
 
@@ -230,16 +231,39 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 		return err
 	}
 
-	var errs []error
+	var errs error
 
-	errs = append(errs, client.SetNamespaceAntiAffinityGroup(nsName.String(), nsCfg.AntiAffinity))
-	errs = append(errs, client.SetDispatchRate(*nsName, nsCfg.DispatchRate))
-	errs = append(errs, client.SetNamespaceReplicationClusters(nsName.String(), nsCfg.ReplicationClusters))
-	errs = append(errs, client.SetRetention(nsName.String(), nsCfg.RetentionPolicies))
-	errs = append(errs, client.SplitNamespaceBundle(nsName.String(), nsCfg.SplitNamespaces.Bundle, nsCfg.SplitNamespaces.UnloadSplitBundles))
-	errs = append(errs, client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic))
-	errs = append(errs, client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription))
-	errs = append(errs, client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic))
+	if err = client.SetNamespaceAntiAffinityGroup(nsName.String(), nsCfg.AntiAffinity); err != nil {
+		err = multierror.Append(errs, fmt.Errorf("SetNamespaceAntiAffinityGroup"))
+	}
+	if err = client.SetDispatchRate(*nsName, nsCfg.DispatchRate); err != nil {
+		err = multierror.Append(errs, fmt.Errorf("SetDispatchRate"))
+
+	}
+	if err = client.SetNamespaceReplicationClusters(nsName.String(), nsCfg.ReplicationClusters); err != nil {
+		err = multierror.Append(errs, fmt.Errorf("SetNamespaceReplicationClusters"))
+
+	}
+	if err = client.SetRetention(nsName.String(), nsCfg.RetentionPolicies); err != nil {
+		err = multierror.Append(errs, fmt.Errorf("SetRetention"))
+
+	}
+	if err = client.SplitNamespaceBundle(nsName.String(), nsCfg.SplitNamespaces.Bundle, nsCfg.SplitNamespaces.UnloadSplitBundles); err != nil {
+		err = multierror.Append(errs, fmt.Errorf("SplitNamespaceBundle"))
+	}
+	if err = client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic); err != nil {
+		err = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerTopic"))
+	}
+	if err = client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription); err != nil {
+		err = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerSubscription"))
+	}
+	if err = client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic); err != nil {
+		err = multierror.Append(errs, fmt.Errorf("SetMaxProducersPerTopic"))
+	}
+
+	if errs != nil {
+		return fmt.Errorf("ERROR_CREATE_NAMESPACE_CONFIG: %w", errs)
+	}
 
 	_ = d.Set("namespace", namespace)
 	_ = d.Set("tenant", tenant)
@@ -316,7 +340,6 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 
 		nsCfg.SplitNamespaces.Bundle = data["bundle"].(string)
 		nsCfg.SplitNamespaces.UnloadSplitBundles = false
-		break
 
 	}
 
@@ -336,19 +359,20 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 		return err
 	}
 
-	var errs []error
+	var errs error
 
-	errs = append(errs, client.SetNamespaceAntiAffinityGroup(nsName.String(), nsCfg.AntiAffinity))
-	errs = append(errs, client.SetDispatchRate(*nsName, nsCfg.DispatchRate))
-	errs = append(errs, client.SetNamespaceReplicationClusters(nsName.String(), nsCfg.ReplicationClusters))
-	errs = append(errs, client.SetRetention(nsName.String(), nsCfg.RetentionPolicies))
-	errs = append(errs, client.SplitNamespaceBundle(nsName.String(), nsCfg.SplitNamespaces.Bundle, nsCfg.SplitNamespaces.UnloadSplitBundles))
-	errs = append(errs, client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic))
-	errs = append(errs, client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription))
-	errs = append(errs, client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic))
+	errs = multierror.Append(errs, client.SetNamespaceAntiAffinityGroup(nsName.String(), nsCfg.AntiAffinity))
+	errs = multierror.Append(errs, client.SetDispatchRate(*nsName, nsCfg.DispatchRate))
+	errs = multierror.Append(errs, client.SetNamespaceReplicationClusters(nsName.String(), nsCfg.ReplicationClusters))
+	errs = multierror.Append(errs, client.SetRetention(nsName.String(), nsCfg.RetentionPolicies))
+	errs = multierror.Append(errs, client.SplitNamespaceBundle(nsName.String(), nsCfg.SplitNamespaces.Bundle,
+		nsCfg.SplitNamespaces.UnloadSplitBundles))
+	errs = multierror.Append(errs, client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic))
+	errs = multierror.Append(errs, client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription))
+	errs = multierror.Append(errs, client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic))
 
 	if errs != nil {
-		return fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: %s", errs)
+		return fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: %w", errs)
 	}
 	//return resourcePulsarNamespaceRead(d, meta)
 	d.SetId(nsName.String())
