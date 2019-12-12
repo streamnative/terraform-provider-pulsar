@@ -29,6 +29,8 @@ A [Terraform][1] provider for managing [Apache Pulsar Entities][2].
 * [Installation](#installation)
 * [Resources](#resources)
   * [`pulsar_tenant`](#pulsar_tenant)
+  * [`pulsar_cluster`](#pulsar_cluster)
+  * [`pulsar_namespace`](#pulsar_namespace)
 
 Requirements
 ------------
@@ -105,6 +107,81 @@ resource "pulsar_tenant" "my_tenant" {
 | `tenant`                      | Name of the Tenant that you want to create          | Yes
 | `allowed_clusters`            | An Array of clusters, accessible by this tenant     | No
 | `admin_roles`                 | Admin Roles to be assumed by this Tenant            | No
+
+### `pulsar_cluster`
+
+A resource for managing Apache Pulsar Clusters, can update various properties for a given cluster.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+}
+
+resource "pulsar_cluster" "my_cluster" {
+  cluster = "eternals"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["skrulls", "krees"]
+  }
+
+}
+```
+
+#### Properties
+
+| Property                      | Description                                                       | Required                   |
+| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
+| `cluster`                     | Name of the Cluster that you want to create                       | Yes
+| `cluster_data`                | A Map of required fields for the cluster                          | Yes
+| `web_service_url`             | Required in cluster data, pointing to your broker web service     | Yes
+| `broker_service_url`          | Required in cluster data for broker discovery                     | Yes
+| `peer_clusters`               | Required in cluster data for adding peer clusters                 | Yes
+
+### `pulsar_namespace`
+
+A resource for creating and managing Apache Pulsar Namespaces, can update various properties for a given namespace.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+}
+
+resource "pulsar_cluster" "my_cluster" {
+  cluster = "eternals"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["skrulls", "krees"]
+  }
+
+}
+
+resource "pulsar_tenant" "my_tenant" {
+  tenant           = "thanos"
+  allowed_clusters = [pulsar_cluster.my_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "my_ns" {
+  tenant             = pulsar_tenant.my_tenant.tenant
+  namespace          = "black-order"
+}
+```
+
+#### Properties
+
+| Property                      | Description                                                       | Required                   |
+| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
+| `tenant`                      | Name of the Tenant managing this namespace                        | Yes
+| `namespace`                   | name of the namespace                                             | Yes
+
+
 
 [1]: https://www.terraform.io
 [2]: https://pulsar.apache.org

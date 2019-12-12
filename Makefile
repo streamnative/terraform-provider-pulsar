@@ -24,6 +24,9 @@ default: build
 build: fmtcheck
 	go build -o terraform-provider-pulsar
 
+build-dev: fmtcheck
+	go build -o terraform-provider-pulsar && mv terraform-provider-pulsar ~/.terraform.d/plugins/linux_amd64/
+
 test: fmtcheck
 	go test $(TEST) -timeout=30s -parallel=4
 
