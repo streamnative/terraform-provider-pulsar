@@ -167,26 +167,48 @@ provider "pulsar" {
 }
 
 resource "pulsar_cluster" "test_cluster" {
-  cluster = "eternals"
+  cluster = "skrulls"
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
     broker_service_url = "http://localhost:6050"
-    peer_clusters      = ["skrulls", "krees"]
+    peer_clusters      = ["standalone"]
   }
+
 }
 
 resource "pulsar_tenant" "test_tenant" {
-	tenant = "test"
-	allowed_clusters = ["standalone", pulsar_cluster.test_cluster.cluster]
-	depends_on = [pulsar_cluster.test_cluster]
+  tenant           = "thanos"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
 }
 
 resource "pulsar_namespace" "test" {
-	tenant = pulsar_tenant.test_tenant.tenant
-	namespace = "testns"
+  tenant    = pulsar_tenant.test_tenant.tenant
+  namespace = "eternals"
 
-	depends_on = [pulsar_cluster.test_cluster, pulsar_tenant.test_tenant]
+  namespace_config {
+    anti_affinity                  = "anti-aff"
+    max_consumers_per_subscription = "50"
+    max_consumers_per_topic        = "50"
+    max_producers_per_topic        = "50"
+    replication_clusters           = ["standalone"]
+  }
+
+  dispatch_rate {
+    dispatch_msg_throttling_rate  = 50
+    rate_period_seconds           = 50
+    dispatch_byte_throttling_rate = 2048
+  }
+
+  retention_policies {
+    retention_minutes    = "1600"
+    retention_size_in_mb = "10000"
+  }
+
+  split_namespaces {
+    bundle = "ns-bundle"
+  }
+  
 }
 `, webServiceURL)
 )
