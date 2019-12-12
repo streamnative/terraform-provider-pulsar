@@ -1,13 +1,33 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 package pulsar
 
 import (
 	"bytes"
 	"fmt"
+	"strconv"
+
+	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/terraform-provider-pulsar/types"
+
 	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"math"
-	"strconv"
 )
 
 func resourcePulsarNamespace() *schema.Resource {
@@ -30,44 +50,6 @@ func resourcePulsarNamespace() *schema.Resource {
 				Optional:    true,
 				Description: descriptions["tenant"],
 				Default:     "",
-			},
-			"namespace_list": {
-				Type:        schema.TypeList,
-				Optional:    true,
-				Description: descriptions["namespace_list"],
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-			},
-			"enable_duplication": {
-				Type:        schema.TypeBool,
-				Default:     false,
-				Optional:    true,
-				Description: descriptions["enable_duplication"],
-			},
-			"encrypt_topics": {
-				Type:        schema.TypeBool,
-				Default:     false,
-				Optional:    true,
-				Description: descriptions["encrypt_topics"],
-			},
-			"max_producers_per_topic": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Default:     strconv.Itoa(math.MaxInt64),
-				Description: descriptions["max_producers_per_topic"],
-			},
-			"max_consumers_per_subscription": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Default:     strconv.Itoa(math.MaxInt64),
-				Description: descriptions["max_consumers_per_subscription"],
-			},
-			"max_consumers_per_topic": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Default:     strconv.Itoa(math.MaxInt64),
-				Description: descriptions["max_consumers_per_topic"],
 			},
 			"dispatch_rate": {
 				Type:     schema.TypeSet,
@@ -92,51 +74,72 @@ func resourcePulsarNamespace() *schema.Resource {
 				},
 				Set: dispatchRateToHash,
 			},
-			"persistence_policy": {
-				Type:        schema.TypeSet,
-				Optional:    true,
-				Description: descriptions["persistence_policy"],
+			"split_namespaces": {
+				Type:     schema.TypeSet,
+				Optional: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"bk_ensemble": {
-							Type:     schema.TypeInt,
+						"bundle": {
+							Type:     schema.TypeString,
 							Required: true,
 						},
-						"bk_write_quorum": {
-							Type:     schema.TypeInt,
-							Required: true,
-						},
-						"bk_ack_quorum": {
-							Type:     schema.TypeInt,
-							Required: true,
-						},
-						"managed_ledger_max_mark_delete_rate": {
-							Type:     schema.TypeFloat,
-							Required: true,
+						"unload_split_bundles": {
+							Type:     schema.TypeString,
+							Optional: true,
 						},
 					},
 				},
-				Set: persistencePolicyToHash,
+				Set: splitNamespacesToHash,
 			},
-			"backlog_quota": {
-				Type:        schema.TypeSet,
-				Optional:    true,
-				Description: descriptions["backlog_quota"],
+			"retention_policies": {
+				Type:     schema.TypeSet,
+				Optional: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"limit": {
+						"retention_minutes": {
 							Type:     schema.TypeString,
 							Required: true,
 						},
-						"policy": {
+						"retention_size_in_mb": {
 							Type:     schema.TypeString,
 							Required: true,
-							//Optional:     true,
-							//ExactlyOneOf: []string{"producer_request_hold", "producer_exception", "consumer_backlog_eviction"},
 						},
 					},
 				},
-				Set: backlogQuotaToHash,
+				Set: retentionPoliciesToHash,
+			},
+			"namespace_config": {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Description: descriptions["namespace_config"],
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"anti_affinity": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"max_consumers_per_subscription": {
+							Type:     schema.TypeInt,
+							Optional: true,
+						},
+						"max_consumers_per_topic": {
+							Type:     schema.TypeInt,
+							Optional: true,
+						},
+						"max_producers_per_topic": {
+							Type:     schema.TypeInt,
+							Optional: true,
+						},
+						"replication_clusters": {
+							Type:     schema.TypeList,
+							Optional: true,
+							Elem: &schema.Schema{
+								Type: schema.TypeString,
+							},
+						},
+					},
+				},
+				Set: namespaceConfigToHash,
 			},
 		},
 	}
@@ -160,8 +163,83 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 	ns := fmt.Sprintf("%s/%s", tenant, namespace)
 
 	if err := client.CreateNamespace(ns); err != nil {
-		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w \n request_input: %v", err, ok)
+		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err)
 	}
+
+	var nsCfg types.NamespaceConfig
+
+	namespaceConfig := d.Get("namespace_config").(*schema.Set)
+	retentionPolicies := d.Get("retention_policies").(*schema.Set)
+	splitNSConfig := d.Get("split_namespaces").(*schema.Set)
+	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
+
+	for _, dr := range dispatchRateConfig.List() {
+		data := dr.(map[string]interface{})
+
+		nsCfg.DispatchRate.DispatchThrottlingRateInMsg = data["dispatch_msg_throttling_rate"].(int)
+		nsCfg.DispatchRate.RatePeriodInSecond = data["rate_period_seconds"].(int)
+		nsCfg.DispatchRate.DispatchThrottlingRateInByte = int64(data["dispatch_byte_throttling_rate"].(int))
+	}
+
+	for _, rp := range retentionPolicies.List() {
+		data := rp.(map[string]interface{})
+
+		retMin, err := strconv.Atoi(data["retention_minutes"].(string))
+		if err != nil {
+			return fmt.Errorf("ERROR_DATA_TYPE_CONVERSION: %w", err)
+		}
+		retSize, err := strconv.Atoi(data["retention_size_in_mb"].(string))
+		if err != nil {
+			return fmt.Errorf("ERROR_DATA_TYPE_CONVERSION: %w", err)
+		}
+
+		nsCfg.RetentionPolicies.RetentionTimeInMinutes = retMin
+		nsCfg.RetentionPolicies.RetentionSizeInMB = int64(retSize)
+	}
+
+	for _, cfg := range splitNSConfig.List() {
+		data := cfg.(map[string]interface{})
+
+		usb := data["unload_split_bundles"].(string)
+
+		if usb == "1" {
+			nsCfg.SplitNamespaces.Bundle = data["bundle"].(string)
+			nsCfg.SplitNamespaces.UnloadSplitBundles = true
+			break
+		}
+
+		nsCfg.SplitNamespaces.Bundle = data["bundle"].(string)
+		nsCfg.SplitNamespaces.UnloadSplitBundles = false
+		break
+
+	}
+
+	for _, cfg := range namespaceConfig.List() {
+		data := cfg.(map[string]interface{})
+
+		nsCfg.AntiAffinity = data["anti_affinity"].(string)
+		nsCfg.MaxConsumersPerSubscription = data["max_consumers_per_subscription"].(int)
+		nsCfg.MaxConsumersPerTopic = data["max_consumers_per_topic"].(int)
+		nsCfg.MaxProducersPerTopic = data["max_producers_per_topic"].(int)
+		nsCfg.ReplicationClusters = handleHCLArrayV2(data["replication_clusters"].([]interface{}))
+
+	}
+
+	nsName, err := utils.GetNameSpaceName(tenant, namespace)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+
+	errs = append(errs, client.SetNamespaceAntiAffinityGroup(nsName.String(), nsCfg.AntiAffinity))
+	errs = append(errs, client.SetDispatchRate(*nsName, nsCfg.DispatchRate))
+	errs = append(errs, client.SetNamespaceReplicationClusters(nsName.String(), nsCfg.ReplicationClusters))
+	errs = append(errs, client.SetRetention(nsName.String(), nsCfg.RetentionPolicies))
+	errs = append(errs, client.SplitNamespaceBundle(nsName.String(), nsCfg.SplitNamespaces.Bundle, nsCfg.SplitNamespaces.UnloadSplitBundles))
+	errs = append(errs, client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic))
+	errs = append(errs, client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription))
+	errs = append(errs, client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic))
 
 	_ = d.Set("namespace", namespace)
 	_ = d.Set("tenant", tenant)
@@ -175,58 +253,106 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 	tenant := d.Get("tenant").(string)
 	namespace := d.Get("namespace").(string)
 
-	nsList, err := client.GetNamespaces(tenant)
+	_, err := client.GetNamespaces(tenant)
 	if err != nil {
 		return fmt.Errorf("ERROR_READ_NAMESPACE: %w", err)
 	}
 
-	d.SetId(namespace)
+	nsFullPAth := fmt.Sprintf("%s/%s", tenant, namespace)
+	d.SetId(nsFullPAth)
+
 	_ = d.Set("namespace", namespace)
-	_ = storeNamespaceList(d, nsList)
 	_ = d.Set("tenant", tenant)
 
 	return nil
 }
 
 func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) error {
-	//client := meta.(pulsar.Client).Namespaces()
+	client := meta.(pulsar.Client).Namespaces()
 
-	_ = meta
-	//enableDuplication := d.Get("enable_duplication").(bool)
-	//encryptTopics := d.Get("encrypt_topics").(bool)
-	//
-	//maxProducersTopic := d.Get("max_producers_per_topic").(int)
-	//maxConsumersSubscriptions := d.Get("max_consumers_per_subscription").(int)
-	//maxConsumersTopic := d.Get("max_consumers_per_topic").(int)
-	//compactionThreshold := d.Get("dispatch_rate").(int64)
-	//
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
-	//
-	//persistencePolicy := d.Get("persistence_policy").(utils.PersistencePolicies)
-	//dispatchRate := d.Get("dispatch_rate").(utils.DispatchRate)
-	//backlogQuota := d.Get("backlog_quota").(utils.BacklogQuota)
-	//
-	//nsInfo, err := utils.GetNameSpaceName(tenant, namespace)
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//client.SetDeduplicationStatus(namespace, enableDuplication)
-	//client.SetPersistence(namespace, persistencePolicy)
-	//client.SetBacklogQuota(namespace, backlogQuota)
-	//
-	//client.SetMaxProducersPerTopic(*nsInfo, maxProducersTopic)
-	//client.SetMaxConsumersPerSubscription(*nsInfo, maxConsumersSubscriptions)
-	//client.SetMaxConsumersPerTopic(*nsInfo, maxConsumersTopic)
-	//client.SetEncryptionRequiredStatus(*nsInfo, encryptTopics)
-	//client.SetSubscriptionDispatchRate(*nsInfo, dispatchRate)
-	//client.SetCompactionThreshold(*nsInfo, compactionThreshold)
+	namespaceConfig := d.Get("namespace_config").(*schema.Set)
+	retentionPolicies := d.Get("retention_policies").(*schema.Set)
+	splitNSConfig := d.Get("split_namespaces").(*schema.Set)
+	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
 
-	_ = d.Set("tenant", tenant)
-	_ = d.Set("namespace", namespace)
-	d.SetId(namespace)
-	return nil
+	var nsCfg types.NamespaceConfig
+
+	for _, dr := range dispatchRateConfig.List() {
+		data := dr.(map[string]interface{})
+
+		nsCfg.DispatchRate.DispatchThrottlingRateInMsg = data["dispatch_msg_throttling_rate"].(int)
+		nsCfg.DispatchRate.RatePeriodInSecond = data["rate_period_seconds"].(int)
+		nsCfg.DispatchRate.DispatchThrottlingRateInByte = int64(data["dispatch_byte_throttling_rate"].(int))
+	}
+
+	for _, rp := range retentionPolicies.List() {
+		data := rp.(map[string]interface{})
+
+		retMin, err := strconv.Atoi(data["retention_minutes"].(string))
+		if err != nil {
+			return fmt.Errorf("ERROR_DATA_TYPE_CONVERSION: %w", err)
+		}
+		retSize, err := strconv.Atoi(data["retention_size_in_mb"].(string))
+		if err != nil {
+			return fmt.Errorf("ERROR_DATA_TYPE_CONVERSION: %w", err)
+		}
+
+		nsCfg.RetentionPolicies.RetentionTimeInMinutes = retMin
+		nsCfg.RetentionPolicies.RetentionSizeInMB = int64(retSize)
+	}
+
+	for _, cfg := range splitNSConfig.List() {
+		data := cfg.(map[string]interface{})
+
+		usb := data["unload_split_bundles"].(string)
+
+		if usb == "1" {
+			nsCfg.SplitNamespaces.Bundle = data["bundle"].(string)
+			nsCfg.SplitNamespaces.UnloadSplitBundles = true
+			break
+		}
+
+		nsCfg.SplitNamespaces.Bundle = data["bundle"].(string)
+		nsCfg.SplitNamespaces.UnloadSplitBundles = false
+		break
+
+	}
+
+	for _, cfg := range namespaceConfig.List() {
+		data := cfg.(map[string]interface{})
+
+		nsCfg.AntiAffinity = data["anti_affinity"].(string)
+		nsCfg.MaxConsumersPerSubscription = data["max_consumers_per_subscription"].(int)
+		nsCfg.MaxConsumersPerTopic = data["max_consumers_per_topic"].(int)
+		nsCfg.MaxProducersPerTopic = data["max_producers_per_topic"].(int)
+		nsCfg.ReplicationClusters = handleHCLArrayV2(data["replication_clusters"].([]interface{}))
+
+	}
+
+	nsName, err := utils.GetNameSpaceName(tenant, namespace)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+
+	errs = append(errs, client.SetNamespaceAntiAffinityGroup(nsName.String(), nsCfg.AntiAffinity))
+	errs = append(errs, client.SetDispatchRate(*nsName, nsCfg.DispatchRate))
+	errs = append(errs, client.SetNamespaceReplicationClusters(nsName.String(), nsCfg.ReplicationClusters))
+	errs = append(errs, client.SetRetention(nsName.String(), nsCfg.RetentionPolicies))
+	errs = append(errs, client.SplitNamespaceBundle(nsName.String(), nsCfg.SplitNamespaces.Bundle, nsCfg.SplitNamespaces.UnloadSplitBundles))
+	errs = append(errs, client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic))
+	errs = append(errs, client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription))
+	errs = append(errs, client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic))
+
+	if errs != nil {
+		return fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: %s", errs)
+	}
+	//return resourcePulsarNamespaceRead(d, meta)
+	d.SetId(nsName.String())
+	return resourcePulsarNamespaceRead(d, meta)
 }
 
 func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) error {
@@ -241,16 +367,9 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 		return fmt.Errorf("ERROR_DELETE_NAMESPACE: %w", err)
 	}
 
-	emptyNSList := make([]interface{}, 0)
 	_ = d.Set("namespace", "")
 	_ = d.Set("tenant", "")
-	_ = d.Set("backlog_quota", nil)
-	_ = d.Set("persistence_policy", nil)
-	_ = d.Set("dispatch_rate", nil)
-	_ = d.Set("max_consumers_per_topic", "")
-	_ = d.Set("namespace_list", emptyNSList)
-	_ = d.Set("max_consumers_per_subscription", "")
-	_ = d.Set("max_producers_per_topic", "")
+	_ = d.Set("namespace_config", nil)
 
 	return nil
 }
@@ -277,38 +396,6 @@ func resourcePulsarNamespaceExists(d *schema.ResourceData, meta interface{}) (bo
 	return false, nil
 }
 
-func storeNamespaceList(d *schema.ResourceData, nsList []string) error {
-	data := make([]interface{}, len(nsList))
-
-	for i, ns := range nsList {
-		data[i] = ns
-	}
-
-	return d.Set("namespace_list", data)
-}
-
-func backlogQuotaToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(fmt.Sprintf("%d-", m["limit"].(int)))
-	buf.WriteString(fmt.Sprintf("%s-", m["policy"].(string)))
-
-	return hashcode.String(buf.String())
-}
-
-func persistencePolicyToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(fmt.Sprintf("%d-", m["bk_ensemble"].(int)))
-	buf.WriteString(fmt.Sprintf("%d-", m["bk_write_quorum"].(int)))
-	buf.WriteString(fmt.Sprintf("%d-", m["bk_ack_quorum"].(int)))
-	buf.WriteString(fmt.Sprintf("%f-", m["managed_ledger_max_mark_delete_rate"].(float64)))
-
-	return hashcode.String(buf.String())
-}
-
 func dispatchRateToHash(v interface{}) int {
 	var buf bytes.Buffer
 	m := v.(map[string]interface{})
@@ -316,6 +403,42 @@ func dispatchRateToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%d-", m["dispatch_msg_throttling_rate"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["rate_period_seconds"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["dispatch_byte_throttling_rate"].(int)))
+
+	return hashcode.String(buf.String())
+}
+
+func retentionPoliciesToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%s-", m["retention_minutes"].(string)))
+	buf.WriteString(fmt.Sprintf("%s-", m["retention_size_in_mb"].(string)))
+
+	return hashcode.String(buf.String())
+}
+
+func splitNamespacesToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%s-", m["bundle"].(string)))
+	buf.WriteString(fmt.Sprintf("%s-", m["unload_split_bundles"].(string)))
+
+	return hashcode.String(buf.String())
+}
+
+func namespaceConfigToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%s-", m["anti_affinity"].(string)))
+	//buf.WriteString(fmt.Sprintf("%v-", m["dispatch_rate"].(*schema.Set)))
+	buf.WriteString(fmt.Sprintf("%d-", m["max_consumers_per_subscription"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["max_consumers_per_topic"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["max_producers_per_topic"].(int)))
+	buf.WriteString(fmt.Sprintf("%s-", m["replication_clusters"].([]interface{})))
+	//buf.WriteString(fmt.Sprintf("%v-", m["retention_policies"].(*schema.Set)))
+	//buf.WriteString(fmt.Sprintf("%v-", m["split_namespaces"].(*schema.Set)))
 
 	return hashcode.String(buf.String())
 }
