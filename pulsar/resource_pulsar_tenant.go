@@ -38,10 +38,6 @@ func resourcePulsarTenant() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"cluster_name": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
 			"allowed_clusters": {
 				Type:        schema.TypeList,
 				Optional:    true,
