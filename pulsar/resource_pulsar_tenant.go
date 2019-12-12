@@ -19,10 +19,11 @@ package pulsar
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
-	"strings"
 )
 
 func resourcePulsarTenant() *schema.Resource {

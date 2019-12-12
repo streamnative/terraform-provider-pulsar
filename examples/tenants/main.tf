@@ -21,6 +21,7 @@ provider "pulsar" {
 
 resource "pulsar_tenant" "my_tenant" {
   tenant = "thanos"
-  allowed_clusters = [
-    "pulsar-cluster-1"]
+  allowed_cluster = [
+  "titan"]
+
 }
