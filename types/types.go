@@ -17,20 +17,16 @@
 
 package types
 
-import "github.com/streamnative/pulsarctl/pkg/pulsar/utils"
-
 type (
 	// configurable features of the Pulsar Namespace Entity via Terraform
 	NamespaceConfig struct {
 		AntiAffinity                string
-		DispatchRate                utils.DispatchRate
 		ReplicationClusters         []string
-		RetentionPolicies           utils.RetentionPolicies
-		SplitNamespaces             SplitNS
 		MaxConsumersPerTopic        int
 		MaxProducersPerTopic        int
 		MaxConsumersPerSubscription int
 	}
+
 	SplitNS struct {
 		Bundle             string
 		UnloadSplitBundles bool

@@ -35,7 +35,7 @@ testacc: fmtcheck
 
 fmt:
 	@echo "==> Fixing source code with gofmt..."
-	gofmt -s -w ./$(PKG_NAME)
+	@gofmt -s -w ./$(PKG_NAME)
 
 # Currently required by tf-deploy compile
 fmtcheck:
@@ -43,7 +43,7 @@ fmtcheck:
 
 lint:
 	@echo "==> Checking source code against linters..."
-	@golangci-lint run ./$(PKG_NAME)/...
+	@golangci-lint run -c golangci.yaml ./...
 	@tfproviderlint \
 		-c 1 \
 		-AT001 \

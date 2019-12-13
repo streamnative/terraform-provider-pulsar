@@ -76,7 +76,6 @@ func testSweepNS(url string) error {
 
 func TestNamespace(t *testing.T) {
 
-	//resource.AddTestSweepers("pulsar_namespace", namespaceSweeper)
 	resourceName := "pulsar_namespace.test"
 
 	resource.Test(t, resource.TestCase{
@@ -137,7 +136,7 @@ func testPulsarNamespaceDestroy(s *terraform.State) error {
 			continue
 		}
 
-		// id is the full path of the namespace, tenant-name/namespace-name
+		// id is the full path of the namespace, in the format of tenant-name/namespace-name
 		// split would give us [tenant-name, namespace-name]
 		if rs.Primary.ID == "" || !strings.Contains(rs.Primary.ID, "/") {
 			return fmt.Errorf(`ERROR_INVALID_RESOURCE_ID: "%s"`, rs.Primary.ID)
