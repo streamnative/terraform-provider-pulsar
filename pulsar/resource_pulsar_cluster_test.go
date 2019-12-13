@@ -69,7 +69,7 @@ func testPulsarClusterDestroy(s *terraform.State) error {
 			continue
 		}
 
-		// tenant name is set as ID for the resource
+		// cluster name is set as ID for the resource
 		cluster := rs.Primary.ID
 
 		_, err := client.Get(cluster)

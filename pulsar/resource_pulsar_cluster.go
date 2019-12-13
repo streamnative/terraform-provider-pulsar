@@ -101,6 +101,7 @@ func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("ERROR_READ_CLUSTER_DATA: %w", err)
 	}
 
+	d.SetId(cluster)
 	_ = d.Set("broker_service_url", clusterData.BrokerServiceURL)
 	_ = d.Set("web_service_url", clusterData.ServiceURL)
 	_ = d.Set("peer_clusters", clusterData.PeerClusterNames)

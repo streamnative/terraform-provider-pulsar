@@ -31,7 +31,7 @@ test: fmtcheck
 	go test $(TEST) -timeout=30s -parallel=4
 
 testacc: fmtcheck
-	TF_ACC=1 go test $(TEST) -v -count 3 $(TESTARGS) -timeout 120m
+	TF_ACC=1 go test $(TEST) -v -count 1 $(TESTARGS) -timeout 120m
 
 fmt:
 	@echo "==> Fixing source code with gofmt..."
@@ -43,7 +43,7 @@ fmtcheck:
 
 lint:
 	@echo "==> Checking source code against linters..."
-	@golangci-lint run ./$(PKG_NAME)/...
+	@golangci-lint  run -c golangci.yaml ./...
 	@tfproviderlint \
 		-c 1 \
 		-AT001 \
@@ -66,9 +66,6 @@ lint:
 		-S017 \
 		-S019 \
 		./$(PKG_NAME)
-
-golangci-lint:
-	golangci-lint  run -c golangci.yaml ./...
 
 tools:
 	GO111MODULE=on go install github.com/bflad/tfproviderlint/cmd/tfproviderlint
