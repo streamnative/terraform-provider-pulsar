@@ -25,7 +25,8 @@ resource "pulsar_cluster" "my_cluster" {
     broker_service_url = "http://localhost:6050"
     peer_clusters = [
       "skrulls",
-    "krees"]
+      "krees"
+    ]
   }
 
 }

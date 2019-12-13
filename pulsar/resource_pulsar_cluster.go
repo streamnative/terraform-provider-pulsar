@@ -71,40 +71,19 @@ func resourcePulsarCluster() *schema.Resource {
 	}
 }
 
-func clusterDataToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(fmt.Sprintf("%s-", m["web_service_url"].(string)))
-	buf.WriteString(fmt.Sprintf("%s-", m["broker_service_url"].(string)))
-	peerClusters := m["peer_clusters"].([]interface{})
-
-	for _, pc := range peerClusters {
-		buf.WriteString(fmt.Sprintf("%s-", pc.(string)))
-	}
-
-	return hashcode.String(buf.String())
-}
-
 func resourcePulsarClusterCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Clusters()
 
 	cluster := d.Get("cluster").(string)
 	clusterDataSet := d.Get("cluster_data").(*schema.Set)
 
-	clusterData := utils.ClusterData{
-		Name: cluster,
+	clusterData := unmarshalClusterData(clusterDataSet)
+	if clusterDataSet == nil {
+		return fmt.Errorf("ERROR_CREATE_CLUSTER_DATA: invalid input %s", clusterData)
 	}
-	// @TODO code cleanup and add helper methods for code beautification
-	for _, cd := range clusterDataSet.List() {
-		data := cd.(map[string]interface{})
+	clusterData.Name = cluster
 
-		clusterData.ServiceURL = data["web_service_url"].(string)
-		clusterData.BrokerServiceURL = data["broker_service_url"].(string)
-		clusterData.PeerClusterNames = handleHCLArrayV2(data["peer_clusters"].([]interface{}))
-	}
-
-	if err := client.Create(clusterData); err != nil {
+	if err := client.Create(*clusterData); err != nil {
 		return fmt.Errorf("ERROR_CREATE_CLUSTER: %w", err)
 	}
 
@@ -122,7 +101,6 @@ func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("ERROR_READ_CLUSTER_DATA: %w", err)
 	}
 
-	d.SetId(cluster)
 	_ = d.Set("broker_service_url", clusterData.BrokerServiceURL)
 	_ = d.Set("web_service_url", clusterData.ServiceURL)
 	_ = d.Set("peer_clusters", clusterData.PeerClusterNames)
@@ -136,19 +114,14 @@ func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error
 	clusterDataSet := d.Get("cluster_data").(*schema.Set)
 	cluster := d.Get("cluster").(string)
 
-	clusterData := utils.ClusterData{
-		Name: cluster,
-	}
-	// @TODO code cleanup and add helper methods for code beautification
-	for _, cd := range clusterDataSet.List() {
-		data := cd.(map[string]interface{})
+	clusterData := unmarshalClusterData(clusterDataSet)
 
-		clusterData.ServiceURL = data["web_service_url"].(string)
-		clusterData.BrokerServiceURL = data["broker_service_url"].(string)
-		clusterData.PeerClusterNames = handleHCLArrayV2(data["peer_clusters"].([]interface{}))
+	if clusterData == nil {
+		return fmt.Errorf("ERROR_UPDATE_CLUSTER_DATA: invalid input %s", clusterData)
 	}
+	clusterData.Name = cluster
 
-	if err := client.Update(clusterData); err != nil {
+	if err := client.Update(*clusterData); err != nil {
 		return fmt.Errorf("ERROR_UPDATE_CLUSTER_DATA: %w", err)
 	}
 
@@ -164,7 +137,7 @@ func resourcePulsarClusterDelete(d *schema.ResourceData, meta interface{}) error
 	Cluster := d.Get("cluster").(string)
 
 	if err := client.Delete(Cluster); err != nil {
-		return err
+		return fmt.Errorf("ERROR_DELETE_CLUSTER: %w", err)
 	}
 
 	_ = d.Set("cluster", "")
@@ -184,4 +157,33 @@ func resourcePulsarClusterExists(d *schema.ResourceData, meta interface{}) (bool
 	}
 
 	return true, nil
+}
+
+func clusterDataToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%s-", m["web_service_url"].(string)))
+	buf.WriteString(fmt.Sprintf("%s-", m["broker_service_url"].(string)))
+	peerClusters := m["peer_clusters"].([]interface{})
+
+	for _, pc := range peerClusters {
+		buf.WriteString(fmt.Sprintf("%s-", pc.(string)))
+	}
+
+	return hashcode.String(buf.String())
+}
+
+func unmarshalClusterData(input *schema.Set) *utils.ClusterData {
+	var cd utils.ClusterData
+
+	for _, v := range input.List() {
+		data := v.(map[string]interface{})
+
+		cd.ServiceURL = data["web_service_url"].(string)
+		cd.BrokerServiceURL = data["broker_service_url"].(string)
+		cd.PeerClusterNames = handleHCLArrayV2(data["peer_clusters"].([]interface{}))
+	}
+
+	return &cd
 }

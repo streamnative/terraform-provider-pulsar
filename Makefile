@@ -67,6 +67,9 @@ lint:
 		-S019 \
 		./$(PKG_NAME)
 
+golangci-lint:
+	golangci-lint  run -c golangci.yaml ./...
+
 tools:
 	GO111MODULE=on go install github.com/bflad/tfproviderlint/cmd/tfproviderlint
 	GO111MODULE=on go install github.com/client9/misspell/cmd/misspell

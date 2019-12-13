@@ -100,10 +100,7 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 }
 
 func validatePulsarConfig(d *schema.ResourceData) error {
-	webServiceURL, ok := d.Get("web_service_url").(string)
-	if !ok {
-		return fmt.Errorf("ERROR_PULSAR_CONFIG_INVALID")
-	}
+	webServiceURL := d.Get("web_service_url").(string)
 
 	if _, err := url.Parse(webServiceURL); err != nil {
 		return fmt.Errorf("ERROR_PULSAR_CONFIG_INVALID_WEB_SERVICE_URL: %w", err)
