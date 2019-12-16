@@ -35,8 +35,9 @@ func resourcePulsarTenant() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"tenant": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: descriptions["tenant"],
 			},
 			"allowed_clusters": {
 				Type:        schema.TypeList,
