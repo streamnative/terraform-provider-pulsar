@@ -12,7 +12,7 @@ require (
 	github.com/golangci/golangci-lint v1.21.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/hashicorp/hcl/v2 v2.1.0 // indirect
-	github.com/hashicorp/hil v0.0.0-20190212132231-97b3a9cdfa93 // indirect
+	github.com/hashicorp/hil v0.0.0-20190212132231-97b3a9cdfa93
 	github.com/hashicorp/terraform v0.12.17 // indirect
 	github.com/hashicorp/terraform-plugin-sdk v1.4.0
 	github.com/hashicorp/terraform-svchost v0.0.0-20191119180714-d2e4933b9136 // indirect

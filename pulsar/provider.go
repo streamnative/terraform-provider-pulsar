@@ -28,7 +28,6 @@ import (
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
 )
 
-// Provider returns a terraform.ResourceProvider
 func Provider() terraform.ResourceProvider {
 
 	provider := &schema.Provider{
@@ -42,7 +41,8 @@ func Provider() terraform.ResourceProvider {
 			"token": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TOKEN", nil),
+				Default:     "",
+				DefaultFunc: schema.EnvDefaultFunc("PULSAR_AUTH_TOKEN", nil),
 				Description: descriptions["token"],
 			},
 			"api_version": {
@@ -53,7 +53,8 @@ func Provider() terraform.ResourceProvider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"pulsar_tenant": resourcePulsarTenant(),
+			"pulsar_tenant":  resourcePulsarTenant(),
+			"pulsar_cluster": resourcePulsarCluster(),
 		},
 	}
 
@@ -129,10 +130,16 @@ var descriptions map[string]string
 
 func init() {
 	descriptions = map[string]string{
-		"web_service_url":  "Web service url is used to connect to your apache pulsar cluster",
-		"token":            "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
-		"api_version":      "Api Version to be used for the pulsar admin interaction",
+		"web_service_url": "Web service url is used to connect to your apache pulsar cluster",
+		"token": `Token is used to grant permissions to the terraform provider to modify 
+Apace Pulsar Entities`,
+		"api_version": "Api Version to be used for the pulsar admin interaction",
+		"tenant": `An administrative unit for allocating capacity and enforcing an 
+authentication/authorization scheme`,
 		"admin_roles":      "Admin roles to be attached to tenant",
 		"allowed_clusters": "Tenant will be able to interact with these clusters",
+		"cluster": `A group of Brokers, Bookies and Zookeeper nodes, that provides configuration
+and coordination management`,
+		"cluster_data": "Cluster Data contains information about your cluster peers, brokers and web services",
 	}
 }

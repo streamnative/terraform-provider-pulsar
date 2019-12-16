@@ -21,7 +21,7 @@ under the License.
 
 A [Terraform][1] provider for managing [Apache Pulsar Entities][2].
 
-<img src="https://cdn.rawgit.com/hashicorp/terraform-website/master/content/source/assets/images/logo-hashicorp.svg" width="600px">
+<img alt="" src="https://cdn.rawgit.com/hashicorp/terraform-website/master/content/source/assets/images/logo-hashicorp.svg" width="600px">
 
 ## Contents
 
@@ -105,6 +105,40 @@ resource "pulsar_tenant" "my_tenant" {
 | `tenant`                      | Name of the Tenant that you want to create          | Yes
 | `allowed_clusters`            | An Array of clusters, accessible by this tenant     | No
 | `admin_roles`                 | Admin Roles to be assumed by this Tenant            | No
+
+### `pulsar_cluster`
+
+A resource for managing Apache Pulsar Clusters, can update various properties for a given cluster.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+}
+
+resource "pulsar_cluster" "my_cluster" {
+  cluster = "eternals"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["skrulls", "krees"]
+  }
+
+}
+```
+
+#### Properties
+
+| Property                      | Description                                                       | Required                   |
+| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
+| `cluster`                     | Name of the Cluster that you want to create                       | Yes
+| `cluster_data`                | A Map of required fields for the cluster                          | Yes
+| `web_service_url`             | Required in cluster data, pointing to your broker web service     | Yes
+| `broker_service_url`          | Required in cluster data for broker discovery                     | Yes
+| `peer_clusters`               | Required in cluster data for adding peer clusters                 | Yes
+
 
 [1]: https://www.terraform.io
 [2]: https://pulsar.apache.org

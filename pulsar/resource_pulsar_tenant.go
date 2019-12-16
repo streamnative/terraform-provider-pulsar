@@ -35,8 +35,9 @@ func resourcePulsarTenant() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"tenant": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: descriptions["tenant"],
 			},
 			"allowed_clusters": {
 				Type:        schema.TypeList,
@@ -81,7 +82,7 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 
 	td, err := client.Get(tenant)
 	if err != nil {
-		return err
+		return fmt.Errorf("ERROR_READ_TENANT: %w", err)
 	}
 
 	_ = d.Set("tenant", tenant)
@@ -107,7 +108,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Update(input); err != nil {
-		return err
+		return fmt.Errorf("ERROR_UPDATE_TENANT: %w", err)
 	}
 
 	d.SetId(tenant)
@@ -125,7 +126,7 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Delete(tenant); err != nil {
-		return err
+		return fmt.Errorf("ERROR_DELETE_TENANT: %w", err)
 	}
 
 	_ = d.Set("tenant", "")
@@ -147,7 +148,6 @@ func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
 				if err = client.DeleteNamespace(ns); err != nil {
 					return err
 				}
-
 				return nil
 			}
 
@@ -163,6 +163,20 @@ func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
 
 func handleHCLArray(d *schema.ResourceData, key string) []string {
 	hclArray := d.Get(key).([]interface{})
+	out := make([]string, 0)
+
+	if len(hclArray) == 0 {
+		return out
+	}
+
+	for _, value := range hclArray {
+		out = append(out, value.(string))
+	}
+
+	return out
+}
+
+func handleHCLArrayV2(hclArray []interface{}) []string {
 	out := make([]string, 0)
 
 	if len(hclArray) == 0 {

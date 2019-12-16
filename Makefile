@@ -24,11 +24,14 @@ default: build
 build: fmtcheck
 	go build -o terraform-provider-pulsar
 
+build-dev: fmtcheck
+	go build -o terraform-provider-pulsar && mv terraform-provider-pulsar ~/.terraform.d/plugins/linux_amd64/
+
 test: fmtcheck
 	go test $(TEST) -timeout=30s -parallel=4
 
 testacc: fmtcheck
-	TF_ACC=1 go test $(TEST) -v -count 3 $(TESTARGS) -timeout 120m
+	TF_ACC=1 go test $(TEST) -v -count 1 $(TESTARGS) -timeout 120m
 
 fmt:
 	@echo "==> Fixing source code with gofmt..."
@@ -40,7 +43,7 @@ fmtcheck:
 
 lint:
 	@echo "==> Checking source code against linters..."
-	@golangci-lint run ./$(PKG_NAME)/...
+	@golangci-lint  run -c golangci.yaml ./...
 	@tfproviderlint \
 		-c 1 \
 		-AT001 \
@@ -78,4 +81,3 @@ test-compile:
 	go test -c $(TEST) $(TESTARGS)
 
 .PHONY: build test testacc fmt fmtcheck lint tools test-compile
-
