@@ -38,12 +38,12 @@ func Provider() terraform.ResourceProvider {
 				Description: descriptions["web_service_url"],
 				DefaultFunc: schema.EnvDefaultFunc("WEB_SERVICE_URL", nil),
 			},
-			"pulsar_auth_token": {
+			"token": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Default:     "",
 				DefaultFunc: schema.EnvDefaultFunc("PULSAR_AUTH_TOKEN", nil),
-				Description: descriptions["pulsar_auth_token"],
+				Description: descriptions["token"],
 			},
 			"api_version": {
 				Type:        schema.TypeString,
@@ -81,7 +81,7 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 	// can be used for version locking or version specific feature sets
 	_ = tfVersion
 	clusterURL := d.Get("web_service_url").(string)
-	token := d.Get("pulsar_auth_token").(string)
+	token := d.Get("token").(string)
 	pulsarAPIVersion := d.Get("api_version").(string)
 
 	apiVersion, err := strconv.Atoi(pulsarAPIVersion)
