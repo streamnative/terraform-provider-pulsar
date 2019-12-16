@@ -74,23 +74,6 @@ func resourcePulsarNamespace() *schema.Resource {
 				},
 				Set: dispatchRateToHash,
 			},
-			"split_namespaces": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"bundle": {
-							Type:     schema.TypeString,
-							Required: true,
-						},
-						"unload_split_bundles": {
-							Type:     schema.TypeString,
-							Optional: true,
-						},
-					},
-				},
-				Set: splitNamespacesToHash,
-			},
 			"retention_policies": {
 				Type:     schema.TypeSet,
 				Optional: true,
@@ -342,16 +325,6 @@ func retentionPoliciesToHash(v interface{}) int {
 
 	buf.WriteString(fmt.Sprintf("%s-", m["retention_minutes"].(string)))
 	buf.WriteString(fmt.Sprintf("%s-", m["retention_size_in_mb"].(string)))
-
-	return hashcode.String(buf.String())
-}
-
-func splitNamespacesToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(fmt.Sprintf("%s-", m["bundle"].(string)))
-	buf.WriteString(fmt.Sprintf("%s-", m["unload_split_bundles"].(string)))
 
 	return hashcode.String(buf.String())
 }

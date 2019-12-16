@@ -92,7 +92,6 @@ func TestNamespace(t *testing.T) {
 			},
 		},
 	})
-
 }
 
 func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
@@ -203,11 +202,6 @@ resource "pulsar_namespace" "test" {
     retention_minutes    = "1600"
     retention_size_in_mb = "10000"
   }
-
-  split_namespaces {
-    bundle = "ns-bundle"
-  }
-  
 }
 `, webServiceURL)
 )

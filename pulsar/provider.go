@@ -42,7 +42,7 @@ func Provider() terraform.ResourceProvider {
 			"token": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TOKEN", nil),
+				DefaultFunc: schema.EnvDefaultFunc("PULSAR_AUTH_TOKEN", nil),
 				Description: descriptions["token"],
 			},
 			"api_version": {
@@ -53,7 +53,9 @@ func Provider() terraform.ResourceProvider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"pulsar_tenant": resourcePulsarTenant(),
+			"pulsar_tenant":    resourcePulsarTenant(),
+			"pulsar_cluster":   resourcePulsarCluster(),
+			"pulsar_namespace": resourcePulsarNamespace(),
 		},
 	}
 

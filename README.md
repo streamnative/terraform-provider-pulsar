@@ -71,14 +71,14 @@ Example provider with apache pulsar cluster, running locally with authentication
 ```hcl
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
-  pulsar_auth_token = "my_auth_token"
+  token = "my_auth_token"
 }
 ```
 
 | Property                      | Description                                                                                                           | Required    |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
 | `web_service_url`             | URL of your Apache Pulsar Cluster                             | `Yes` |
-| `pulsar_auth_token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled| `No`       |
+| `token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled| `No`       |
 
 Resources
 ------------
