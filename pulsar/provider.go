@@ -138,7 +138,8 @@ Apace Pulsar Entities`,
 authentication/authorization scheme`,
 		"admin_roles":      "Admin roles to be attached to tenant",
 		"allowed_clusters": "Tenant will be able to interact with these clusters",
-		"cluster":          `A group of Brokers, Bookies and Zookeeper nodes, that provides configuration and coordination management`,
-		"cluster_data":     "Cluster Data contains information about your cluster peers, brokers and web services",
+		"cluster": `A group of Brokers, Bookies and Zookeeper nodes, that provides configuration
+and coordination management`,
+		"cluster_data": "Cluster Data contains information about your cluster peers, brokers and web services",
 	}
 }
