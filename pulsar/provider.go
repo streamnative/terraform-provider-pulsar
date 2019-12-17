@@ -56,6 +56,7 @@ func Provider() terraform.ResourceProvider {
 			"pulsar_tenant":    resourcePulsarTenant(),
 			"pulsar_cluster":   resourcePulsarCluster(),
 			"pulsar_namespace": resourcePulsarNamespace(),
+			"pulsar_function":  resourcePulsarFunctions(),
 		},
 	}
 
@@ -90,6 +91,7 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 		apiVersion = 1
 	}
 
+	// clusters, tenants, namespaces, topics
 	config := &pulsar.Config{
 		WebServiceURL: clusterURL,
 		HTTPTimeout:   15,
@@ -97,7 +99,70 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 		Token:         token,
 	}
 
-	return pulsar.New(config)
+	// functions, connectors
+	fnConfig := &pulsar.Config{
+		WebServiceURL: clusterURL,
+		HTTPTimeout:   15,
+		APIVersion:    common.V3,
+		Token:         token,
+	}
+
+	client, err := pulsar.New(config)
+	if err != nil {
+		return nil, err
+	}
+
+	fnClient, err := pulsar.New(fnConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	tfpc := newTFPC(client, fnClient)
+
+	return tfpc, nil
+}
+
+func newTFPC(client pulsar.Client, client2 pulsar.Client) tfPulsarClient {
+	return tf{v2: client, v3: client2}
+
+}
+
+func (client tf) Clusters() pulsar.Clusters {
+	return client.v2.Clusters()
+}
+
+func (client tf) Tenants() pulsar.Tenants {
+	return client.v2.Tenants()
+}
+
+func (client tf) Namespaces() pulsar.Namespaces {
+	return client.v2.Namespaces()
+}
+
+func (client tf) Topics() pulsar.Topics {
+	return client.v2.Topics()
+}
+
+func (client tf) Functions() pulsar.Functions {
+	return client.v3.Functions()
+}
+
+type tf struct {
+	v2 pulsar.Client
+	v3 pulsar.Client
+	//Clusters pulsar.Clusters
+	//Tenants pulsar.Tenants
+	//Namespaces pulsar.Namespaces
+	//Topics pulsar.Topics
+	//Functions pulsar.Functions
+}
+
+type tfPulsarClient interface {
+	Clusters() pulsar.Clusters
+	Tenants() pulsar.Tenants
+	Namespaces() pulsar.Namespaces
+	Topics() pulsar.Topics
+	Functions() pulsar.Functions
 }
 
 func validatePulsarConfig(d *schema.ResourceData) error {

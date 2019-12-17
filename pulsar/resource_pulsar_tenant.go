@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
 
@@ -56,7 +55,7 @@ func resourcePulsarTenant() *schema.Resource {
 }
 
 func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Tenants()
+	client := meta.(tfPulsarClient).Tenants()
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
@@ -76,7 +75,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Tenants()
+	client := meta.(tfPulsarClient).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
@@ -94,7 +93,7 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Tenants()
+	client := meta.(tfPulsarClient).Tenants()
 
 	d.Partial(true)
 	tenant := d.Get("tenant").(string)
@@ -117,7 +116,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Tenants()
+	client := meta.(tfPulsarClient).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
@@ -135,7 +134,7 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 }
 
 func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := meta.(tfPulsarClient).Namespaces()
 
 	nsList, err := client.GetNamespaces(tenant)
 	if err != nil {

@@ -23,7 +23,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
 
@@ -72,7 +71,7 @@ func resourcePulsarCluster() *schema.Resource {
 }
 
 func resourcePulsarClusterCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Clusters()
+	client := meta.(tfPulsarClient).Clusters()
 
 	cluster := d.Get("cluster").(string)
 	clusterDataSet := d.Get("cluster_data").(*schema.Set)
@@ -92,7 +91,7 @@ func resourcePulsarClusterCreate(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Clusters()
+	client := meta.(tfPulsarClient).Clusters()
 
 	cluster := d.Get("cluster").(string)
 
@@ -110,7 +109,7 @@ func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Clusters()
+	client := meta.(tfPulsarClient).Clusters()
 
 	clusterDataSet := d.Get("cluster_data").(*schema.Set)
 	cluster := d.Get("cluster").(string)
@@ -133,7 +132,7 @@ func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarClusterDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Clusters()
+	client := meta.(tfPulsarClient).Clusters()
 
 	Cluster := d.Get("cluster").(string)
 
@@ -148,7 +147,7 @@ func resourcePulsarClusterDelete(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarClusterExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := meta.(pulsar.Client).Clusters()
+	client := meta.(tfPulsarClient).Clusters()
 
 	cluster := d.Get("cluster").(string)
 

@@ -29,7 +29,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
 )
 
 func resourcePulsarNamespace() *schema.Resource {
@@ -129,7 +128,7 @@ func resourcePulsarNamespace() *schema.Resource {
 }
 
 func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := meta.(tfPulsarClient).Namespaces()
 
 	ok, err := resourcePulsarNamespaceExists(d, meta)
 	if err != nil {
@@ -229,7 +228,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := meta.(tfPulsarClient).Namespaces()
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
@@ -265,7 +264,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := meta.(tfPulsarClient).Namespaces()
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
@@ -287,7 +286,7 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := meta.(pulsar.Client).Namespaces()
+	client := meta.(tfPulsarClient).Namespaces()
 
 	tenant := d.Get("tenant").(string)
 	namespace := d.Get("namespace").(string)
