@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"github.com/hashicorp/go-multierror"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
@@ -36,10 +37,6 @@ func resourcePulsarFunctions() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"pattern": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
 			"tenant": {
 				Type:     schema.TypeString,
 				Required: true,
@@ -48,28 +45,7 @@ func resourcePulsarFunctions() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"timeout": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Default:  100,
-			},
-			"auto_acknowledgement": {
-				Type:     schema.TypeBool,
-				Optional: true,
-			},
 			"output": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"log_topic": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"output_schema": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"function_path": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
@@ -78,18 +54,6 @@ func resourcePulsarFunctions() *schema.Resource {
 				Optional: true,
 			},
 			"jar_file": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"py_file": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"go_file": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"file_path": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
@@ -119,6 +83,7 @@ func resourcePulsarFunctionCreate(d *schema.ResourceData, meta interface{}) erro
 	className := d.Get("class_name").(string)
 	jarFile := d.Get("jar_file").(string)
 
+	// @TODO GetFunction is always returning empty fqfn, even after setting it explicitly
 	fqfn := fmt.Sprintf("%s/%s/%s", tenant, namespace, name)
 
 	fn := &utils.FunctionConfig{
@@ -134,25 +99,8 @@ func resourcePulsarFunctionCreate(d *schema.ResourceData, meta interface{}) erro
 		Runtime:              utils.JavaRuntime,
 		ProcessingGuarantees: "EFFECTIVELY_ONCE",
 		FQFN:                 fqfn,
-		//WindowConfig:         &utils.WindowConfig{
-		//	WindowLengthCount:             nil,
-		//	WindowLengthDurationMs:        nil,
-		//	SlidingIntervalCount:          nil,
-		//	SlidingIntervalDurationMs:     nil,
-		//	LateDataTopic:                 nil,
-		//	MaxLagMs:                      nil,
-		//	WatermarkEmitIntervalMs:       nil,
-		//	TimestampExtractorClassName:   nil,
-		//	ActualWindowFunctionClassName: nil,
-		//},
-		//DeadLetterTopic:      "",
-		//OutputSerdeClassName: "",
-		//TopicsPattern:        nil,
+		RetainOrdering:       false,
 	}
-
-	// functions localrun --inputs test_input --output test_output
-	// --className org.apache.pulsar.functions.api.examples.JavaNativeExclamationFunction
-	//--jar exclaim.jar
 
 	if err := client.CreateFunc(fn, jarFile); err != nil {
 		return fmt.Errorf("ERROR_CREATE_PULSAR_FUNCTION: %w \n input: %v -- %s", err, fn.Jar, *fn.Jar)
@@ -184,37 +132,21 @@ func resourcePulsarFunctionRead(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourcePulsarFunctionUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(tfPulsarClient).Functions()
 
-	tenant := d.Get("tenant").(string)
-	namespace := d.Get("namespace").(string)
-	name := d.Get("name").(string)
-	inputs := handleHCLArray(d, "inputs")
-	output := d.Get("output").(string)
-	className := d.Get("class_name").(string)
-	jarFile := d.Get("jar_file").(string)
-	fqfn := fmt.Sprintf("%s/%s/%s", tenant, namespace, name)
+	// @TODO UpdateFunc is throwing error <cannot change property -> RetainOrdering> even after hard-coding it
+	var multiErr error
 
-	fn := &utils.FunctionConfig{
-		Tenant:               tenant,
-		Namespace:            namespace,
-		Name:                 name,
-		Parallelism:          1,
-		Inputs:               inputs,
-		Output:               output,
-		ClassName:            className,
-		Jar:                  &jarFile,
-		Resources:            utils.NewDefaultResources(),
-		Runtime:              utils.JavaRuntime,
-		ProcessingGuarantees: "EFFECTIVELY_ONCE",
-		FQFN:                 fqfn,
+	// WORKAROUND to update is delete and create again
+	if d.HasChanges("inputs", "output") {
+		multiErr = multierror.Append(multiErr, resourcePulsarFunctionDelete(d, meta))
+		multiErr = multierror.Append(multiErr, resourcePulsarFunctionCreate(d, meta))
+		multiErr = multierror.Append(multiErr, resourcePulsarFunctionRead(d, meta))
+		if multiErr != nil {
+			return fmt.Errorf("ERROR_UPDATE_PULSAR_FUNCTION: %w", multiErr)
+		}
 	}
 
-	if err := client.UpdateFunction(fn, jarFile, nil); err != nil {
-		return fmt.Errorf("ERROR_UPDATE_PULSAR_FUNCTION: %w", err)
-	}
-
-	return resourcePulsarFunctionRead(d, meta)
+	return nil
 }
 
 func resourcePulsarFunctionDelete(d *schema.ResourceData, meta interface{}) error {
@@ -227,10 +159,6 @@ func resourcePulsarFunctionDelete(d *schema.ResourceData, meta interface{}) erro
 	if err := client.DeleteFunction(tenant, namespace, name); err != nil {
 		return fmt.Errorf("ERROR_DELETE_PULSAR_FUNCTION: %w", err)
 	}
-
-	_ = d.Set("name", "")
-	_ = d.Set("tenant", "")
-	_ = d.Set("namespace", "")
 
 	return nil
 }

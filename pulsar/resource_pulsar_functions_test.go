@@ -25,7 +25,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
 )
 
 func init() {
@@ -60,7 +59,7 @@ func testPulsarFunctionExists(fn string) resource.TestCheckFunc {
 			return fmt.Errorf("NOT_FOUND: %s", fn)
 		}
 
-		client := testAccProvider.Meta().(pulsar.Client).Functions()
+		client := testAccProvider.Meta().(tfPulsarClient).Functions()
 
 		tenant, namespace, name, err := parseFQFN(rs.Primary.ID)
 		if err != nil {
@@ -76,7 +75,7 @@ func testPulsarFunctionExists(fn string) resource.TestCheckFunc {
 }
 
 func testPulsarFunctionDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(pulsar.Client).Functions()
+	client := testAccProvider.Meta().(tfPulsarClient).Functions()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_function" {
@@ -109,9 +108,57 @@ provider "pulsar" {
   web_service_url = "%s"
 }
 
-resource "pulsar_tenant" "test" {
-  tenant = "thanos"
-}`, webServiceURL)
+resource "pulsar_cluster" "my_cluster" {
+  cluster = "test-cluster"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+
+}
+
+resource "pulsar_tenant" "my_tenant" {
+  tenant           = "test-tenant"
+  allowed_clusters = [pulsar_cluster.my_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "my_ns" {
+  tenant    = pulsar_tenant.my_tenant.tenant
+  namespace = "test-namespace"
+
+  namespace_config {
+    anti_affinity                  = "anti-aff"
+    max_consumers_per_subscription = "50"
+    max_consumers_per_topic        = "50"
+    max_producers_per_topic        = "50"
+    replication_clusters           = ["standalone"]
+  }
+
+  dispatch_rate {
+    dispatch_msg_throttling_rate  = 50
+    rate_period_seconds           = 50
+    dispatch_byte_throttling_rate = 2048
+  }
+
+  retention_policies {
+    retention_minutes    = "1600"
+    retention_size_in_mb = "10000"
+  }
+
+}
+
+resource "pulsar_function" "test" {
+  tenant     = pulsar_tenant.my_tenant.tenant
+  namespace  = pulsar_namespace.my_ns.namespace
+  name       = "exclamit"
+  class_name = "org.apache.pulsar.functions.api.examples.JavaNativeExclamationFunction"
+  jar_file   = abspath("../bin/exclam.jar")
+  inputs     = ["test_input"]
+  output     = "test_output"
+}
+`, webServiceURL)
 )
 
 func parseFQFN(fqfn string) (string, string, string, error) {
