@@ -31,11 +31,11 @@ test: fmtcheck
 	go test $(TEST) -timeout=30s -parallel=4
 
 testacc: fmtcheck
-	TF_ACC=1 go test $(TEST) -v -count 1 $(TESTARGS) -timeout 120m
+	TF_ACC=1 go test $(TEST) -v -count 3 $(TESTARGS) -timeout 120m
 
 fmt:
 	@echo "==> Fixing source code with gofmt..."
-	gofmt -s -w ./$(PKG_NAME)
+	@gofmt -s -w ./$(PKG_NAME)
 
 # Currently required by tf-deploy compile
 fmtcheck:
@@ -43,7 +43,7 @@ fmtcheck:
 
 lint:
 	@echo "==> Checking source code against linters..."
-	@golangci-lint  run -c golangci.yaml ./...
+	@golangci-lint run -c golangci.yaml ./...
 	@tfproviderlint \
 		-c 1 \
 		-AT001 \
@@ -81,3 +81,4 @@ test-compile:
 	go test -c $(TEST) $(TESTARGS)
 
 .PHONY: build test testacc fmt fmtcheck lint tools test-compile
+

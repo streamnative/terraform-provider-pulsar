@@ -29,6 +29,8 @@ A [Terraform][1] provider for managing [Apache Pulsar Entities][2].
 * [Installation](#installation)
 * [Resources](#resources)
   * [`pulsar_tenant`](#pulsar_tenant)
+  * [`pulsar_cluster`](#pulsar_cluster)
+  * [`pulsar_namespace`](#pulsar_namespace)
 
 Requirements
 ------------
@@ -69,13 +71,14 @@ Example provider with apache pulsar cluster, running locally with authentication
 ```hcl
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
+  token = "my_auth_token"
 }
 ```
 
-| Property            | Description                                                                                                           | Default    |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `web_service_url` | URL of your Apache Pulsar Cluster                             | `Required` |
-| `token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled                              | `""`       |
+| Property                      | Description                                                                                                           | Required    |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `web_service_url`             | URL of your Apache Pulsar Cluster                             | `Yes` |
+| `token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled| `No`       |
 
 Resources
 ------------
@@ -138,6 +141,80 @@ resource "pulsar_cluster" "my_cluster" {
 | `web_service_url`             | Required in cluster data, pointing to your broker web service     | Yes
 | `broker_service_url`          | Required in cluster data for broker discovery                     | Yes
 | `peer_clusters`               | Required in cluster data for adding peer clusters                 | Yes
+
+### `pulsar_namespace`
+
+A resource for creating and managing Apache Pulsar Namespaces, can update various properties for a given namespace.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+  cluster = "skrulls"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "thanos"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+  namespace = "eternals"
+
+  namespace_config {
+    anti_affinity                  = "anti-aff"
+    max_consumers_per_subscription = "50"
+    max_consumers_per_topic        = "50"
+    max_producers_per_topic        = "50"
+    replication_clusters           = ["standalone"]
+  }
+
+  dispatch_rate {
+    dispatch_msg_throttling_rate  = 50
+    rate_period_seconds           = 50
+    dispatch_byte_throttling_rate = 2048
+  }
+
+  retention_policies {
+    retention_minutes    = "1600"
+    retention_size_in_mb = "10000"
+  }
+  
+}
+```
+
+#### Properties
+
+| Property                      | Description                                                       | Required                   |
+| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
+| `tenant`                      | Name of the Tenant managing this namespace                        | Yes
+| `namespace`                   | name of the namespace                                             | Yes
+| `namespace_config`            | Configuration for your namespaces like max allowed producers to produce messages | No |
+| `dispatch_rate`               | Apache Pulsar throttling config                                   | No |
+| `retention_policcies`         | Data retention policies                                           | No |
+
+Contributing
+---------------------------
+
+Terraform is the work of thousands of contributors. We appreciate your help!
+
+To contribute, please read the contribution guidelines: [Contributing to Terraform - Apache Pulsar Provider](.github/CONTRIBUTING.md)
+
+Issues on GitHub are intended to be related to bugs or feature requests with provider codebase.
+See https://www.terraform.io/docs/extend/community/index.html for a list of community resources to ask questions about Terraform.
+
 
 
 [1]: https://www.terraform.io
