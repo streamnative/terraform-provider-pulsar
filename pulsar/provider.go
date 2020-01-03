@@ -56,6 +56,7 @@ func Provider() terraform.ResourceProvider {
 			"pulsar_tenant":    resourcePulsarTenant(),
 			"pulsar_cluster":   resourcePulsarCluster(),
 			"pulsar_namespace": resourcePulsarNamespace(),
+			"pulsar_topic":     resourcePulsarTopic(),
 		},
 	}
 
