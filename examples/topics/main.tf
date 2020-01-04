@@ -23,7 +23,7 @@ resource "pulsar_topic" "sample-topic-1" {
   tenant     = "public"
   namespace  = "default"
   topic_type = "persistent"
-  topic_name = "partition_topic"
+  topic_name = "partition-topic"
   partitions = 4                     # partitions > 0 means this is a partition topic
 }
 
@@ -31,6 +31,6 @@ resource "pulsar_topic" "sample-topic-2" {
   tenant     = "public"
   namespace  = "default"
   topic_type = "persistent"
-  topic_name = "non-partition_topic"
+  topic_name = "non-partition-topic"
   partitions = 0                     # partitions = 0 means this is a non-partition topic
 }

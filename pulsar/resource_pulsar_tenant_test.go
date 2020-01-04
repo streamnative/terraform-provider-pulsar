@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
@@ -27,15 +26,8 @@ import (
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 )
 
-var webServiceURL string
-
 func init() {
-	url, ok := os.LookupEnv("WEB_SERVICE_URL")
-	if !ok {
-		webServiceURL = "http://localhost:8080"
-	}
-
-	webServiceURL = url
+	initTestWebServiceURL()
 }
 
 func TestTenant(t *testing.T) {
@@ -92,7 +84,7 @@ func testPulsarTenantDestroy(s *terraform.State) error {
 		// we don't need to check for allowed_clusters and admin_roles as they can be empty but still
 		// tenant name could be present
 		if resp.Name != "" {
-			return fmt.Errorf("ERROR_RESOURCE_TENANT_STILL_EXISITS: %w", err)
+			return fmt.Errorf("ERROR_RESOURCE_TENANT_STILL_EXISTS: %w", err)
 		}
 
 	}
@@ -108,5 +100,5 @@ provider "pulsar" {
 
 resource "pulsar_tenant" "test" {
   tenant = "thanos"
-}`, webServiceURL)
+}`, testWebServiceURL)
 )

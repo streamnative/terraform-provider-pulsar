@@ -26,7 +26,6 @@ resource "pulsar_cluster" "test_cluster" {
     peer_clusters = [
     "standalone"]
   }
-
 }
 
 resource "pulsar_tenant" "test_tenant" {
@@ -59,5 +58,4 @@ resource "pulsar_namespace" "test" {
     retention_minutes    = "1600"
     retention_size_in_mb = "10000"
   }
-
 }

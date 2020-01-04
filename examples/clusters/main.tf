@@ -28,5 +28,4 @@ resource "pulsar_cluster" "my_cluster" {
       "krees"
     ]
   }
-
 }
