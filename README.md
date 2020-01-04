@@ -31,6 +31,7 @@ A [Terraform][1] provider for managing [Apache Pulsar Entities][2].
   * [`pulsar_tenant`](#pulsar_tenant)
   * [`pulsar_cluster`](#pulsar_cluster)
   * [`pulsar_namespace`](#pulsar_namespace)
+  * [`pulsar_topic`](#pulsar_topic)
 
 Requirements
 ------------
@@ -97,7 +98,7 @@ provider "pulsar" {
 resource "pulsar_tenant" "my_tenant" {
   tenant           = "thanos"
   allowed_clusters = ["pulsar-cluster-1"]
-  admin_roles = ["godmode"]
+  admin_roles      = ["godmode"]
 }
 ```
 
@@ -128,7 +129,6 @@ resource "pulsar_cluster" "my_cluster" {
     broker_service_url = "http://localhost:6050"
     peer_clusters      = ["skrulls", "krees"]
   }
-
 }
 ```
 
@@ -161,7 +161,6 @@ resource "pulsar_cluster" "test_cluster" {
     broker_service_url = "http://localhost:6050"
     peer_clusters      = ["standalone"]
   }
-
 }
 
 resource "pulsar_tenant" "test_tenant" {
@@ -190,8 +189,7 @@ resource "pulsar_namespace" "test" {
   retention_policies {
     retention_minutes    = "1600"
     retention_size_in_mb = "10000"
-  }
-  
+  }  
 }
 ```
 
@@ -204,6 +202,34 @@ resource "pulsar_namespace" "test" {
 | `namespace_config`            | Configuration for your namespaces like max allowed producers to produce messages | No |
 | `dispatch_rate`               | Apache Pulsar throttling config                                   | No |
 | `retention_policcies`         | Data retention policies                                           | No |
+
+### `pulsar_topic`
+
+A resource for creating and managing Apache Pulsar Topics, can update partitions for a given partition topic.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+}
+
+resource "pulsar_topic" "sample-topic-1" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "persistent"
+  topic_name = "partition-topic"
+  partitions = 4                     # partitions > 0 means this is a partition topic
+}
+
+resource "pulsar_topic" "sample-topic-2" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "persistent"
+  topic_name = "non-partition-topic"
+  partitions = 0                     # partitions = 0 means this is a non-partition topic
+}
+```
 
 Contributing
 ---------------------------
