@@ -100,6 +100,13 @@ func resourcePulsarTopicUpdate(d *schema.ResourceData, meta interface{}) error {
 
 	// Note: only partition number in partitioned-topic can apply update
 	// For more info: https://github.com/streamnative/pulsarctl/blob/master/pkg/pulsar/topic.go#L36-L39
+	if *partitions == 0 {
+		return errors.New("ERROR_UPDATE_TOPIC: only partition topic can apply update")
+	}
+	_, find, err := getTopic(d, meta)
+	if !*find || err != nil {
+		return errors.New("ERROR_UPDATE_TOPIC: only partitions number support update")
+	}
 	err = client.Update(*topicName, *partitions)
 	if err != nil {
 		return fmt.Errorf("ERROR_UPDATE_TOPIC: %w", err)
