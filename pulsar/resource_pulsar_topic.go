@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/pkg/errors"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
