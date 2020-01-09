@@ -72,7 +72,7 @@ func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	err = client.Create(*topicName, *partitions)
+	err = client.Create(*topicName, partitions)
 	if err != nil {
 		return fmt.Errorf("ERROR_CREATE_TOPIC: %w", err)
 	}
@@ -101,14 +101,14 @@ func resourcePulsarTopicUpdate(d *schema.ResourceData, meta interface{}) error {
 
 	// Note: only partition number in partitioned-topic can apply update
 	// For more info: https://github.com/streamnative/pulsarctl/blob/master/pkg/pulsar/topic.go#L36-L39
-	if *partitions == 0 {
+	if partitions == 0 {
 		return errors.New("ERROR_UPDATE_TOPIC: only partition topic can apply update")
 	}
 	_, find, err := getTopic(d, meta)
 	if !find || err != nil {
 		return errors.New("ERROR_UPDATE_TOPIC: only partitions number support update")
 	}
-	err = client.Update(*topicName, *partitions)
+	err = client.Update(*topicName, partitions)
 	if err != nil {
 		return fmt.Errorf("ERROR_UPDATE_TOPIC: %w", err)
 	}
@@ -124,7 +124,7 @@ func resourcePulsarTopicDelete(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	err = client.Delete(*topicName, true, *partitions == 0)
+	err = client.Delete(*topicName, true, partitions == 0)
 	if err != nil {
 		return fmt.Errorf("ERROR_DELETE_TOPIC: %w", err)
 	}
@@ -170,14 +170,16 @@ func getTopic(d *schema.ResourceData, meta interface{}) (*utils.TopicName, bool,
 	return nil, notFound, nil
 }
 
-func unmarshalTopicNameAndPartitions(d *schema.ResourceData) (*utils.TopicName, *int, error) {
+func unmarshalTopicNameAndPartitions(d *schema.ResourceData) (*utils.TopicName, int, error) {
 	topicName, err := unmarshalTopicName(d)
 	if err != nil {
-		return nil, nil, err
+		// -1 indicate invalid partition
+		return nil, -1, err
 	}
 	partitions, err := unmarshalPartitions(d)
 	if err != nil {
-		return nil, nil, err
+		// -1 indicate invalid partition
+		return nil, -1, err
 	}
 
 	return topicName, partitions, nil
@@ -192,11 +194,12 @@ func unmarshalTopicName(d *schema.ResourceData) (*utils.TopicName, error) {
 	return utils.GetTopicName(topicType + "://" + tenant + "/" + namespace + "/" + topicName)
 }
 
-func unmarshalPartitions(d *schema.ResourceData) (*int, error) {
+func unmarshalPartitions(d *schema.ResourceData) (int, error) {
 	partitions := d.Get("partitions").(int)
 	if partitions < 0 {
-		return nil, errors.Errorf("invalid partition number '%d'", partitions)
+		// -1 indicate invalid partition
+		return -1, errors.Errorf("invalid partition number '%d'", partitions)
 	}
 
-	return &partitions, nil
+	return partitions, nil
 }
