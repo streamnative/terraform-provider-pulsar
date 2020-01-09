@@ -82,7 +82,7 @@ func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
 
 func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 	topicName, find, err := getTopic(d, meta)
-	if !*find && err != nil {
+	if !find && err != nil {
 		d.SetId("")
 		return nil
 	}
@@ -105,7 +105,7 @@ func resourcePulsarTopicUpdate(d *schema.ResourceData, meta interface{}) error {
 		return errors.New("ERROR_UPDATE_TOPIC: only partition topic can apply update")
 	}
 	_, find, err := getTopic(d, meta)
-	if !*find || err != nil {
+	if !find || err != nil {
 		return errors.New("ERROR_UPDATE_TOPIC: only partitions number support update")
 	}
 	err = client.Update(*topicName, *partitions)
@@ -138,36 +138,36 @@ func resourcePulsarTopicExists(d *schema.ResourceData, meta interface{}) (bool, 
 		return false, fmt.Errorf("ERROR_READ_TOPIC: %w", err)
 	}
 
-	return *find, nil
+	return find, nil
 }
 
-func getTopic(d *schema.ResourceData, meta interface{}) (*utils.TopicName, *bool, error) {
+func getTopic(d *schema.ResourceData, meta interface{}) (*utils.TopicName, bool, error) {
 	found, notFound := true, false
 
 	client := meta.(pulsar.Client).Topics()
 
 	topicName, _, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
-		return nil, nil, err
+		return nil, false, err
 	}
 
 	namespace, err := utils.GetNameSpaceName(topicName.GetTenant(), topicName.GetNamespace())
 	if err != nil {
-		return nil, nil, err
+		return nil, false, err
 	}
 
 	partitionedTopics, nonPartitionedTopics, err := client.List(*namespace)
 	if err != nil {
-		return nil, nil, err
+		return nil, false, err
 	}
 
 	for _, topic := range append(partitionedTopics, nonPartitionedTopics...) {
 		if topicName.String() == topic {
-			return topicName, &found, nil
+			return topicName, found, nil
 		}
 	}
 
-	return nil, &notFound, nil
+	return nil, notFound, nil
 }
 
 func unmarshalTopicNameAndPartitions(d *schema.ResourceData) (*utils.TopicName, *int, error) {
