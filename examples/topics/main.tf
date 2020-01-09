@@ -15,17 +15,22 @@
 // specific language governing permissions and limitations
 // under the License.
 
-provider "pulsar" {}
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+}
 
-resource "pulsar_cluster" "my_cluster" {
-  cluster = "eternals"
+resource "pulsar_topic" "sample-topic-1" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "persistent"
+  topic_name = "partition-topic"
+  partitions = 4                     # partitions > 0 means this is a partition topic
+}
 
-  cluster_data {
-    web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
-    peer_clusters = [
-      "skrulls",
-      "krees"
-    ]
-  }
+resource "pulsar_topic" "sample-topic-2" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "persistent"
+  topic_name = "non-partition-topic"
+  partitions = 0                     # partitions = 0 means this is a non-partition topic
 }

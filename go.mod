@@ -20,6 +20,7 @@ require (
 	github.com/jstemmer/go-junit-report v0.9.1 // indirect
 	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/olekukonko/tablewriter v0.0.4 // indirect
+	github.com/pkg/errors v0.8.1
 	github.com/posener/complete v1.2.3 // indirect
 	github.com/streamnative/pulsarctl v0.2.0
 	github.com/ulikunitz/xz v0.5.6 // indirect

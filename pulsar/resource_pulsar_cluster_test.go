@@ -26,6 +26,10 @@ import (
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 )
 
+func init() {
+	initTestWebServiceURL()
+}
+
 func TestCluster(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
@@ -77,7 +81,7 @@ func testPulsarClusterDestroy(s *terraform.State) error {
 			return nil
 		}
 
-		return fmt.Errorf("ERROR_RESOURCE_CLUSTER_STILL_EXISITS: %w", err)
+		return fmt.Errorf("ERROR_RESOURCE_CLUSTER_STILL_EXISTS: %w", err)
 	}
 
 	return nil
@@ -97,5 +101,5 @@ resource "pulsar_cluster" "test" {
     broker_service_url = "http://localhost:6050"
     peer_clusters      = ["skrulls", "krees"]
   }
-}`, webServiceURL)
+}`, testWebServiceURL)
 )

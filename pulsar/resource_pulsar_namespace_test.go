@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
@@ -29,12 +28,7 @@ import (
 )
 
 func init() {
-	url, ok := os.LookupEnv("WEB_SERVICE_URL")
-	if !ok {
-		webServiceURL = "http://localhost:8080"
-	}
-
-	webServiceURL = url
+	initTestWebServiceURL()
 
 	resource.AddTestSweepers("pulsar_namespace", &resource.Sweeper{
 		Name: "pulsar_namespace",
@@ -150,7 +144,7 @@ func testPulsarNamespaceDestroy(s *terraform.State) error {
 
 		for _, ns := range nsList {
 			if ns == rs.Primary.ID {
-				return fmt.Errorf("ERROR_RESOURCE_NAMESPACE_STILL_EXISITS: %s", ns)
+				return fmt.Errorf("ERROR_RESOURCE_NAMESPACE_STILL_EXISTS: %s", ns)
 			}
 		}
 	}
@@ -203,5 +197,5 @@ resource "pulsar_namespace" "test" {
     retention_size_in_mb = "10000"
   }
 }
-`, webServiceURL)
+`, testWebServiceURL)
 )

@@ -29,6 +29,8 @@ import (
 var (
 	testAccProviders map[string]terraform.ResourceProvider
 	testAccProvider  *schema.Provider
+
+	testWebServiceURL string
 )
 
 func init() {
@@ -55,4 +57,13 @@ func testAccPreCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal("err: %w", err)
 	}
+}
+
+func initTestWebServiceURL() {
+	url, ok := os.LookupEnv("WEB_SERVICE_URL")
+	if !ok {
+		testWebServiceURL = "http://localhost:8080"
+	}
+
+	testWebServiceURL = url
 }
