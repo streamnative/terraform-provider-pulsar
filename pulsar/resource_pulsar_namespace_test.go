@@ -178,6 +178,8 @@ resource "pulsar_namespace" "test" {
   tenant    = pulsar_tenant.test_tenant.tenant
   namespace = "eternals"
 
+  enable_deduplication = true
+
   namespace_config {
     anti_affinity                  = "anti-aff"
     max_consumers_per_subscription = "50"
@@ -196,6 +198,14 @@ resource "pulsar_namespace" "test" {
     retention_minutes    = "1600"
     retention_size_in_mb = "10000"
   }
+
+  persistence_policies {
+    bookkeeper_ensemble                   = 1
+    bookkeeper_write_quorum               = 1
+    bookkeeper_ack_quorum                 = 1
+    managed_ledger_max_mark_delete_rate   = 0.0
+  }
+
 }
 `, testWebServiceURL)
 )

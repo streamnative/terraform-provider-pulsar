@@ -172,6 +172,8 @@ resource "pulsar_namespace" "test" {
   tenant    = pulsar_tenant.test_tenant.tenant
   namespace = "eternals"
 
+  enable_deduplication = true
+
   namespace_config {
     anti_affinity                  = "anti-aff"
     max_consumers_per_subscription = "50"
@@ -190,6 +192,13 @@ resource "pulsar_namespace" "test" {
     retention_minutes    = "1600"
     retention_size_in_mb = "10000"
   }  
+  
+  persistence_policies {
+    bookkeeper_ensemble                   = 1   // Number of bookies to use for a topic, default: 0
+    bookkeeper_write_quorum               = 1   // How many writes to make of each entry, default: 0
+    bookkeeper_ack_quorum                 = 1   // Number of acks (guaranteed copies) to wait for each entry, default: 0
+    managed_ledger_max_mark_delete_rate   = 0.0 // Throttling rate of mark-delete operation (0 means no throttle), default: 0.0
+  }
 }
 ```
 
@@ -199,9 +208,11 @@ resource "pulsar_namespace" "test" {
 | ----------------------------- | ----------------------------------------------------------------- |----------------------------|
 | `tenant`                      | Name of the Tenant managing this namespace                        | Yes
 | `namespace`                   | name of the namespace                                             | Yes
+| `enable_deduplication`        | Message deduplication state on a namespace                        | No |
 | `namespace_config`            | Configuration for your namespaces like max allowed producers to produce messages | No |
 | `dispatch_rate`               | Apache Pulsar throttling config                                   | No |
 | `retention_policcies`         | Data retention policies                                           | No |
+| `persistence_policies`        | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace       | No |
 
 ### `pulsar_topic`
 
