@@ -69,7 +69,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Create(input); err != nil {
-		return fmt.Errorf("ERROR_CREATE_TENANT: %w\n request_input: %s", err, input)
+		return fmt.Errorf("ERROR_CREATE_TENANT: %w\n request_input: %#v", err, input)
 	}
 
 	return resourcePulsarTenantRead(d, meta)

@@ -52,6 +52,10 @@ func resourcePulsarNamespace() *schema.Resource {
 				Required:    true,
 				Description: descriptions["tenant"],
 			},
+			"enable_deduplication": {
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
 			"dispatch_rate": {
 				Type:        schema.TypeSet,
 				Optional:    true,
@@ -124,6 +128,31 @@ func resourcePulsarNamespace() *schema.Resource {
 				},
 				Set: namespaceConfigToHash,
 			},
+			"persistence_policies": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"bookkeeper_ensemble": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+						"bookkeeper_write_quorum": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+						"bookkeeper_ack_quorum": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+						"managed_ledger_max_mark_delete_rate": {
+							Type:     schema.TypeFloat,
+							Required: true,
+						},
+					},
+				},
+				Set: persistencePoliciesToHash,
+			},
 		},
 	}
 }
@@ -149,13 +178,16 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err)
 	}
 
+	enableDeduplication := d.Get("enable_deduplication").(bool)
 	namespaceConfig := d.Get("namespace_config").(*schema.Set)
 	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
 	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
+	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
 
 	dispatchRate := unmarshalDispatchRate(dispatchRateConfig)
 	retentionPolicies := unmarshalRetentionPolicies(retentionPoliciesConfig)
 	nsCfg := unmarshalNamespaceConfig(namespaceConfig)
+	persistencePolicies := unmarshalPersistencePolicies(persistencePoliciesConfig)
 
 	nsName, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
@@ -190,6 +222,14 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 
 	if err = client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic); err != nil {
 		errs = multierror.Append(errs, fmt.Errorf("SetMaxProducersPerTopic: %w", err))
+	}
+
+	if err = client.SetPersistence(nsName.String(), *persistencePolicies); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("SetPersistence: %w", err))
+	}
+
+	if err = client.SetDeduplicationStatus(nsName.String(), enableDeduplication); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("SetDeduplicationStatus: %w", err))
 	}
 
 	if errs != nil {
@@ -233,13 +273,16 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
+	enableDeduplication := d.Get("enable_deduplication").(bool)
 	namespaceConfig := d.Get("namespace_config").(*schema.Set)
 	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
 	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
+	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
 
 	nsCfg := unmarshalNamespaceConfig(namespaceConfig)
 	dispatchRate := unmarshalDispatchRate(dispatchRateConfig)
 	retentionPolicies := unmarshalRetentionPolicies(retentionPoliciesConfig)
+	persistencePolicies := unmarshalPersistencePolicies(persistencePoliciesConfig)
 
 	nsName, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
@@ -255,6 +298,8 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 	errs = multierror.Append(errs, client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic))
 	errs = multierror.Append(errs, client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription))
 	errs = multierror.Append(errs, client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic))
+	errs = multierror.Append(errs, client.SetPersistence(nsName.String(), *persistencePolicies))
+	errs = multierror.Append(errs, client.SetDeduplicationStatus(nsName.String(), enableDeduplication))
 
 	if errs != nil {
 		return fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: %w", errs)
@@ -278,10 +323,11 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 
 	_ = d.Set("namespace", "")
 	_ = d.Set("tenant", "")
+	_ = d.Set("enable_deduplication", nil)
 	_ = d.Set("namespace_config", nil)
 	_ = d.Set("retention_policies", nil)
-	_ = d.Set("split_namespaces", nil)
 	_ = d.Set("dispatch_rate", nil)
+	_ = d.Set("persistence_policies", nil)
 
 	return nil
 }
@@ -328,7 +374,6 @@ func retentionPoliciesToHash(v interface{}) int {
 
 	return hashcode.String(buf.String())
 }
-
 func namespaceConfigToHash(v interface{}) int {
 	var buf bytes.Buffer
 	m := v.(map[string]interface{})
@@ -338,6 +383,18 @@ func namespaceConfigToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%d-", m["max_consumers_per_topic"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["max_producers_per_topic"].(int)))
 	buf.WriteString(fmt.Sprintf("%s-", m["replication_clusters"].([]interface{})))
+
+	return hashcode.String(buf.String())
+}
+
+func persistencePoliciesToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%d-", m["bookkeeper_ensemble"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["bookkeeper_write_quorum"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["bookkeeper_ack_quorum"].(int)))
+	buf.WriteString(fmt.Sprintf("%f-", m["managed_ledger_max_mark_delete_rate"].(float64)))
 
 	return hashcode.String(buf.String())
 }
@@ -388,4 +445,19 @@ func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
 	}
 
 	return &nsConfig
+}
+
+func unmarshalPersistencePolicies(v *schema.Set) *utils.PersistencePolicies {
+	var persPolicies utils.PersistencePolicies
+
+	for _, policy := range v.List() {
+		data := policy.(map[string]interface{})
+
+		persPolicies.BookkeeperEnsemble = data["bookkeeper_ensemble"].(int)
+		persPolicies.BookkeeperWriteQuorum = data["bookkeeper_write_quorum"].(int)
+		persPolicies.BookkeeperAckQuorum = data["bookkeeper_ack_quorum"].(int)
+		persPolicies.ManagedLedgerMaxMarkDeleteRate = data["managed_ledger_max_mark_delete_rate"].(float64)
+	}
+
+	return &persPolicies
 }
