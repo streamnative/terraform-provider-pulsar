@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
 	"strings"
 	"testing"
 
@@ -71,6 +72,9 @@ func testSweepNS(url string) error {
 func TestNamespace(t *testing.T) {
 
 	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:      func() { testAccPreCheck(t) },
@@ -79,9 +83,46 @@ func TestNamespace(t *testing.T) {
 		CheckDestroy:  testPulsarNamespaceDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarNamespace,
+				Config: testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
+				),
+			},
+		},
+	})
+}
+
+func TestNamespaceWithUpdate(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:      func() { testAccPreCheck(t) },
+		Providers:     testAccProviders,
+		IDRefreshName: resourceName,
+		CheckDestroy:  testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "0"),
+					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
+				),
+			},
+			{
+				Config: testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "enable_deduplication", "true"),
 				),
 			},
 		},
@@ -117,7 +158,7 @@ func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 			}
 		}
 
-		return fmt.Errorf("ERROR_RESOURCE_NAMESPACE_DOES_NOT_EXISTS")
+		return fmt.Errorf(`ERROR_RESOURCE_NAMESPACE_DOES_NOT_EXISTS: "%s"`, ns)
 	}
 }
 
@@ -152,14 +193,14 @@ func testPulsarNamespaceDestroy(s *terraform.State) error {
 	return nil
 }
 
-var (
-	testPulsarNamespace = fmt.Sprintf(`
+func testPulsarNamespaceWithoutOptionals(wsUrl, cluster, tenant, ns string) string {
+	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
 }
 
 resource "pulsar_cluster" "test_cluster" {
-  cluster = "skrulls"
+  cluster = "%s"
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
@@ -170,13 +211,42 @@ resource "pulsar_cluster" "test_cluster" {
 }
 
 resource "pulsar_tenant" "test_tenant" {
-  tenant           = "thanos"
+  tenant           = "%s"
   allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
 }
 
 resource "pulsar_namespace" "test" {
   tenant    = pulsar_tenant.test_tenant.tenant
-  namespace = "eternals"
+  namespace = "%s"
+}
+`, wsUrl, cluster, tenant, ns)
+}
+
+func testPulsarNamespace(wsUrl, cluster, tenant, ns string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+  cluster = "%s"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "%s"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+  namespace = "%s"
 
   enable_deduplication = true
 
@@ -200,12 +270,12 @@ resource "pulsar_namespace" "test" {
   }
 
   persistence_policies {
-    bookkeeper_ensemble                   = 1
-    bookkeeper_write_quorum               = 1
-    bookkeeper_ack_quorum                 = 1
+    bookkeeper_ensemble                   = 2
+    bookkeeper_write_quorum               = 2
+    bookkeeper_ack_quorum                 = 2
     managed_ledger_max_mark_delete_rate   = 0.0
   }
 
 }
-`, testWebServiceURL)
-)
+`, wsUrl, cluster, tenant, ns)
+}
