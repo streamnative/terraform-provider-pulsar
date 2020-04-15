@@ -364,7 +364,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 		}))
 	}
 
-	if persistencePoliciesConfig, ok := d.GetOk("persistence_policies"); ok && persistencePoliciesConfig.(*schema.Set).Len() > 0 {
+	if persPoliciesCfg, ok := d.GetOk("persistence_policies"); ok && persPoliciesCfg.(*schema.Set).Len() > 0 {
 		persistence, err := client.GetPersistence(ns.String())
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetPersistence: %w", err)

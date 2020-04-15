@@ -129,6 +129,44 @@ func TestNamespaceWithUpdate(t *testing.T) {
 	})
 }
 
+func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:      func() { testAccPreCheck(t) },
+		Providers:     testAccProviders,
+		IDRefreshName: resourceName,
+		CheckDestroy:  testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "0"),
+					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithUndefinedOptionalsInNsConf(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
+					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
+				),
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
 func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[ns]
@@ -193,7 +231,7 @@ func testPulsarNamespaceDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testPulsarNamespaceWithoutOptionals(wsUrl, cluster, tenant, ns string) string {
+func testPulsarNamespaceWithoutOptionals(wsURL, cluster, tenant, ns string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
@@ -219,10 +257,10 @@ resource "pulsar_namespace" "test" {
   tenant    = pulsar_tenant.test_tenant.tenant
   namespace = "%s"
 }
-`, wsUrl, cluster, tenant, ns)
+`, wsURL, cluster, tenant, ns)
 }
 
-func testPulsarNamespace(wsUrl, cluster, tenant, ns string) string {
+func testPulsarNamespace(wsURL, cluster, tenant, ns string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
@@ -277,5 +315,40 @@ resource "pulsar_namespace" "test" {
   }
 
 }
-`, wsUrl, cluster, tenant, ns)
+`, wsURL, cluster, tenant, ns)
+}
+
+func testPulsarNamespaceWithUndefinedOptionalsInNsConf(wsURL, cluster, tenant, ns string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+  cluster = "%s"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "%s"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+  namespace = "%s"
+
+  namespace_config {
+    anti_affinity                  = "anti-aff"
+    max_producers_per_topic        = "50"
+  }
+
+}
+`, wsURL, cluster, tenant, ns)
 }
