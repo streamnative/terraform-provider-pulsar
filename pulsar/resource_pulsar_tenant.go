@@ -85,6 +85,10 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("ERROR_READ_TENANT: %w", err)
 	}
 
+	// pulsar sometimes returns it in random order
+	sort.Strings(td.AdminRoles)
+	sort.Strings(td.AllowedClusters)
+
 	_ = d.Set("tenant", tenant)
 	_ = d.Set("admin_roles", td.AdminRoles)
 	_ = d.Set("allowed_clusters", td.AllowedClusters)
@@ -163,17 +167,7 @@ func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
 
 func handleHCLArray(d *schema.ResourceData, key string) []string {
 	hclArray := d.Get(key).([]interface{})
-	out := make([]string, 0)
-
-	if len(hclArray) == 0 {
-		return out
-	}
-
-	for _, value := range hclArray {
-		out = append(out, value.(string))
-	}
-
-	return out
+	return handleHCLArrayV2(hclArray)
 }
 
 func handleHCLArrayV2(hclArray []interface{}) []string {
