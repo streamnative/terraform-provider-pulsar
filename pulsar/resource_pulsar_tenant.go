@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
@@ -41,7 +40,7 @@ func resourcePulsarTenant() *schema.Resource {
 				Description: descriptions["tenant"],
 			},
 			"allowed_clusters": {
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Optional:    true,
 				Description: descriptions["allowed_clusters"],
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -61,7 +60,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
-	allowedClusters := handleHCLArray(d, "allowed_clusters")
+	allowedClusters := handleHCLArrayV2(d.Get("allowed_clusters").(*schema.Set).List())
 
 	input := utils.TenantData{
 		Name:            tenant,
@@ -86,10 +85,6 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("ERROR_READ_TENANT: %w", err)
 	}
 
-	// pulsar sometimes returns it in random order
-	sort.Strings(td.AdminRoles)
-	sort.Strings(td.AllowedClusters)
-
 	_ = d.Set("tenant", tenant)
 	_ = d.Set("admin_roles", td.AdminRoles)
 	_ = d.Set("allowed_clusters", td.AllowedClusters)
@@ -104,7 +99,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 	d.Partial(true)
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
-	allowedClusters := handleHCLArray(d, "allowed_clusters")
+	allowedClusters := handleHCLArrayV2(d.Get("allowed_clusters").(*schema.Set).List())
 
 	input := utils.TenantData{
 		Name:            tenant,
