@@ -167,6 +167,7 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 	})
 }
 
+//nolint:unparam
 func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[ns]
