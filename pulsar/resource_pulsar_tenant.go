@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
