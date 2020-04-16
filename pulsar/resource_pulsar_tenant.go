@@ -40,7 +40,7 @@ func resourcePulsarTenant() *schema.Resource {
 				Description: descriptions["tenant"],
 			},
 			"allowed_clusters": {
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Optional:    true,
 				Description: descriptions["allowed_clusters"],
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -60,7 +60,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
-	allowedClusters := handleHCLArray(d, "allowed_clusters")
+	allowedClusters := handleHCLArrayV2(d.Get("allowed_clusters").(*schema.Set).List())
 
 	input := utils.TenantData{
 		Name:            tenant,
@@ -99,7 +99,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 	d.Partial(true)
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
-	allowedClusters := handleHCLArray(d, "allowed_clusters")
+	allowedClusters := handleHCLArrayV2(d.Get("allowed_clusters").(*schema.Set).List())
 
 	input := utils.TenantData{
 		Name:            tenant,
@@ -163,17 +163,7 @@ func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
 
 func handleHCLArray(d *schema.ResourceData, key string) []string {
 	hclArray := d.Get(key).([]interface{})
-	out := make([]string, 0)
-
-	if len(hclArray) == 0 {
-		return out
-	}
-
-	for _, value := range hclArray {
-		out = append(out, value.(string))
-	}
-
-	return out
+	return handleHCLArrayV2(hclArray)
 }
 
 func handleHCLArrayV2(hclArray []interface{}) []string {
