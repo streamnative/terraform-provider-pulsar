@@ -23,6 +23,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/streamnative/pulsarctl/pkg/cli"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
@@ -35,7 +36,13 @@ func resourcePulsarCluster() *schema.Resource {
 		Update: resourcePulsarClusterUpdate,
 		Delete: resourcePulsarClusterDelete,
 		Exists: resourcePulsarClusterExists,
-
+		Importer: &schema.ResourceImporter{
+			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+				_ = d.Set("cluster", d.Id())
+				err := resourcePulsarClusterRead(d, meta)
+				return []*schema.ResourceData{d}, err
+			},
+		},
 		Schema: map[string]*schema.Schema{
 			"cluster": {
 				Type:        schema.TypeString,
@@ -46,21 +53,36 @@ func resourcePulsarCluster() *schema.Resource {
 				Type:        schema.TypeSet,
 				Description: descriptions["cluster_data"],
 				Required:    true,
+				MinItems:    1,
+				MaxItems:    1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"web_service_url": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validateURL,
+						},
+						"web_service_url_tls": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							ValidateFunc: validateURL,
 						},
 						"broker_service_url": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validateURL,
+						},
+						"broker_service_url_tls": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							ValidateFunc: validateURL,
 						},
 						"peer_clusters": {
 							Type:     schema.TypeList,
 							Optional: true,
 							Elem: &schema.Schema{
-								Type: schema.TypeString,
+								Type:         schema.TypeString,
+								ValidateFunc: validateNotBlank,
 							},
 						},
 					},
@@ -74,13 +96,19 @@ func resourcePulsarCluster() *schema.Resource {
 func resourcePulsarClusterCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Clusters()
 
+	ok, err := resourcePulsarClusterExists(d, meta)
+	if err != nil {
+		return err
+	}
+
+	if ok {
+		return resourcePulsarClusterRead(d, meta)
+	}
+
 	cluster := d.Get("cluster").(string)
 	clusterDataSet := d.Get("cluster_data").(*schema.Set)
 
 	clusterData := unmarshalClusterData(clusterDataSet)
-	if clusterDataSet == nil {
-		return fmt.Errorf("ERROR_CREATE_CLUSTER_DATA: invalid input %s", clusterData)
-	}
 	clusterData.Name = cluster
 
 	if err := client.Create(*clusterData); err != nil {
@@ -101,10 +129,21 @@ func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("ERROR_READ_CLUSTER_DATA: %w", err)
 	}
 
+	peerClusterNames := make([]interface{}, len(clusterData.PeerClusterNames))
+	for i, cl := range clusterData.PeerClusterNames {
+		peerClusterNames[i] = cl
+	}
+
 	d.SetId(cluster)
-	_ = d.Set("broker_service_url", clusterData.BrokerServiceURL)
-	_ = d.Set("web_service_url", clusterData.ServiceURL)
-	_ = d.Set("peer_clusters", clusterData.PeerClusterNames)
+	_ = d.Set("cluster_data", schema.NewSet(clusterDataToHash, []interface{}{
+		map[string]interface{}{
+			"web_service_url":        clusterData.ServiceURL,
+			"web_service_url_tls":    clusterData.ServiceURLTls,
+			"broker_service_url":     clusterData.BrokerServiceURL,
+			"broker_service_url_tls": clusterData.BrokerServiceURLTls,
+			"peer_clusters":          peerClusterNames,
+		},
+	}))
 
 	return nil
 }
@@ -116,10 +155,6 @@ func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error
 	cluster := d.Get("cluster").(string)
 
 	clusterData := unmarshalClusterData(clusterDataSet)
-
-	if clusterData == nil {
-		return fmt.Errorf("ERROR_UPDATE_CLUSTER_DATA: invalid input %s", clusterData)
-	}
 	clusterData.Name = cluster
 
 	if err := client.Update(*clusterData); err != nil {
@@ -152,8 +187,11 @@ func resourcePulsarClusterExists(d *schema.ResourceData, meta interface{}) (bool
 
 	cluster := d.Get("cluster").(string)
 
-	_, err := client.Get(cluster)
-	if err != nil {
+	if _, err := client.Get(cluster); err != nil {
+		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+			return false, nil
+		}
+
 		return false, err
 	}
 
@@ -165,7 +203,9 @@ func clusterDataToHash(v interface{}) int {
 	m := v.(map[string]interface{})
 
 	buf.WriteString(fmt.Sprintf("%s-", m["web_service_url"].(string)))
+	buf.WriteString(fmt.Sprintf("%s-", m["web_service_url_tls"].(string)))
 	buf.WriteString(fmt.Sprintf("%s-", m["broker_service_url"].(string)))
+	buf.WriteString(fmt.Sprintf("%s-", m["broker_service_url_tls"].(string)))
 	peerClusters := m["peer_clusters"].([]interface{})
 
 	for _, pc := range peerClusters {
@@ -182,7 +222,9 @@ func unmarshalClusterData(input *schema.Set) *utils.ClusterData {
 		data := v.(map[string]interface{})
 
 		cd.ServiceURL = data["web_service_url"].(string)
+		cd.ServiceURLTls = data["web_service_url_tls"].(string)
 		cd.BrokerServiceURL = data["broker_service_url"].(string)
+		cd.BrokerServiceURLTls = data["broker_service_url_tls"].(string)
 		cd.PeerClusterNames = handleHCLArrayV2(data["peer_clusters"].([]interface{}))
 	}
 

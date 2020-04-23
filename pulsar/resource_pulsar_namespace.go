@@ -41,7 +41,20 @@ func resourcePulsarNamespace() *schema.Resource {
 		Update: resourcePulsarNamespaceUpdate,
 		Delete: resourcePulsarNamespaceDelete,
 		Exists: resourcePulsarNamespaceExists,
+		Importer: &schema.ResourceImporter{
+			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+				ns, err := utils.GetNamespaceName(d.Id())
+				if err != nil {
+					return nil, fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
+				}
+				nsParts := strings.Split(ns.String(), "/")
+				_ = d.Set("tenant", nsParts[0])
+				_ = d.Set("namespace", nsParts[1])
 
+				err = resourcePulsarNamespaceRead(d, meta)
+				return []*schema.ResourceData{d}, err
+			},
+		},
 		Schema: map[string]*schema.Schema{
 			"namespace": {
 				Type:        schema.TypeString,
@@ -106,51 +119,27 @@ func resourcePulsarNamespace() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"anti_affinity": {
-							Type:     schema.TypeString,
-							Optional: true,
-							ValidateFunc: func(val interface{}, key string) (warns []string, errs []error) {
-								v := val.(string)
-								if len(strings.Trim(strings.TrimSpace(v), "\"")) == 0 {
-									errs = append(errs, fmt.Errorf("%q must not be empty", key))
-								}
-								return
-							},
+							Type:         schema.TypeString,
+							Optional:     true,
+							ValidateFunc: validateNotBlank,
 						},
 						"max_consumers_per_subscription": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Default:  -1,
-							ValidateFunc: func(val interface{}, key string) (warns []string, errs []error) {
-								v := val.(int)
-								if v < 0 {
-									errs = append(errs, fmt.Errorf("%q must be 0 or more, got: %d", key, v))
-								}
-								return
-							},
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      -1,
+							ValidateFunc: validateGtEq0,
 						},
 						"max_consumers_per_topic": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Default:  -1,
-							ValidateFunc: func(val interface{}, key string) (warns []string, errs []error) {
-								v := val.(int)
-								if v < 0 {
-									errs = append(errs, fmt.Errorf("%q must be 0 or more, got: %d", key, v))
-								}
-								return
-							},
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      -1,
+							ValidateFunc: validateGtEq0,
 						},
 						"max_producers_per_topic": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Default:  -1,
-							ValidateFunc: func(val interface{}, key string) (warns []string, errs []error) {
-								v := val.(int)
-								if v < 0 {
-									errs = append(errs, fmt.Errorf("%q must be 0 or more, got: %d", key, v))
-								}
-								return
-							},
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      -1,
+							ValidateFunc: validateGtEq0,
 						},
 						"replication_clusters": {
 							Type:     schema.TypeList,
@@ -209,97 +198,20 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
 
-	ns := fmt.Sprintf("%s/%s", tenant, namespace)
+	ns, err := utils.GetNameSpaceName(tenant, namespace)
+	if err != nil {
+		return fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
+	}
 
-	if err := client.CreateNamespace(ns); err != nil {
+	if err := client.CreateNamespace(ns.String()); err != nil {
 		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err)
 	}
 
-	enableDeduplication, deduplicationDefined := d.GetOk("enable_deduplication")
-	namespaceConfig := d.Get("namespace_config").(*schema.Set)
-	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
-	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
-	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
-
-	nsName, err := utils.GetNameSpaceName(tenant, namespace)
-	if err != nil {
-		return fmt.Errorf("ERROR_READING_NAMESPACE_NAME: %w", err)
+	if err = resourcePulsarNamespaceUpdate(d, meta); err != nil {
+		return fmt.Errorf("ERROR_CREATE_NAMESPACE_CONFIG: %w", err)
 	}
 
-	var errs error
-
-	if namespaceConfig.Len() > 0 {
-		nsCfg := unmarshalNamespaceConfig(namespaceConfig)
-
-		if len(nsCfg.AntiAffinity) > 0 {
-			if err = client.SetNamespaceAntiAffinityGroup(nsName.String(), nsCfg.AntiAffinity); err != nil {
-				errs = multierror.Append(errs, fmt.Errorf("SetNamespaceAntiAffinityGroup: %w", err))
-			}
-		}
-
-		if len(nsCfg.ReplicationClusters) > 0 {
-			if err = client.SetNamespaceReplicationClusters(nsName.String(), nsCfg.ReplicationClusters); err != nil {
-				errs = multierror.Append(errs, fmt.Errorf("SetNamespaceReplicationClusters: %w", err))
-			}
-		}
-
-		if nsCfg.MaxConsumersPerTopic >= 0 {
-			if err = client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic); err != nil {
-				errs = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerTopic: %w", err))
-			}
-		}
-
-		if nsCfg.MaxConsumersPerSubscription >= 0 {
-			if err = client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription); err != nil {
-				errs = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerSubscription: %w", err))
-			}
-		}
-
-		if nsCfg.MaxProducersPerTopic >= 0 {
-			if err = client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic); err != nil {
-				errs = multierror.Append(errs, fmt.Errorf("SetMaxProducersPerTopic: %w", err))
-			}
-		}
-	}
-
-	if dispatchRateConfig.Len() > 0 {
-		dispatchRate := unmarshalDispatchRate(dispatchRateConfig)
-
-		if err = client.SetDispatchRate(*nsName, *dispatchRate); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("SetDispatchRate: %w", err))
-		}
-	}
-
-	if retentionPoliciesConfig.Len() > 0 {
-		retentionPolicies := unmarshalRetentionPolicies(retentionPoliciesConfig)
-
-		if err = client.SetRetention(nsName.String(), *retentionPolicies); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("SetRetention: %w", err))
-		}
-	}
-
-	if persistencePoliciesConfig.Len() > 0 {
-		persistencePolicies := unmarshalPersistencePolicies(persistencePoliciesConfig)
-
-		if err = client.SetPersistence(nsName.String(), *persistencePolicies); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("SetPersistence: %w", err))
-		}
-	}
-
-	if deduplicationDefined {
-		if err = client.SetDeduplicationStatus(nsName.String(), enableDeduplication.(bool)); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("SetDeduplicationStatus: %w", err))
-		}
-	}
-
-	if errs != nil {
-		return fmt.Errorf("ERROR_CREATE_NAMESPACE_CONFIG: %w", errs)
-	}
-
-	_ = d.Set("namespace", namespace)
-	_ = d.Set("tenant", tenant)
-
-	return resourcePulsarNamespaceRead(d, meta)
+	return nil
 }
 
 func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error {
@@ -310,11 +222,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 
 	ns, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
-		return fmt.Errorf("ERROR_READ_NAMESPACE: %w", err)
-	}
-
-	if ns == nil {
-		return fmt.Errorf("ERROR_READ_NAMESPACE: %s", "namespace name is nil")
+		return fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
 	}
 
 	d.SetId(ns.String())
@@ -380,6 +288,35 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 		}))
 	}
 
+	if retPoliciesCfg, ok := d.GetOk("retention_policies"); ok && retPoliciesCfg.(*schema.Set).Len() > 0 {
+		ret, err := client.GetRetention(ns.String())
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE: GetRetention: %w", err)
+		}
+
+		_ = d.Set("persistence_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
+			map[string]interface{}{
+				"retention_minutes":    string(ret.RetentionTimeInMinutes),
+				"retention_size_in_mb": string(ret.RetentionSizeInMB),
+			},
+		}))
+	}
+
+	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
+		dr, err := client.GetDispatchRate(*ns)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE: GetDispatchRate: %w", err)
+		}
+
+		_ = d.Set("persistence_policies", schema.NewSet(dispatchRateToHash, []interface{}{
+			map[string]interface{}{
+				"dispatch_msg_throttling_rate":  dr.DispatchThrottlingRateInMsg,
+				"rate_period_seconds":           dr.RatePeriodInSecond,
+				"dispatch_byte_throttling_rate": int(dr.DispatchThrottlingRateInByte),
+			},
+		}))
+	}
+
 	return nil
 }
 
@@ -396,7 +333,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 
 	nsName, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
-		return fmt.Errorf("ERROR_READING_NAMESPACE_NAME: %w", err)
+		return fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
 	}
 
 	var errs error
@@ -503,7 +440,7 @@ func resourcePulsarNamespaceExists(d *schema.ResourceData, meta interface{}) (bo
 
 	nsList, err := client.GetNamespaces(tenant)
 	if err != nil {
-		return false, fmt.Errorf("ERROR_READING_NAMESPACES: %w", err)
+		return false, fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
 	}
 
 	for _, ns := range nsList {

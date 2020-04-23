@@ -21,6 +21,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
@@ -44,7 +47,78 @@ func TestTenant(t *testing.T) {
 			},
 		},
 	})
+}
 
+func TestHandleExistingTenant(t *testing.T) {
+	tName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createTenant(t, tName)
+		},
+		Providers:                 testAccProviders,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarTenantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config:             testPulsarExistingTenantConfig(testWebServiceURL, tName),
+				Check:              resource.ComposeTestCheckFunc(testPulsarTenantExists("pulsar_tenant.test")),
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestImportExistingTenant(t *testing.T) {
+	tName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createTenant(t, tName)
+		},
+		CheckDestroy: testPulsarTenantDestroy,
+		Providers:    testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:     "pulsar_tenant.test",
+				ImportState:      true,
+				Config:           testPulsarExistingTenantConfig(testWebServiceURL, tName),
+				ImportStateId:    tName,
+				ImportStateCheck: testTenantImported(),
+			},
+		},
+	})
+}
+
+func createTenant(t *testing.T, tname string) {
+	client, err := sharedClient(testWebServiceURL)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
+	}
+
+	conn := client.(pulsar.Client)
+	if err = conn.Tenants().Create(utils.TenantData{
+		Name:            tname,
+		AllowedClusters: []string{"standalone"},
+	}); err != nil {
+		t.Fatalf("ERROR_CREATING_TEST_TENANT: %v", err)
+	}
+}
+
+func testTenantImported() resource.ImportStateCheckFunc {
+	return func(s []*terraform.InstanceState) error {
+		if len(s) != 1 {
+			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
+		}
+
+		if len(s[0].Attributes) != 5 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 5, len(s[0].Attributes), s[0].Attributes)
+		}
+
+		return nil
+	}
 }
 
 func testPulsarTenantExists(tenant string) resource.TestCheckFunc {
@@ -102,3 +176,16 @@ resource "pulsar_tenant" "test" {
   tenant = "thanos"
 }`, testWebServiceURL)
 )
+
+func testPulsarExistingTenantConfig(url, tname string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+	web_service_url = "%s"
+}
+
+resource "pulsar_tenant" "test" {
+	tenant = "%s"	
+	allowed_clusters = ["something"]
+}
+`, url, tname)
+}
