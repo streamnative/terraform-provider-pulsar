@@ -33,7 +33,9 @@ func resourcePulsarTopic() *schema.Resource {
 		Update: resourcePulsarTopicUpdate,
 		Delete: resourcePulsarTopicDelete,
 		Exists: resourcePulsarTopicExists,
-
+		Importer: &schema.ResourceImporter{
+			State: resourcePulsarTopicImport,
+		},
 		Schema: map[string]*schema.Schema{
 			"tenant": {
 				Type:        schema.TypeString,
@@ -46,9 +48,10 @@ func resourcePulsarTopic() *schema.Resource {
 				Description: descriptions["namespace"],
 			},
 			"topic_type": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: descriptions["topic_type"],
+				Type:         schema.TypeString,
+				Required:     true,
+				Description:  descriptions["topic_type"],
+				ValidateFunc: validateTopicType,
 			},
 			"topic_name": {
 				Type:        schema.TypeString,
@@ -56,16 +59,48 @@ func resourcePulsarTopic() *schema.Resource {
 				Description: descriptions["topic_name"],
 			},
 			"partitions": {
-				Type:        schema.TypeInt,
-				Required:    true,
-				Description: descriptions["partitions"],
+				Type:         schema.TypeInt,
+				Required:     true,
+				Description:  descriptions["partitions"],
+				ValidateFunc: validateGtEq0,
 			},
 		},
 	}
 }
 
+func resourcePulsarTopicImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	topic, err := utils.GetTopicName(d.Id())
+	if err != nil {
+		return nil, err
+	}
+
+	client := meta.(pulsar.Client).Topics()
+
+	tm, err := client.GetMetadata(*topic)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = d.Set("tenant", topic.GetTenant())
+	_ = d.Set("namespace", topic.GetNamespace())
+	_ = d.Set("topic_type", topic.GetDomain())
+	_ = d.Set("topic_name", topic.GetLocalName())
+	_ = d.Set("partitions", tm.Partitions)
+
+	return []*schema.ResourceData{d}, err
+}
+
 func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Topics()
+
+	ok, err := resourcePulsarTopicExists(d, meta)
+	if err != nil {
+		return err
+	}
+
+	if ok {
+		return resourcePulsarTopicRead(d, meta)
+	}
 
 	topicName, partitions, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
@@ -81,8 +116,8 @@ func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
-	topicName, find, err := getTopic(d, meta)
-	if !find && err != nil {
+	topicName, found, err := getTopic(d, meta)
+	if !found || err != nil {
 		d.SetId("")
 		return nil
 	}
@@ -133,16 +168,16 @@ func resourcePulsarTopicDelete(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarTopicExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	_, find, err := getTopic(d, meta)
+	_, found, err := getTopic(d, meta)
 	if err != nil {
 		return false, fmt.Errorf("ERROR_READ_TOPIC: %w", err)
 	}
 
-	return find, nil
+	return found, nil
 }
 
 func getTopic(d *schema.ResourceData, meta interface{}) (*utils.TopicName, bool, error) {
-	found, notFound := true, false
+	const found, notFound = true, false
 
 	client := meta.(pulsar.Client).Topics()
 

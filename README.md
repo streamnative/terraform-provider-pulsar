@@ -139,7 +139,9 @@ resource "pulsar_cluster" "my_cluster" {
 | `cluster`                     | Name of the Cluster that you want to create                       | Yes
 | `cluster_data`                | A Map of required fields for the cluster                          | Yes
 | `web_service_url`             | Required in cluster data, pointing to your broker web service     | Yes
+| `web_service_url_tls`         | Pointing to your broker web service via tls                       | No
 | `broker_service_url`          | Required in cluster data for broker discovery                     | Yes
+| `broker_service_url_tls`      | Required in cluster data for broker discovery via tls             | No
 | `peer_clusters`               | Required in cluster data for adding peer clusters                 | Yes
 
 ### `pulsar_namespace`
@@ -174,6 +176,8 @@ resource "pulsar_namespace" "test" {
 
   enable_deduplication = true
 
+  // If defined partially, plan would show difference
+  // however, none of the mising optionals would be changed
   namespace_config {
     anti_affinity                  = "anti-aff"
     max_consumers_per_subscription = "50"
@@ -240,6 +244,18 @@ resource "pulsar_topic" "sample-topic-2" {
   topic_name = "non-partition-topic"
   partitions = 0                     # partitions = 0 means this is a non-partition topic
 }
+```
+
+
+Importing existing resources
+------------
+
+All resources could be imported using the [standard terraform way](https://www.terraform.io/docs/import/usage.html).
+
+#### Example
+
+```
+terraform import pulsar_cluster.standalone standalone
 ```
 
 Contributing

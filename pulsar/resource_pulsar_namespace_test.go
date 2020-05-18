@@ -168,6 +168,43 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 	})
 }
 
+func TestImportExistingNamespace(t *testing.T) {
+	tname := "public"
+	ns := acctest.RandString(10)
+
+	id := tname + "/" + ns
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createNamespace(t, id)
+		},
+		CheckDestroy: testPulsarNamespaceDestroy,
+		Providers:    testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:     "pulsar_namespace.test",
+				ImportState:      true,
+				Config:           testPulsarExistingNamespaceWithoutOptionals(testWebServiceURL, ns),
+				ImportStateId:    id,
+				ImportStateCheck: testNamespaceImported(),
+			},
+		},
+	})
+}
+
+func createNamespace(t *testing.T, id string) {
+	client, err := sharedClient(testWebServiceURL)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
+	}
+
+	conn := client.(pulsar.Client)
+	if err = conn.Namespaces().CreateNamespace(id); err != nil {
+		t.Fatalf("ERROR_CREATING_TEST_NS: %v", err)
+	}
+}
+
 //nolint:unparam
 func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
@@ -199,6 +236,20 @@ func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 		}
 
 		return fmt.Errorf(`ERROR_RESOURCE_NAMESPACE_DOES_NOT_EXISTS: "%s"`, ns)
+	}
+}
+
+func testNamespaceImported() resource.ImportStateCheckFunc {
+	return func(s []*terraform.InstanceState) error {
+		if len(s) != 1 {
+			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
+		}
+
+		if len(s[0].Attributes) != 7 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 7, len(s[0].Attributes), s[0].Attributes)
+		}
+
+		return nil
 	}
 }
 
@@ -353,4 +404,17 @@ resource "pulsar_namespace" "test" {
 
 }
 `, wsURL, cluster, tenant, ns)
+}
+
+func testPulsarExistingNamespaceWithoutOptionals(wsURL, ns string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = "public"
+  namespace = "%s"
+}
+`, wsURL, ns)
 }

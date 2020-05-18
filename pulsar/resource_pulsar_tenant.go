@@ -19,7 +19,10 @@ package pulsar
 
 import (
 	"fmt"
+	"log"
 	"strings"
+
+	"github.com/streamnative/pulsarctl/pkg/cli"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
@@ -32,7 +35,14 @@ func resourcePulsarTenant() *schema.Resource {
 		Read:   resourcePulsarTenantRead,
 		Update: resourcePulsarTenantUpdate,
 		Delete: resourcePulsarTenantDelete,
-
+		Exists: resourcePulsarTenantExists,
+		Importer: &schema.ResourceImporter{
+			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+				_ = d.Set("tenant", d.Id())
+				err := resourcePulsarTenantRead(d, meta)
+				return []*schema.ResourceData{d}, err
+			},
+		},
 		Schema: map[string]*schema.Schema{
 			"tenant": {
 				Type:        schema.TypeString,
@@ -55,8 +65,35 @@ func resourcePulsarTenant() *schema.Resource {
 	}
 }
 
+func resourcePulsarTenantExists(d *schema.ResourceData, meta interface{}) (bool, error) {
+	client := meta.(pulsar.Client).Tenants()
+
+	tenant := d.Get("tenant").(string)
+
+	if _, err := client.Get(tenant); err != nil {
+		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+			log.Printf("resourcePulsarTenantExists: %v, %#v", false, err)
+			return false, nil
+		}
+		log.Printf("resourcePulsarTenantExists: %v, %#v", false, err)
+		return false, fmt.Errorf("ERROR_READ_TENANT: %w", err)
+	}
+
+	log.Printf("resourcePulsarTenantExists: %v, %#v", true, nil)
+	return true, nil
+}
+
 func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Tenants()
+
+	ok, err := resourcePulsarTenantExists(d, meta)
+	if err != nil {
+		return err
+	}
+
+	if ok {
+		return resourcePulsarTenantRead(d, meta)
+	}
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")

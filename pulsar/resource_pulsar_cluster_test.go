@@ -19,7 +19,11 @@ package pulsar
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
@@ -45,6 +49,81 @@ func TestCluster(t *testing.T) {
 		},
 	})
 
+}
+
+func TestHandleExistingCluster(t *testing.T) {
+	cName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createCluster(t, cName)
+		},
+		CheckDestroy: testPulsarClusterDestroy,
+		Providers:    testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarExistingCluster(testWebServiceURL, cName),
+				Check:  resource.ComposeTestCheckFunc(testPulsarClusterExists("pulsar_cluster.test")),
+			},
+		},
+	})
+}
+
+func TestImportExistingCluster(t *testing.T) {
+	cName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createCluster(t, cName)
+		},
+		CheckDestroy: testPulsarClusterDestroy,
+		Providers:    testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:     "pulsar_cluster.test",
+				ImportState:      true,
+				Config:           testPulsarExistingCluster(testWebServiceURL, cName),
+				ImportStateId:    cName,
+				ImportStateCheck: testClusterImported(),
+			},
+		},
+	})
+}
+
+func createCluster(t *testing.T, cname string) {
+	client, err := sharedClient(testWebServiceURL)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
+	}
+
+	conn := client.(pulsar.Client)
+	if err = conn.Clusters().Create(utils.ClusterData{
+		Name:             cname,
+		ServiceURL:       "http://localhost:8080",
+		BrokerServiceURL: "http://localhost:6050",
+		PeerClusterNames: []string{"standalone"},
+	}); err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			return
+		}
+		t.Fatalf("ERROR_CREATING_TEST_CLUSTER: %v", err)
+	}
+}
+
+func testClusterImported() resource.ImportStateCheckFunc {
+	return func(s []*terraform.InstanceState) error {
+		if len(s) != 1 {
+			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
+		}
+
+		if len(s[0].Attributes) != 9 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 9, len(s[0].Attributes), s[0].Attributes)
+		}
+
+		return nil
+	}
 }
 
 func testPulsarClusterExists(cluster string) resource.TestCheckFunc {
@@ -98,8 +177,27 @@ resource "pulsar_cluster" "test" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
+    web_service_url_tls    = "http://localhost:8443"
     broker_service_url = "http://localhost:6050"
+    broker_service_url_tls = "pulsar+ssl://localhost:6051"
     peer_clusters      = ["skrulls", "krees"]
   }
 }`, testWebServiceURL)
 )
+
+func testPulsarExistingCluster(url, cname string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test" {
+  cluster = "%s"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+	peer_clusters      = ["standalone"]
+  }
+}`, url, cname)
+}

@@ -19,7 +19,10 @@ package pulsar
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
@@ -40,11 +43,43 @@ func TestTopic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarPartitionTopic,
-				Check:  resource.ComposeTestCheckFunc(testPulsarTopicExists("pulsar_topic.sample-topic-1")),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists("pulsar_topic.sample-topic-1"),
+					testPulsarTopicExists("pulsar_topic.sample-topic-2"),
+				),
 			},
 			{
 				Config: testPulsarNonPartitionTopic,
-				Check:  resource.ComposeTestCheckFunc(testPulsarTopicExists("pulsar_topic.sample-topic-2")),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists("pulsar_topic.sample-topic-3"),
+					testPulsarTopicExists("pulsar_topic.sample-topic-4"),
+				),
+			},
+		},
+	})
+}
+
+func TestImportExistingTopic(t *testing.T) {
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 10
+
+	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createTopic(t, fullID, pnum)
+		},
+		Providers:    testAccProviders,
+		CheckDestroy: testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:     "pulsar_topic.test",
+				ImportState:      true,
+				Config:           testPulsarExistingTopicConfig(testWebServiceURL, tname, ttype, pnum),
+				ImportStateId:    fullID,
+				ImportStateCheck: testTopicImported(),
 			},
 		},
 	})
@@ -114,6 +149,34 @@ func testPulsarTopicExists(topic string) resource.TestCheckFunc {
 	}
 }
 
+func testTopicImported() resource.ImportStateCheckFunc {
+	return func(s []*terraform.InstanceState) error {
+		if len(s) != 1 {
+			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
+		}
+
+		if len(s[0].Attributes) != 6 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 6, len(s[0].Attributes), s[0].Attributes)
+		}
+
+		return nil
+	}
+}
+
+func createTopic(t *testing.T, fullID string, pnum int) {
+	client, err := sharedClient(testWebServiceURL)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
+	}
+
+	conn := client.(pulsar.Client)
+	tname, _ := utils.GetTopicName(fullID)
+
+	if err = conn.Topics().Create(*tname, pnum); err != nil {
+		t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
+	}
+}
+
 var (
 	testPulsarPartitionTopic = fmt.Sprintf(`
 provider "pulsar" {
@@ -124,20 +187,56 @@ resource "pulsar_topic" "sample-topic-1" {
   tenant     = "public"
   namespace  = "default"
   topic_type = "persistent"
-  topic_name = "partition-topic"
+  topic_name = "partitioned-persistent-topic"
   partitions = 4
-}`, testWebServiceURL)
+}
+
+resource "pulsar_topic" "sample-topic-2" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "non-persistent"
+  topic_name = "partitioned-non-persistent-topic"
+  partitions = 4
+}
+`, testWebServiceURL)
 
 	testPulsarNonPartitionTopic = fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
 }
 
-resource "pulsar_topic" "sample-topic-2" {
+resource "pulsar_topic" "sample-topic-3" {
   tenant     = "public"
   namespace  = "default"
   topic_type = "persistent"
-  topic_name = "non-partition-topic"
+  topic_name = "non-partitioned-persistent-topic"
   partitions = 0
-}`, testWebServiceURL)
+}
+
+resource "pulsar_topic" "sample-topic-4" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "non-persistent"
+  topic_name = "non-partitioned-non-persistent-topic"
+  partitions = 0
+}
+
+
+`, testWebServiceURL)
 )
+
+func testPulsarExistingTopicConfig(url, tname, ttype string, pnum int) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+	web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "%s"
+  topic_name = "%s"
+  partitions = %d
+}
+`, url, ttype, tname, pnum)
+}
