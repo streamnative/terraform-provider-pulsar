@@ -215,7 +215,7 @@ resource "pulsar_namespace" "test" {
 | `enable_deduplication`        | Message deduplication state on a namespace                        | No |
 | `namespace_config`            | Configuration for your namespaces like max allowed producers to produce messages | No |
 | `dispatch_rate`               | Apache Pulsar throttling config                                   | No |
-| `retention_policcies`         | Data retention policies                                           | No |
+| `retention_policies`          | Data retention policies                                           | No |
 | `persistence_policies`        | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace       | No |
 
 ### `pulsar_topic`
