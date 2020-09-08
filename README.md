@@ -70,6 +70,15 @@ Provider Configuration
 Example provider with apache pulsar cluster, running locally with authentication disabled.
 
 ```hcl
+terraform {
+  required_providers {
+    pulsar = {
+      versions = ["1.0.0"]
+      source = "registry.terraform.io/apache/pulsar"
+    }
+  }
+}
+
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
   token = "my_auth_token"
