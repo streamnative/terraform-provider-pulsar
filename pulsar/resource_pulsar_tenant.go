@@ -133,7 +133,6 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Tenants()
 
-	d.Partial(true)
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
 	allowedClusters := handleHCLArrayV2(d.Get("allowed_clusters").(*schema.Set).List())
