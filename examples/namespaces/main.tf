@@ -15,6 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
+terraform {
+  required_providers {
+    pulsar = {
+      versions = ["1.0.0"]
+      source = "registry.terraform.io/apache/pulsar"
+    }
+  }
+}
+
 provider "pulsar" {}
 
 resource "pulsar_cluster" "test_cluster" {

@@ -23,10 +23,9 @@ import (
 )
 
 func sharedClient(url string) (interface{}, error) {
-	config := &pulsar.Config{
-		WebServiceURL: url,
-		HTTPTimeout:   15,
-		APIVersion:    common.V2,
+	config := &common.Config{
+		WebServiceURL:    url,
+		PulsarAPIVersion: common.V2,
 	}
 
 	return pulsar.New(config)

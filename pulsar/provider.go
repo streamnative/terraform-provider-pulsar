@@ -91,11 +91,10 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 		apiVersion = 1
 	}
 
-	config := &pulsar.Config{
-		WebServiceURL: clusterURL,
-		HTTPTimeout:   15,
-		APIVersion:    common.APIVersion(apiVersion),
-		Token:         token,
+	config := &common.Config{
+		WebServiceURL:    clusterURL,
+		Token:            token,
+		PulsarAPIVersion: common.APIVersion(apiVersion),
 	}
 
 	return pulsar.New(config)
