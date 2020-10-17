@@ -147,8 +147,9 @@ var descriptions map[string]string
 
 func init() {
 	descriptions = map[string]string{
-		"web_service_url":               "Web service url is used to connect to your apache pulsar cluster",
-		"token":                         "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
+		"web_service_url": "Web service url is used to connect to your apache pulsar cluster",
+		"token": `Authentication Token used to grant terraform permissions
+to modify Apace Pulsar Entities`,
 		"api_version":                   "Api Version to be used for the pulsar admin interaction",
 		"tls_trust_certs_file_path":     "Path to a custom trusted TLS certificate file",
 		"tls_allow_insecure_connection": "Boolean flag to accept untrusted TLS certificates",
