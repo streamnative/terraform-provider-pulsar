@@ -51,6 +51,18 @@ func Provider() terraform.ResourceProvider {
 				Default:     "1",
 				Description: descriptions["api_version"],
 			},
+			"tls_trust_certs_file_path": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: descriptions["tls_trust_certs_file_path"],
+				DefaultFunc: schema.EnvDefaultFunc("TLS_TRUST_CERTS_FILE_PATH", nil),
+			},
+			"tls_allow_insecure_connection": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: descriptions["tls_allow_insecure_connection"],
+				DefaultFunc: schema.EnvDefaultFunc("TLS_ALLOW_INSECURE_CONNECTION", false),
+			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"pulsar_tenant":    resourcePulsarTenant(),
@@ -85,6 +97,8 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 	clusterURL := d.Get("web_service_url").(string)
 	token := d.Get("token").(string)
 	pulsarAPIVersion := d.Get("api_version").(string)
+	TLSTrustCertsFilePath := d.Get("tls_trust_certs_file_path").(string)
+	TLSAllowInsecureConnection := d.Get("tls_allow_insecure_connection").(bool)
 
 	apiVersion, err := strconv.Atoi(pulsarAPIVersion)
 	if err != nil {
@@ -92,9 +106,11 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 	}
 
 	config := &common.Config{
-		WebServiceURL:    clusterURL,
-		Token:            token,
-		PulsarAPIVersion: common.APIVersion(apiVersion),
+		WebServiceURL:              clusterURL,
+		Token:                      token,
+		PulsarAPIVersion:           common.APIVersion(apiVersion),
+		TLSTrustCertsFilePath:      TLSTrustCertsFilePath,
+		TLSAllowInsecureConnection: TLSAllowInsecureConnection,
 	}
 
 	return pulsar.New(config)
@@ -131,12 +147,15 @@ var descriptions map[string]string
 
 func init() {
 	descriptions = map[string]string{
-		"web_service_url":  "Web service url is used to connect to your apache pulsar cluster",
-		"token":            "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
-		"api_version":      "Api Version to be used for the pulsar admin interaction",
-		"admin_roles":      "Admin roles to be attached to tenant",
-		"allowed_clusters": "Tenant will be able to interact with these clusters",
-		"namespace":        "Pulsar namespaces are logical groupings of topics",
+		"web_service_url": "Web service url is used to connect to your apache pulsar cluster",
+		"token": `Authentication Token used to grant terraform permissions
+to modify Apace Pulsar Entities`,
+		"api_version":                   "Api Version to be used for the pulsar admin interaction",
+		"tls_trust_certs_file_path":     "Path to a custom trusted TLS certificate file",
+		"tls_allow_insecure_connection": "Boolean flag to accept untrusted TLS certificates",
+		"admin_roles":                   "Admin roles to be attached to tenant",
+		"allowed_clusters":              "Tenant will be able to interact with these clusters",
+		"namespace":                     "Pulsar namespaces are logical groupings of topics",
 		"tenant": `An administrative unit for allocating capacity and enforcing an 
 authentication/authorization scheme`,
 		"namespace_list": "List of namespaces for a given tenant",
