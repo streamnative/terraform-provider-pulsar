@@ -149,6 +149,7 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					testPulsarNamespaceExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "0"),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
 				),
@@ -159,6 +160,7 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					testPulsarNamespaceExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
 				),
@@ -367,6 +369,10 @@ resource "pulsar_namespace" "test" {
     managed_ledger_max_mark_delete_rate   = 0.0
   }
 
+  backlog_quota {
+    limit_bytes  = "10000000000"
+    policy = "producer_request_hold"
+  }
 }
 `, wsURL, cluster, tenant, ns)
 }

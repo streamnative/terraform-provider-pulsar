@@ -111,6 +111,24 @@ func resourcePulsarNamespace() *schema.Resource {
 				},
 				Set: retentionPoliciesToHash,
 			},
+			"backlog_quota": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"limit_bytes": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"policy": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+					},
+				},
+				Set: backlogQuotaToHash,
+			},
 			"namespace_config": {
 				Type:        schema.TypeSet,
 				Optional:    true,
@@ -302,6 +320,20 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 		}))
 	}
 
+	if backlogQuotaCfg, ok := d.GetOk("backlog_quota"); ok && backlogQuotaCfg.(*schema.Set).Len() > 0 {
+		qt, err := client.GetBacklogQuotaMap(ns.String())
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE: GetBacklogQuotaMap: %w", err)
+		}
+
+		_ = d.Set("backlog_quota", schema.NewSet(backlogQuotaToHash, []interface{}{
+			map[string]interface{}{
+				"limit_bytes": strconv.FormatInt(qt[utils.DestinationStorage].Limit, 10),
+				"policy":      string(qt[utils.DestinationStorage].Policy),
+			},
+		}))
+	}
+
 	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
 		dr, err := client.GetDispatchRate(*ns)
 		if err != nil {
@@ -328,6 +360,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 	enableDeduplication, deduplicationDefined := d.GetOk("enable_deduplication")
 	namespaceConfig := d.Get("namespace_config").(*schema.Set)
 	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
+	backlogQuotaConfig := d.Get("backlog_quota").(*schema.Set)
 	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
 	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
 
@@ -379,6 +412,17 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 		}
 	}
 
+	if backlogQuotaConfig.Len() > 0 {
+		backlogQuota, err := unmarshalBacklogQuota(backlogQuotaConfig)
+		if err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("unmarshalBacklogQuota: %w", err))
+		} else {
+			if err = client.SetBacklogQuota(nsName.String(), *backlogQuota); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetBacklogQuota: %w", err))
+			}
+		}
+	}
+
 	if dispatchRateConfig.Len() > 0 {
 		dispatchRate := unmarshalDispatchRate(dispatchRateConfig)
 		if err = client.SetDispatchRate(*nsName, *dispatchRate); err != nil {
@@ -424,6 +468,7 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 	_ = d.Set("enable_deduplication", nil)
 	_ = d.Set("namespace_config", nil)
 	_ = d.Set("retention_policies", nil)
+	_ = d.Set("backlog_quota", nil)
 	_ = d.Set("dispatch_rate", nil)
 	_ = d.Set("persistence_policies", nil)
 
@@ -472,6 +517,17 @@ func retentionPoliciesToHash(v interface{}) int {
 
 	return hashcode.String(buf.String())
 }
+
+func backlogQuotaToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%s-", m["limit_bytes"].(string)))
+	buf.WriteString(fmt.Sprintf("%s-", m["policy"].(string)))
+
+	return hashcode.String(buf.String())
+}
+
 func namespaceConfigToHash(v interface{}) int {
 	var buf bytes.Buffer
 	m := v.(map[string]interface{})
@@ -526,6 +582,39 @@ func unmarshalRetentionPolicies(v *schema.Set) *utils.RetentionPolicies {
 	}
 
 	return &rtnPolicies
+}
+
+func unmarshalBacklogQuota(v *schema.Set) (*utils.BacklogQuota, error) {
+	var bklQuota utils.BacklogQuota
+
+	for _, quota := range v.List() {
+		data := quota.(map[string]interface{})
+		policyStr := data["policy"].(string)
+		limitStr := data["limit_bytes"].(string)
+
+		var policy utils.RetentionPolicy
+		switch policyStr {
+		case "producer_request_hold":
+			policy = utils.ProducerRequestHold
+		case "producer_exception":
+			policy = utils.ProducerException
+		case "consumer_backlog_eviction":
+			policy = utils.ConsumerBacklogEviction
+		default:
+			return &bklQuota, fmt.Errorf("ERROR_INVALID_BACKLOG_QUOTA_POLICY: %v", policyStr)
+		}
+
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			return &bklQuota, fmt.Errorf("ERROR_PARSE_BACKLOG_QUOTA_LIMIT: %w", err)
+		}
+
+		// zero values are fine, even if the ASCII to Int fails
+		bklQuota.Limit = int64(limit)
+		bklQuota.Policy = policy
+	}
+
+	return &bklQuota, nil
 }
 
 func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
