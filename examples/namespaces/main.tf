@@ -67,4 +67,9 @@ resource "pulsar_namespace" "test" {
     retention_minutes    = "1600"
     retention_size_in_mb = "10000"
   }
+
+  backlog_quota {
+    limit_bytes  = "10000000000"
+    policy = "producer_request_hold"
+  }
 }

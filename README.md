@@ -207,6 +207,11 @@ resource "pulsar_namespace" "test" {
     retention_minutes    = "1600"
     retention_size_in_mb = "10000"
   }  
+
+  backlog_quota {
+    limit_bytes  = "10000000000"
+    policy = "consumer_backlog_eviction"
+  }
   
   persistence_policies {
     bookkeeper_ensemble                   = 1   // Number of bookies to use for a topic, default: 0
@@ -227,6 +232,7 @@ resource "pulsar_namespace" "test" {
 | `namespace_config`            | Configuration for your namespaces like max allowed producers to produce messages | No |
 | `dispatch_rate`               | Apache Pulsar throttling config                                   | No |
 | `retention_policies`          | Data retention policies                                           | No |
+| `backlog_quota`               | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics | No |
 | `persistence_policies`        | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace       | No |
 
 ### `pulsar_topic`
