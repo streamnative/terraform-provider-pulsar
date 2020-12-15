@@ -25,6 +25,7 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 
+	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 	"github.com/streamnative/terraform-provider-pulsar/types"
 
@@ -197,6 +198,28 @@ func resourcePulsarNamespace() *schema.Resource {
 				},
 				Set: persistencePoliciesToHash,
 			},
+			"permission_grant": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MinItems: 0,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"role": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"actions": {
+							Type:     schema.TypeSet,
+							Required: true,
+							MinItems: 1,
+							Elem: &schema.Schema{
+								Type:         schema.TypeString,
+								ValidateFunc: validateAuthAction,
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -225,7 +248,7 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err)
 	}
 
-	if err = resourcePulsarNamespaceUpdate(d, meta); err != nil {
+	if err := resourcePulsarNamespaceUpdate(d, meta); err != nil {
 		return fmt.Errorf("ERROR_CREATE_NAMESPACE_CONFIG: %w", err)
 	}
 
@@ -314,8 +337,8 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 
 		_ = d.Set("persistence_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
 			map[string]interface{}{
-				"retention_minutes":    string(ret.RetentionTimeInMinutes),
-				"retention_size_in_mb": string(ret.RetentionSizeInMB),
+				"retention_minutes":    fmt.Sprint(ret.RetentionTimeInMinutes),
+				"retention_size_in_mb": fmt.Sprint(ret.RetentionSizeInMB),
 			},
 		}))
 	}
@@ -349,6 +372,27 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 		}))
 	}
 
+	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.([]interface{})) > 0 {
+		grants, err := client.GetNamespacePermissions(*ns)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err)
+		}
+
+		permissionGrants := []interface{}{}
+		for role, roleActions := range grants {
+			actions := []string{}
+			for _, action := range roleActions {
+				actions = append(actions, action.String())
+			}
+			permissionGrants = append(permissionGrants, map[string]interface{}{
+				"role":    role,
+				"actions": actions,
+			})
+		}
+
+		_ = d.Set("permission_grant", schema.NewSet(permissionGrantToHash, permissionGrants))
+	}
+
 	return nil
 }
 
@@ -363,6 +407,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 	backlogQuotaConfig := d.Get("backlog_quota").(*schema.Set)
 	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
 	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
+	permissionGrantConfig := d.Get("permission_grant").([]interface{})
 
 	nsName, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
@@ -441,6 +486,37 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 		}
 	}
 
+	if d.HasChange("permission_grant") {
+		permissionGrants, err := unmarshalPermissionGrants(permissionGrantConfig)
+		if err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("unmarshalPermissionGrants: %w", err))
+		} else {
+			for _, grant := range permissionGrants {
+				if err = client.GrantNamespacePermission(*nsName, grant.Role, grant.Actions); err != nil {
+					errs = multierror.Append(errs, fmt.Errorf("GrantNamespacePermission: %w", err))
+				}
+			}
+
+			// Revoke permissions for roles removed from the set
+			oldPermissionGrants, _ := d.GetChange("permission_grant")
+			for _, oldGrant := range oldPermissionGrants.([]interface{}) {
+				oldRole := oldGrant.(map[string]interface{})["role"].(string)
+				found := false
+				for _, newGrant := range permissionGrants {
+					if newGrant.Role == oldRole {
+						found = true
+						break
+					}
+				}
+				if !found {
+					if err = client.RevokeNamespacePermission(*nsName, oldRole); err != nil {
+						errs = multierror.Append(errs, fmt.Errorf("RevokeNamespacePermission: %w", err))
+					}
+				}
+			}
+		}
+	}
+
 	if errs != nil {
 		return fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: %w", errs)
 	}
@@ -469,6 +545,7 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 	_ = d.Set("backlog_quota", nil)
 	_ = d.Set("dispatch_rate", nil)
 	_ = d.Set("persistence_policies", nil)
+	_ = d.Set("permission_grant", nil)
 
 	return nil
 }
@@ -547,6 +624,16 @@ func persistencePoliciesToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%d-", m["bookkeeper_write_quorum"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["bookkeeper_ack_quorum"].(int)))
 	buf.WriteString(fmt.Sprintf("%f-", m["managed_ledger_max_mark_delete_rate"].(float64)))
+
+	return hashcode.String(buf.String())
+}
+
+func permissionGrantToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%s-", m["role"].(string)))
+	buf.WriteString(fmt.Sprintf("%s-", m["actions"].([]string)))
 
 	return hashcode.String(buf.String())
 }
@@ -645,4 +732,28 @@ func unmarshalPersistencePolicies(v *schema.Set) *utils.PersistencePolicies {
 	}
 
 	return &persPolicies
+}
+
+func unmarshalPermissionGrants(v []interface{}) ([]*types.PermissionGrant, error) {
+	permissionGrants := make([]*types.PermissionGrant, 0, len(v))
+	for _, grant := range v {
+		data := grant.(map[string]interface{})
+
+		var permissionGrant types.PermissionGrant
+		permissionGrant.Role = data["role"].(string)
+
+		var actions []common.AuthAction
+		for _, action := range data["actions"].(*schema.Set).List() {
+			authAction, err := common.ParseAuthAction(action.(string))
+			if err != nil {
+				return nil, fmt.Errorf("ERROR_INVALID_AUTH_ACTION: %w", err)
+			}
+			actions = append(actions, authAction)
+		}
+		permissionGrant.Actions = actions
+
+		permissionGrants = append(permissionGrants, &permissionGrant)
+	}
+
+	return permissionGrants, nil
 }

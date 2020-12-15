@@ -17,6 +17,8 @@
 
 package types
 
+import "github.com/streamnative/pulsarctl/pkg/pulsar/common"
+
 type (
 	// configurable features of the Pulsar Namespace Entity via Terraform
 	NamespaceConfig struct {
@@ -30,5 +32,10 @@ type (
 	SplitNS struct {
 		Bundle             string
 		UnloadSplitBundles bool
+	}
+
+	PermissionGrant struct {
+		Role    string
+		Actions []common.AuthAction
 	}
 )
