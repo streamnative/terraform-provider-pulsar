@@ -312,10 +312,10 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetRetention: %w", err)
 		}
 
-		_ = d.Set("persistence_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
+		_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
 			map[string]interface{}{
-				"retention_minutes":    string(ret.RetentionTimeInMinutes),
-				"retention_size_in_mb": string(ret.RetentionSizeInMB),
+				"retention_minutes":    fmt.Sprint(ret.RetentionTimeInMinutes),
+				"retention_size_in_mb": fmt.Sprint(ret.RetentionSizeInMB),
 			},
 		}))
 	}
@@ -340,7 +340,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetDispatchRate: %w", err)
 		}
 
-		_ = d.Set("persistence_policies", schema.NewSet(dispatchRateToHash, []interface{}{
+		_ = d.Set("dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
 			map[string]interface{}{
 				"dispatch_msg_throttling_rate":  dr.DispatchThrottlingRateInMsg,
 				"rate_period_seconds":           dr.RatePeriodInSecond,
