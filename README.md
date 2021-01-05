@@ -42,9 +42,9 @@ Requirements
 Installation
 ------------
 
-* Clone this repository and cd into the directory 
-* Run `make build`, it will out a file named `terraform-provider-pulsar` 
-* Copy this `terraform-provider-pulsar` bin file to your [terraform plugin directory][third-party-plugins] 
+* Clone this repository and cd into the directory
+* Run `make build`, it will out a file named `terraform-provider-pulsar`
+* Copy this `terraform-provider-pulsar` bin file to your [terraform plugin directory][third-party-plugins]
 * Typically this plugin directory is `~/.terraform.d/plugins/`
 * On Linux based 64-bit devices, this directory can be `~/.terraform.d/plugins/linux_amd64`
 
@@ -206,18 +206,23 @@ resource "pulsar_namespace" "test" {
   retention_policies {
     retention_minutes    = "1600"
     retention_size_in_mb = "10000"
-  }  
+  }
 
   backlog_quota {
     limit_bytes  = "10000000000"
     policy = "consumer_backlog_eviction"
   }
-  
+
   persistence_policies {
     bookkeeper_ensemble                   = 1   // Number of bookies to use for a topic, default: 0
     bookkeeper_write_quorum               = 1   // How many writes to make of each entry, default: 0
     bookkeeper_ack_quorum                 = 1   // Number of acks (guaranteed copies) to wait for each entry, default: 0
     managed_ledger_max_mark_delete_rate   = 0.0 // Throttling rate of mark-delete operation (0 means no throttle), default: 0.0
+  }
+
+  permission_grant {
+    role    = "some-role"
+    actions = ["produce", "consume", "functions"]
   }
 }
 ```
@@ -234,6 +239,7 @@ resource "pulsar_namespace" "test" {
 | `retention_policies`          | Data retention policies                                           | No |
 | `backlog_quota`               | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics | No |
 | `persistence_policies`        | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace       | No |
+| `permission_grant`            | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No |
 
 ### `pulsar_topic`
 

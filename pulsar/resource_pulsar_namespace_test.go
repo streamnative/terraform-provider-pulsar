@@ -114,6 +114,7 @@ func TestNamespaceWithUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "0"),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
+					resource.TestCheckNoResourceAttr(resourceName, "permission_grant"),
 				),
 			},
 			{
@@ -124,6 +125,16 @@ func TestNamespaceWithUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "enable_deduplication", "true"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1794959023", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2136722963", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2136722963", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2556735720", "produce"),
 				),
 			},
 		},
@@ -152,6 +163,7 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "0"),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
+					resource.TestCheckNoResourceAttr(resourceName, "permission_grant"),
 				),
 			},
 			{
@@ -163,8 +175,72 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
+					resource.TestCheckNoResourceAttr(resourceName, "permission_grant"),
 				),
 				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestNamespaceWithPermissionGrantUpdate(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:      func() { testAccPreCheck(t) },
+		Providers:     testAccProviders,
+		IDRefreshName: resourceName,
+		CheckDestroy:  testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckNoResourceAttr(resourceName, "permission_grant"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithPermissionGrants(testWebServiceURL, cName, tName, nsName,
+					`permission_grant {
+						role 		= "some-role-1"
+						actions = ["produce", "consume", "functions"]
+					}
+
+					permission_grant {
+						role 		= "some-role-2"
+						actions = ["produce", "consume"]
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1794959023", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2136722963", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2136722963", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2556735720", "produce"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithPermissionGrants(testWebServiceURL, cName, tName, nsName,
+					`permission_grant {
+						role 		= "some-role-2"
+						actions = ["produce"]
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+				),
 			},
 		},
 	})
@@ -247,8 +323,8 @@ func testNamespaceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 8 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 8, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 9 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 9, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -372,7 +448,17 @@ resource "pulsar_namespace" "test" {
   backlog_quota {
     limit_bytes  = "10000000000"
     policy = "producer_request_hold"
-  }
+	}
+
+	permission_grant {
+		role 		= "some-role-1"
+		actions = ["produce", "consume", "functions"]
+	}
+
+	permission_grant {
+		role 		= "some-role-2"
+		actions = ["produce", "consume"]
+	}
 }
 `, wsURL, cluster, tenant, ns)
 }
@@ -423,4 +509,35 @@ resource "pulsar_namespace" "test" {
   namespace = "%s"
 }
 `, wsURL, ns)
+}
+
+func testPulsarNamespaceWithPermissionGrants(wsURL, cluster, tenant, ns string, permissionGrants string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+  cluster = "%s"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "%s"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+	namespace = "%s"
+
+	%s
+}
+`, wsURL, cluster, tenant, ns, permissionGrants)
 }

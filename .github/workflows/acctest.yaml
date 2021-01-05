@@ -21,7 +21,7 @@ jobs:
           export PATH=$PATH:$(pwd)/bin
           wget https://releases.hashicorp.com/terraform/0.12.17/terraform_0.12.17_linux_amd64.zip
           unzip terraform_0.12.17_linux_amd64.zip && sudo mv terraform /usr/local/bin
-          docker run -d -p 6650:6650 -p 8080:8080 -v $PWD/data:/pulsar/data apachepulsar/pulsar:2.4.1 bin/pulsar standalone
+          docker run -d -p 6650:6650 -p 8080:8080 -v $PWD/data:/pulsar/data apachepulsar/pulsar:2.7.0 bin/pulsar standalone
           mkdir -p $HOME/.terraform.d/plugins/linux_amd64
           sleep 10
 

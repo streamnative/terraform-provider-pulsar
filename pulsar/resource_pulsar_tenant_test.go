@@ -173,7 +173,8 @@ provider "pulsar" {
 }
 
 resource "pulsar_tenant" "test" {
-  tenant = "thanos"
+	tenant = "thanos"
+	allowed_clusters = ["standalone"]
 }`, testWebServiceURL)
 )
 
@@ -184,7 +185,7 @@ provider "pulsar" {
 }
 
 resource "pulsar_tenant" "test" {
-	tenant = "%s"	
+	tenant = "%s"
 	allowed_clusters = ["something"]
 }
 `, url, tname)
