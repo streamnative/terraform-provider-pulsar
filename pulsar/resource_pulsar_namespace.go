@@ -25,7 +25,6 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 	"github.com/streamnative/terraform-provider-pulsar/types"
 
@@ -378,19 +377,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err)
 		}
 
-		permissionGrants := []interface{}{}
-		for role, roleActions := range grants {
-			actions := []string{}
-			for _, action := range roleActions {
-				actions = append(actions, action.String())
-			}
-			permissionGrants = append(permissionGrants, map[string]interface{}{
-				"role":    role,
-				"actions": actions,
-			})
-		}
-
-		_ = d.Set("permission_grant", schema.NewSet(permissionGrantToHash, permissionGrants))
+		setPermissionGrant(d, grants)
 	}
 
 	return nil
@@ -628,16 +615,6 @@ func persistencePoliciesToHash(v interface{}) int {
 	return hashcode.String(buf.String())
 }
 
-func permissionGrantToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(fmt.Sprintf("%s-", m["role"].(string)))
-	buf.WriteString(fmt.Sprintf("%s-", m["actions"].([]string)))
-
-	return hashcode.String(buf.String())
-}
-
 func unmarshalDispatchRate(v *schema.Set) *utils.DispatchRate {
 	var dispatchRate utils.DispatchRate
 
@@ -732,28 +709,4 @@ func unmarshalPersistencePolicies(v *schema.Set) *utils.PersistencePolicies {
 	}
 
 	return &persPolicies
-}
-
-func unmarshalPermissionGrants(v []interface{}) ([]*types.PermissionGrant, error) {
-	permissionGrants := make([]*types.PermissionGrant, 0, len(v))
-	for _, grant := range v {
-		data := grant.(map[string]interface{})
-
-		var permissionGrant types.PermissionGrant
-		permissionGrant.Role = data["role"].(string)
-
-		var actions []common.AuthAction
-		for _, action := range data["actions"].(*schema.Set).List() {
-			authAction, err := common.ParseAuthAction(action.(string))
-			if err != nil {
-				return nil, fmt.Errorf("ERROR_INVALID_AUTH_ACTION: %w", err)
-			}
-			actions = append(actions, authAction)
-		}
-		permissionGrant.Actions = actions
-
-		permissionGrants = append(permissionGrants, &permissionGrant)
-	}
-
-	return permissionGrants, nil
 }

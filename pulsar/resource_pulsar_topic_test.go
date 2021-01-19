@@ -77,9 +77,69 @@ func TestImportExistingTopic(t *testing.T) {
 			{
 				ResourceName:     "pulsar_topic.test",
 				ImportState:      true,
-				Config:           testPulsarExistingTopicConfig(testWebServiceURL, tname, ttype, pnum),
+				Config:           testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
 				ImportStateId:    fullID,
 				ImportStateCheck: testTopicImported(),
+			},
+		},
+	})
+}
+
+func TestNonPartionedTopicWithPermissionGrantUpdate(t *testing.T) {
+	testTopicWithPermissionGrantUpdate(t, 0)
+}
+
+func TestPartionedTopicWithPermissionGrantUpdate(t *testing.T) {
+	testTopicWithPermissionGrantUpdate(t, 10)
+}
+
+func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum,
+					`permission_grant {
+						role 		= "some-role-1"
+						actions = ["produce", "consume", "functions"]
+					}
+					permission_grant {
+						role 		= "some-role-2"
+						actions = ["produce", "consume"]
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1794959023", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2136722963", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2136722963", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2556735720", "produce"),
+				),
+			},
+			{
+				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum,
+					`permission_grant {
+						role 		= "some-role-2"
+						actions = ["produce"]
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+				),
 			},
 		},
 	})
@@ -155,8 +215,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 6 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 6, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 7 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 7, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -225,7 +285,7 @@ resource "pulsar_topic" "sample-topic-4" {
 `, testWebServiceURL)
 )
 
-func testPulsarExistingTopicConfig(url, tname, ttype string, pnum int) string {
+func testPulsarTopic(url, tname, ttype string, pnum int, permissionGrants string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
 	web_service_url = "%s"
@@ -236,7 +296,9 @@ resource "pulsar_topic" "test" {
   namespace  = "default"
   topic_type = "%s"
   topic_name = "%s"
-  partitions = %d
+	partitions = %d
+
+	%s
 }
-`, url, ttype, tname, pnum)
+`, url, ttype, tname, pnum, permissionGrants)
 }
