@@ -258,6 +258,11 @@ resource "pulsar_topic" "sample-topic-1" {
   topic_type = "persistent"
   topic_name = "partition-topic"
   partitions = 4                     # partitions > 0 means this is a partition topic
+
+  permission_grant {
+    role    = "some-role"
+    actions = ["produce", "consume", "functions"]
+  }
 }
 
 resource "pulsar_topic" "sample-topic-2" {
@@ -266,8 +271,24 @@ resource "pulsar_topic" "sample-topic-2" {
   topic_type = "persistent"
   topic_name = "non-partition-topic"
   partitions = 0                     # partitions = 0 means this is a non-partition topic
+
+  permission_grant {
+    role    = "some-role"
+    actions = ["produce", "consume", "functions"]
+  }
 }
 ```
+
+#### Properties
+
+| Property                      | Description                                                       | Required                   |
+| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
+| `tenant`                      | Name of the Tenant managing this topic                            | Yes
+| `namespace`                   | Name of the Namespace for this topic                              | Yes
+| `topic_type`                  | Topic persistence (`persistent`, `non-persistent`)                | Yes
+| `topic_name`                  | Name of the topic                                                 | Yes
+| `partitions`                  | Number of [partitions](https://pulsar.apache.org/docs/en/concepts-messaging/#partitioned-topics) (`0` for non-partitioned topic, `> 1` for partitioned topic) | Yes
+| `permission_grant`            | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No |
 
 
 Importing existing resources

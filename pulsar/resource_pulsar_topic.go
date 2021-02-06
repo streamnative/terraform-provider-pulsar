@@ -64,6 +64,28 @@ func resourcePulsarTopic() *schema.Resource {
 				Description:  descriptions["partitions"],
 				ValidateFunc: validateGtEq0,
 			},
+			"permission_grant": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MinItems: 0,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"role": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"actions": {
+							Type:     schema.TypeSet,
+							Required: true,
+							MinItems: 1,
+							Elem: &schema.Schema{
+								Type:         schema.TypeString,
+								ValidateFunc: validateAuthAction,
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -71,22 +93,15 @@ func resourcePulsarTopic() *schema.Resource {
 func resourcePulsarTopicImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	topic, err := utils.GetTopicName(d.Id())
 	if err != nil {
-		return nil, err
-	}
-
-	client := meta.(pulsar.Client).Topics()
-
-	tm, err := client.GetMetadata(*topic)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err)
 	}
 
 	_ = d.Set("tenant", topic.GetTenant())
 	_ = d.Set("namespace", topic.GetNamespace())
 	_ = d.Set("topic_type", topic.GetDomain())
 	_ = d.Set("topic_name", topic.GetLocalName())
-	_ = d.Set("partitions", tm.Partitions)
 
+	err = resourcePulsarTopicRead(d, meta)
 	return []*schema.ResourceData{d}, err
 }
 
@@ -112,40 +127,59 @@ func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("ERROR_CREATE_TOPIC: %w", err)
 	}
 
+	err = updatePermissionGrant(d, meta, topicName)
+	if err != nil {
+		return fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err)
+	}
+
 	return resourcePulsarTopicRead(d, meta)
 }
 
 func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
+	client := meta.(pulsar.Client).Topics()
+
 	topicName, found, err := getTopic(d, meta)
 	if !found || err != nil {
 		d.SetId("")
 		return nil
 	}
-
 	d.SetId(topicName.String())
+
+	tm, err := client.GetMetadata(*topicName)
+	if err != nil {
+		return fmt.Errorf("ERROR_READ_TOPIC: GetMetadata: %w", err)
+	}
+
+	_ = d.Set("tenant", topicName.GetTenant())
+	_ = d.Set("namespace", topicName.GetNamespace())
+	_ = d.Set("topic_type", topicName.GetDomain())
+	_ = d.Set("topic_name", topicName.GetLocalName())
+	_ = d.Set("partitions", tm.Partitions)
+
+	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.([]interface{})) > 0 {
+		grants, err := client.GetPermissions(*topicName)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_TOPIC: GetPermissions: %w", err)
+		}
+
+		setPermissionGrant(d, grants)
+	}
+
 	return nil
 }
 
 func resourcePulsarTopicUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Topics()
-
 	topicName, partitions, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
 		return err
 	}
 
-	// Note: only partition number in partitioned-topic can apply update
-	// For more info: https://github.com/streamnative/pulsarctl/blob/master/pkg/pulsar/topic.go#L36-L39
-	if partitions == 0 {
-		return errors.New("ERROR_UPDATE_TOPIC: only partition topic can apply update")
+	if d.HasChange("partitions") {
+		updatePartitions(d, meta, topicName, partitions)
 	}
-	_, find, err := getTopic(d, meta)
-	if !find || err != nil {
-		return errors.New("ERROR_UPDATE_TOPIC: only partitions number support update")
-	}
-	err = client.Update(*topicName, partitions)
-	if err != nil {
-		return fmt.Errorf("ERROR_UPDATE_TOPIC: %w", err)
+
+	if d.HasChange("permission_grant") {
+		updatePermissionGrant(d, meta, topicName)
 	}
 
 	return resourcePulsarTopicRead(d, meta)
@@ -237,4 +271,61 @@ func unmarshalPartitions(d *schema.ResourceData) (int, error) {
 	}
 
 	return partitions, nil
+}
+
+func updatePermissionGrant(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	client := meta.(pulsar.Client).Topics()
+
+	permissionGrantConfig := d.Get("permission_grant").([]interface{})
+	permissionGrants, err := unmarshalPermissionGrants(permissionGrantConfig)
+
+	if err != nil {
+		return fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: unmarshalPermissionGrants: %w", err)
+	}
+
+	for _, grant := range permissionGrants {
+		if err = client.GrantPermission(*topicName, grant.Role, grant.Actions); err != nil {
+			return fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: GrantPermission: %w", err)
+		}
+	}
+
+	// Revoke permissions for roles removed from the set
+	oldPermissionGrants, _ := d.GetChange("permission_grant")
+	for _, oldGrant := range oldPermissionGrants.([]interface{}) {
+		oldRole := oldGrant.(map[string]interface{})["role"].(string)
+		found := false
+		for _, newGrant := range permissionGrants {
+			if newGrant.Role == oldRole {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if err = client.RevokePermission(*topicName, oldRole); err != nil {
+				return fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: RevokePermission: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName, partitions int) error {
+	client := meta.(pulsar.Client).Topics()
+
+	// Note: only partition number in partitioned-topic can apply update
+	// For more info: https://github.com/streamnative/pulsarctl/blob/master/pkg/pulsar/topic.go#L36-L39
+	if partitions == 0 {
+		return errors.New("ERROR_UPDATE_TOPIC_PARTITIONS: only partition topic can apply update")
+	}
+	_, find, err := getTopic(d, meta)
+	if !find || err != nil {
+		return errors.New("ERROR_UPDATE_TOPIC_PARTITIONS: only partitions number support update")
+	}
+	err = client.Update(*topicName, partitions)
+	if err != nil {
+		return fmt.Errorf("ERROR_UPDATE_TOPIC_PARTITIONS: %w", err)
+	}
+
+	return nil
 }
