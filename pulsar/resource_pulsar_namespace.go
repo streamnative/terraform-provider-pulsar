@@ -175,7 +175,7 @@ func resourcePulsarNamespace() *schema.Resource {
 						"schema_compatibility_strategy": {
 							Type:         schema.TypeString,
 							Optional:     true,
-							Default:      false,
+							Default:      "Full",
 							ValidateFunc: validateNotBlank,
 						},
 					},
@@ -463,10 +463,8 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 			strategy, err := utils.ParseSchemaAutoUpdateCompatibilityStrategy(nsCfg.SchemaCompatibilityStrategy)
 			if err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
-			} else {
-				if err = client.SetSchemaAutoUpdateCompatibilityStrategy(*nsName, strategy); err != nil {
-					errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
-				}
+			} else if err = client.SetSchemaAutoUpdateCompatibilityStrategy(*nsName, strategy); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
 			}
 		}
 	}
