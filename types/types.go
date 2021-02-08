@@ -27,6 +27,8 @@ type (
 		MaxConsumersPerTopic        int
 		MaxProducersPerTopic        int
 		MaxConsumersPerSubscription int
+		SchemaValidationEnforce     bool
+		SchemaCompatibilityStrategy string
 	}
 
 	SplitNS struct {
