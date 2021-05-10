@@ -27,6 +27,7 @@ type (
 		MaxConsumersPerTopic        int
 		MaxProducersPerTopic        int
 		MaxConsumersPerSubscription int
+		MessageTTL                  int
 		SchemaValidationEnforce     bool
 		SchemaCompatibilityStrategy string
 	}
