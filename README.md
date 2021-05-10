@@ -85,12 +85,12 @@ provider "pulsar" {
 }
 ```
 
-| Property                      | Description                                                                                                           | Required    |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `web_service_url`             | URL of your Apache Pulsar Cluster                             | `Yes` |
-| `token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled| `No`       |
-| `tls_trust_certs_file_path` | Path to a custom trusted TLS certificate file | `No`       |
-| `tls_allow_insecure_connection` | Boolean flag to accept untrusted TLS certificates | `No`       |
+| Property                        | Description                                                                                                            | Required |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------- |
+| `web_service_url`               | URL of your Apache Pulsar Cluster                                                                                      | `Yes`    |
+| `token`                         | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled | `No`     |
+| `tls_trust_certs_file_path`     | Path to a custom trusted TLS certificate file                                                                          | `No`     |
+| `tls_allow_insecure_connection` | Boolean flag to accept untrusted TLS certificates                                                                      | `No`     |
 
 Resources
 ------------
@@ -115,11 +115,11 @@ resource "pulsar_tenant" "my_tenant" {
 
 #### Properties
 
-| Property                      | Description                                         | Required                   |
-| ----------------------------- | --------------------------------------------------- |----------------------------|
-| `tenant`                      | Name of the Tenant that you want to create          | Yes
-| `allowed_clusters`            | An Array of clusters, accessible by this tenant     | No
-| `admin_roles`                 | Admin Roles to be assumed by this Tenant            | No
+| Property           | Description                                     | Required |
+| ------------------ | ----------------------------------------------- | -------- |
+| `tenant`           | Name of the Tenant that you want to create      | Yes      |
+| `allowed_clusters` | An Array of clusters, accessible by this tenant | No       |
+| `admin_roles`      | Admin Roles to be assumed by this Tenant        | No       |
 
 ### `pulsar_cluster`
 
@@ -145,15 +145,15 @@ resource "pulsar_cluster" "my_cluster" {
 
 #### Properties
 
-| Property                      | Description                                                       | Required                   |
-| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
-| `cluster`                     | Name of the Cluster that you want to create                       | Yes
-| `cluster_data`                | A Map of required fields for the cluster                          | Yes
-| `web_service_url`             | Required in cluster data, pointing to your broker web service     | Yes
-| `web_service_url_tls`         | Pointing to your broker web service via tls                       | No
-| `broker_service_url`          | Required in cluster data for broker discovery                     | Yes
-| `broker_service_url_tls`      | Required in cluster data for broker discovery via tls             | No
-| `peer_clusters`               | Required in cluster data for adding peer clusters                 | Yes
+| Property                 | Description                                                   | Required |
+| ------------------------ | ------------------------------------------------------------- | -------- |
+| `cluster`                | Name of the Cluster that you want to create                   | Yes      |
+| `cluster_data`           | A Map of required fields for the cluster                      | Yes      |
+| `web_service_url`        | Required in cluster data, pointing to your broker web service | Yes      |
+| `web_service_url_tls`    | Pointing to your broker web service via tls                   | No       |
+| `broker_service_url`     | Required in cluster data for broker discovery                 | Yes      |
+| `broker_service_url_tls` | Required in cluster data for broker discovery via tls         | No       |
+| `peer_clusters`          | Required in cluster data for adding peer clusters             | Yes      |
 
 ### `pulsar_namespace`
 
@@ -194,6 +194,7 @@ resource "pulsar_namespace" "test" {
     max_consumers_per_subscription = "50"
     max_consumers_per_topic        = "50"
     max_producers_per_topic        = "50"
+    message_ttl                    = "50"
     replication_clusters           = ["standalone"]
   }
 
@@ -229,19 +230,19 @@ resource "pulsar_namespace" "test" {
 
 #### Properties
 
-| Property                        | Description                                                       | Required                   |
-| ------------------------------- | ----------------------------------------------------------------- |----------------------------|
-| `tenant`                        | Name of the Tenant managing this namespace                        | Yes
-| `namespace`                     | name of the namespace                                             | Yes
-| `enable_deduplication`          | Message deduplication state on a namespace                        | No |
-| `namespace_config`              | Configuration for your namespaces like max allowed producers to produce messages | No |
-| `dispatch_rate`                 | Apache Pulsar throttling config                                   | No |
-| `retention_policies`            | Data retention policies                                           | No |
-| `schema_validation_enforce`     | Enable or disable schema validation                               | No |
-| `schema_compatibility_strategy` | Set schema compatibility strategy                                 | No |
-| `backlog_quota`                 | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics | No |
-| `persistence_policies`          | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace       | No |
-| `permission_grant`              | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No |
+| Property                        | Description                                                                                                                                               | Required |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `tenant`                        | Name of the Tenant managing this namespace                                                                                                                | Yes      |
+| `namespace`                     | name of the namespace                                                                                                                                     | Yes      |
+| `enable_deduplication`          | Message deduplication state on a namespace                                                                                                                | No       |
+| `namespace_config`              | Configuration for your namespaces like max allowed producers to produce messages                                                                          | No       |
+| `dispatch_rate`                 | Apache Pulsar throttling config                                                                                                                           | No       |
+| `retention_policies`            | Data retention policies                                                                                                                                   | No       |
+| `schema_validation_enforce`     | Enable or disable schema validation                                                                                                                       | No       |
+| `schema_compatibility_strategy` | Set schema compatibility strategy                                                                                                                         | No       |
+| `backlog_quota`                 | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics                                        | No       |
+| `persistence_policies`          | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace           | No       |
+| `permission_grant`              | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No       |
 
 ##### `schema_compatibility_strategy`
 
@@ -294,14 +295,14 @@ resource "pulsar_topic" "sample-topic-2" {
 
 #### Properties
 
-| Property                      | Description                                                       | Required                   |
-| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
-| `tenant`                      | Name of the Tenant managing this topic                            | Yes
-| `namespace`                   | Name of the Namespace for this topic                              | Yes
-| `topic_type`                  | Topic persistence (`persistent`, `non-persistent`)                | Yes
-| `topic_name`                  | Name of the topic                                                 | Yes
-| `partitions`                  | Number of [partitions](https://pulsar.apache.org/docs/en/concepts-messaging/#partitioned-topics) (`0` for non-partitioned topic, `> 1` for partitioned topic) | Yes
-| `permission_grant`            | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No |
+| Property           | Description                                                                                                                                                                                                             | Required |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `tenant`           | Name of the Tenant managing this topic                                                                                                                                                                                  | Yes      |
+| `namespace`        | Name of the Namespace for this topic                                                                                                                                                                                    | Yes      |
+| `topic_type`       | Topic persistence (`persistent`, `non-persistent`)                                                                                                                                                                      | Yes      |
+| `topic_name`       | Name of the topic                                                                                                                                                                                                       | Yes      |
+| `partitions`       | Number of [partitions](https://pulsar.apache.org/docs/en/concepts-messaging/#partitioned-topics) (`0` for non-partitioned topic, `> 1` for partitioned topic)                                                           | Yes      |
+| `permission_grant` | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No       |
 
 
 Importing existing resources
