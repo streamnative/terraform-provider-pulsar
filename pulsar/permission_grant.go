@@ -21,9 +21,9 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 	"github.com/streamnative/terraform-provider-pulsar/types"
 )
 
@@ -37,9 +37,10 @@ func permissionGrantToHash(v interface{}) int {
 	return hashcode.String(buf.String())
 }
 
-func unmarshalPermissionGrants(v []interface{}) ([]*types.PermissionGrant, error) {
-	permissionGrants := make([]*types.PermissionGrant, 0, len(v))
-	for _, grant := range v {
+func unmarshalPermissionGrants(v *schema.Set) ([]*types.PermissionGrant, error) {
+	grants := v.List()
+	permissionGrants := make([]*types.PermissionGrant, 0, len(grants))
+	for _, grant := range grants {
 		data := grant.(map[string]interface{})
 
 		var permissionGrant types.PermissionGrant

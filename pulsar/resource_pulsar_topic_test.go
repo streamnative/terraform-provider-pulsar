@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
@@ -119,13 +119,13 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1794959023", "functions"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2", "produce"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.1", "produce"),
 				),
 			},
 			{
@@ -139,7 +139,7 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "produce"),
 				),
 			},
 		},
@@ -147,7 +147,7 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 }
 
 func testPulsarTopicDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(pulsar.Client).Topics()
+	client := getClientV2FromMeta(testAccProvider.Meta()).Topics()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_topic" {
@@ -194,7 +194,7 @@ func testPulsarTopicExists(topic string) resource.TestCheckFunc {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: %w", err)
 		}
 
-		client := testAccProvider.Meta().(pulsar.Client).Topics()
+		client := getClientV2FromMeta(testAccProvider.Meta()).Topics()
 
 		_, retentionPoliciesFound := rs.Primary.Attributes["retention_policies.#"]
 		if retentionPoliciesFound && topicName.IsPersistent() {

@@ -24,8 +24,7 @@ import (
 
 	"github.com/streamnative/pulsarctl/pkg/cli"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
 
@@ -66,7 +65,7 @@ func resourcePulsarTenant() *schema.Resource {
 }
 
 func resourcePulsarTenantExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := meta.(pulsar.Client).Tenants()
+	client := getClientV2FromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
@@ -84,7 +83,7 @@ func resourcePulsarTenantExists(d *schema.ResourceData, meta interface{}) (bool,
 }
 
 func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Tenants()
+	client := getClientV2FromMeta(meta).Tenants()
 
 	ok, err := resourcePulsarTenantExists(d, meta)
 	if err != nil {
@@ -113,7 +112,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Tenants()
+	client := getClientV2FromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
@@ -131,7 +130,7 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Tenants()
+	client := getClientV2FromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
@@ -153,7 +152,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Tenants()
+	client := getClientV2FromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
@@ -171,7 +170,7 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 }
 
 func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientV2FromMeta(meta).Namespaces()
 
 	nsList, err := client.GetNamespaces(tenant)
 	if err != nil {
