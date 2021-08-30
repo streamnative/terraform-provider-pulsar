@@ -22,10 +22,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 )
 
@@ -128,13 +128,13 @@ func TestNamespaceWithUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1794959023", "functions"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2", "produce"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.1", "produce"),
 				),
 			},
 		},
@@ -219,13 +219,13 @@ func TestNamespaceWithPermissionGrantUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1794959023", "functions"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2", "produce"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.1", "produce"),
 				),
 			},
 			{
@@ -239,7 +239,7 @@ func TestNamespaceWithPermissionGrantUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "produce"),
 				),
 			},
 		},
@@ -291,7 +291,7 @@ func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 			return fmt.Errorf("NOT_FOUND: %s", ns)
 		}
 
-		client := testAccProvider.Meta().(pulsar.Client).Namespaces()
+		client := getClientV2FromMeta(testAccProvider.Meta()).Namespaces()
 
 		if rs.Primary.ID == "" || !strings.Contains(rs.Primary.ID, "/") {
 			return fmt.Errorf(`ERROR_NAMESPACE_ID_INVALID: "%s"`, rs.Primary.ID)
@@ -323,8 +323,8 @@ func testNamespaceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 9 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 9, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 10 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 10, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -332,7 +332,7 @@ func testNamespaceImported() resource.ImportStateCheckFunc {
 }
 
 func testPulsarNamespaceDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(pulsar.Client).Namespaces()
+	client := getClientV2FromMeta(testAccProvider.Meta()).Namespaces()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_namespace" {
