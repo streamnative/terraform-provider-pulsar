@@ -1,0 +1,40 @@
+{
+  "//": {
+    "metadata": {
+      "version": "0.6.3",
+      "stackName": "cdktf-local",
+      "backend": "local"
+    }
+  },
+  "terraform": {
+    "required_providers": {
+      "pulsar": {
+        "version": "~>1.0.0",
+        "source": "quantummetric/pulsar"
+      }
+    }
+  },
+  "provider": {
+    "pulsar": [
+      {
+        "web_service_url": "http://localhost:8080"
+      }
+    ]
+  },
+  "resource": {
+    "pulsar_tenant": {
+      "my-tenant": {
+        "allowed_clusters": [
+          "standalone"
+        ],
+        "tenant": "my-tenant",
+        "//": {
+          "metadata": {
+            "path": "cdktf-local/my-tenant",
+            "uniqueId": "my-tenant"
+          }
+        }
+      }
+    }
+  }
+}

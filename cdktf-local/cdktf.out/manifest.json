@@ -1,0 +1,12 @@
+{
+  "version": "0.6.3",
+  "stacks": {
+    "cdktf-local": {
+      "name": "cdktf-local",
+      "constructPath": "cdktf-local",
+      "workingDirectory": "stacks/cdktf-local",
+      "synthesizedStackPath": "stacks/cdktf-local/cdk.tf.json",
+      "annotations": []
+    }
+  }
+}
