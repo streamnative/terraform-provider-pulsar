@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/url"
-	"os"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
@@ -210,27 +209,29 @@ func getCertificateFromVault(addr, token, role, pki string, skipTLSVerify bool) 
 		return
 	}
 
-	crtFile, errTmpCrt := ioutil.TempFile("terraform-provider-pulsar", "pki_*.crt")
+	crtFile, errTmpCrt := ioutil.TempFile("", "pki_*.crt")
 	if errTmpCrt != nil {
 		err = errors.Wrap(errTmpCrt, "unable to create temporary .crt file")
 		return
 	}
+	defer crtFile.Close()
 	certPath = crtFile.Name()
 
-	errWriteCrt := os.WriteFile(certPath, response.Data.Certificate, 0644)
+	_, errWriteCrt := crtFile.Write(response.Data.Certificate)
 	if errWriteCrt != nil {
 		err = errors.Wrap(errWriteCrt, "unable to output certificate to .crt file")
 		return
 	}
 
-	keyFile, errTmpKey := ioutil.TempFile("terraform-provider-pulsar", "pki_*.key")
+	keyFile, errTmpKey := ioutil.TempFile("", "pki_*.key")
 	if errTmpKey != nil {
 		err = errors.Wrap(errTmpKey, "unable to create temporary .key file")
 		return
 	}
+	defer crtFile.Close()
 	keyPath = keyFile.Name()
 
-	errWriteKey := os.WriteFile(keyPath, response.Data.PrivateKey, 0644)
+	_, errWriteKey := keyFile.Write(response.Data.PrivateKey)
 	if errWriteKey != nil {
 		err = errors.Wrap(errWriteKey, "unable to output key to .key file")
 		return
