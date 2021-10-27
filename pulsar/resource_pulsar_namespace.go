@@ -114,20 +114,8 @@ func resourcePulsarNamespace() *schema.Resource {
 			"backlog_quota": {
 				Type:     schema.TypeSet,
 				Optional: true,
-				MaxItems: 1,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"limit_bytes": {
-							Type:     schema.TypeString,
-							Required: true,
-						},
-						"policy": {
-							Type:     schema.TypeString,
-							Required: true,
-						},
-					},
-				},
-				Set: backlogQuotaToHash,
+				Elem:     schemaBacklogQuotaSubset(),
+				Set:      hashBacklogQuotaSubset(),
 			},
 			"namespace_config": {
 				Type:        schema.TypeSet,
@@ -166,17 +154,6 @@ func resourcePulsarNamespace() *schema.Resource {
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
-						},
-						"schema_validation_enforce": {
-							Type:     schema.TypeBool,
-							Optional: true,
-							Default:  false,
-						},
-						"schema_compatibility_strategy": {
-							Type:         schema.TypeString,
-							Optional:     true,
-							Default:      "Full",
-							ValidateFunc: validateNotBlank,
 						},
 					},
 				},
@@ -301,14 +278,6 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err)
 		}
-		schemaValidationEnforce, err := client.GetSchemaValidationEnforced(*ns)
-		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaValidationEnforced: %w", err)
-		}
-		schemaCompatibilityStrategy, err := client.GetSchemaAutoUpdateCompatibilityStrategy(*ns)
-		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaAutoUpdateCompatibilityStrategy: %w", err)
-		}
 
 		replClustersRaw, err := client.GetNamespaceReplicationClusters(ns.String())
 		if err != nil {
@@ -327,8 +296,6 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 				"max_consumers_per_topic":        maxConsPerTopic,
 				"max_producers_per_topic":        maxProdPerTopic,
 				"replication_clusters":           replClusters,
-				"schema_validation_enforce":      schemaValidationEnforce,
-				"schema_compatibility_strategy":  schemaCompatibilityStrategy.String(),
 			},
 		}))
 	}
@@ -369,12 +336,17 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetBacklogQuotaMap: %w", err)
 		}
 
-		_ = d.Set("backlog_quota", schema.NewSet(backlogQuotaToHash, []interface{}{
-			map[string]interface{}{
-				"limit_bytes": strconv.FormatInt(qt[utils.DestinationStorage].Limit, 10),
-				"policy":      string(qt[utils.DestinationStorage].Policy),
-			},
-		}))
+		var backlogQuotas []interface{}
+		for backlogQuotaType, data := range qt {
+			backlogQuotas = append(backlogQuotas, map[string]interface{}{
+				"limit_bytes":   strconv.FormatInt(data.LimitSize, 10),
+				"limit_seconds": strconv.FormatInt(data.LimitTime, 10),
+				"policy":        string(data.Policy),
+				"type":          string(backlogQuotaType),
+			})
+		}
+
+		_ = d.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), backlogQuotas))
 	}
 
 	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
@@ -456,17 +428,6 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 				errs = multierror.Append(errs, fmt.Errorf("SetMaxProducersPerTopic: %w", err))
 			}
 		}
-		if err = client.SetSchemaValidationEnforced(*nsName, nsCfg.SchemaValidationEnforce); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("SetSchemaValidationEnforced: %w", err))
-		}
-		if len(nsCfg.SchemaCompatibilityStrategy) > 0 {
-			strategy, err := utils.ParseSchemaAutoUpdateCompatibilityStrategy(nsCfg.SchemaCompatibilityStrategy)
-			if err != nil {
-				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
-			} else if err = client.SetSchemaAutoUpdateCompatibilityStrategy(*nsName, strategy); err != nil {
-				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
-			}
-		}
 	}
 
 	if retentionPoliciesConfig.Len() > 0 {
@@ -477,11 +438,16 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 	}
 
 	if backlogQuotaConfig.Len() > 0 {
-		backlogQuota, err := unmarshalBacklogQuota(backlogQuotaConfig)
+		backlogQuotas, err := unmarshalBacklogQuota(backlogQuotaConfig)
 		if err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("unmarshalBacklogQuota: %w", err))
-		} else if err = client.SetBacklogQuota(nsName.String(), *backlogQuota); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("SetBacklogQuota: %w", err))
+		} else {
+			for _, item := range backlogQuotas {
+				err = client.SetBacklogQuota(nsName.String(), item.BacklogQuota, item.backlogQuotaType)
+				if err != nil {
+					errs = multierror.Append(errs, fmt.Errorf("SetBacklogQuota: %w", err))
+				}
+			}
 		}
 	}
 
@@ -612,16 +578,6 @@ func retentionPoliciesToHash(v interface{}) int {
 	return hashcode.String(buf.String())
 }
 
-func backlogQuotaToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(fmt.Sprintf("%s-", m["limit_bytes"].(string)))
-	buf.WriteString(fmt.Sprintf("%s-", m["policy"].(string)))
-
-	return hashcode.String(buf.String())
-}
-
 func namespaceConfigToHash(v interface{}) int {
 	var buf bytes.Buffer
 	m := v.(map[string]interface{})
@@ -631,8 +587,6 @@ func namespaceConfigToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%d-", m["max_consumers_per_topic"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["max_producers_per_topic"].(int)))
 	buf.WriteString(fmt.Sprintf("%s-", m["replication_clusters"].([]interface{})))
-	buf.WriteString(fmt.Sprintf("%t-", m["schema_validation_enforce"].(bool)))
-	buf.WriteString(fmt.Sprintf("%s-", m["schema_compatibility_strategy"].(string)))
 
 	return hashcode.String(buf.String())
 }
@@ -680,39 +634,6 @@ func unmarshalRetentionPolicies(v *schema.Set) *utils.RetentionPolicies {
 	return &rtnPolicies
 }
 
-func unmarshalBacklogQuota(v *schema.Set) (*utils.BacklogQuota, error) {
-	var bklQuota utils.BacklogQuota
-
-	for _, quota := range v.List() {
-		data := quota.(map[string]interface{})
-		policyStr := data["policy"].(string)
-		limitStr := data["limit_bytes"].(string)
-
-		var policy utils.RetentionPolicy
-		switch policyStr {
-		case "producer_request_hold":
-			policy = utils.ProducerRequestHold
-		case "producer_exception":
-			policy = utils.ProducerException
-		case "consumer_backlog_eviction":
-			policy = utils.ConsumerBacklogEviction
-		default:
-			return &bklQuota, fmt.Errorf("ERROR_INVALID_BACKLOG_QUOTA_POLICY: %v", policyStr)
-		}
-
-		limit, err := strconv.Atoi(limitStr)
-		if err != nil {
-			return &bklQuota, fmt.Errorf("ERROR_PARSE_BACKLOG_QUOTA_LIMIT: %w", err)
-		}
-
-		// zero values are fine, even if the ASCII to Int fails
-		bklQuota.Limit = int64(limit)
-		bklQuota.Policy = policy
-	}
-
-	return &bklQuota, nil
-}
-
 func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
 	var nsConfig types.NamespaceConfig
 
@@ -725,8 +646,6 @@ func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
 		nsConfig.MaxConsumersPerTopic = data["max_consumers_per_topic"].(int)
 		nsConfig.MaxConsumersPerSubscription = data["max_consumers_per_subscription"].(int)
 		nsConfig.AntiAffinity = data["anti_affinity"].(string)
-		nsConfig.SchemaValidationEnforce = data["schema_validation_enforce"].(bool)
-		nsConfig.SchemaCompatibilityStrategy = data["schema_compatibility_strategy"].(string)
 	}
 
 	return &nsConfig

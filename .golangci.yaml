@@ -8,11 +8,9 @@ linters:
     - deadcode
     - gocritic
     - goimports
-    - golint
     - gosimple
     - govet
     - ineffassign
-    - interfacer
     - misspell
     - staticcheck
     - structcheck
@@ -24,4 +22,3 @@ linters:
     - varcheck
     - lll
     - prealloc
-    - maligned

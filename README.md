@@ -37,7 +37,7 @@ Requirements
 ------------
 
 - [Terraform](https://www.terraform.io/downloads.html) 0.10+
-- [Go](https://golang.org/doc/install) 1.13 (to build the provider plugin)
+- [Go](https://golang.org/doc/install) 1.16 or higher (to build the provider plugin)
 
 Installation
 ------------
@@ -52,14 +52,11 @@ Installation
 Testing the Apache Pulsar Terraform Provider
 ------------
 
-* change directory to the project </path/to/provider/terraform-provider-pulsar>
-* Make sure you have the required tools installed. Run `make tools`
+* Change directory to the project </path/to/provider/terraform-provider-pulsar>
 * In order to test the provider, you can run `make test`
-
 * In order to run the full suite of Acceptance tests, run `make testacc`
 
 `Note: Acceptance tests create real resources, and often cost money to run.`
-
 
 
 Provider Configuration
@@ -87,11 +84,11 @@ provider "pulsar" {
 
 | Property                      | Description                                                                                                           | Required    |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `web_service_url`             | URL of your Apache Pulsar Cluster                             | `Yes` |
-| `token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled| `No`       |
-| `tls_trust_certs_file_path` | Path to a custom trusted TLS certificate file | `No`       |
-| `tls_allow_insecure_connection` | Boolean flag to accept untrusted TLS certificates | `No`       |
-
+| `web_service_url`             | URL of your Apache Pulsar Cluster                             | Yes |
+| `token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled| No       |
+| `tls_trust_certs_file_path` | Path to a custom trusted TLS certificate file | No       |
+| `tls_allow_insecure_connection` | Boolean flag to accept untrusted TLS certificates | No       |
+| `api_version`| Used to request Apache Pulsar API service, default by 0, which represents use default version | No |      
 Resources
 ------------
 
@@ -210,7 +207,9 @@ resource "pulsar_namespace" "test" {
 
   backlog_quota {
     limit_bytes  = "10000000000"
+    limit_seconds = "-1"
     policy = "consumer_backlog_eviction"
+    type = "destination_storage"
   }
 
   persistence_policies {

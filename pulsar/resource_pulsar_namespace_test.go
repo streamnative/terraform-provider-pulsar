@@ -447,7 +447,9 @@ resource "pulsar_namespace" "test" {
 
   backlog_quota {
     limit_bytes  = "10000000000"
+    limit_seconds = "-1"
     policy = "producer_request_hold"
+    type = "destination_storage"
 	}
 
 	permission_grant {
