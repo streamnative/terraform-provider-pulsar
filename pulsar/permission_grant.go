@@ -21,10 +21,10 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/golgeek/terraform-provider-pulsar/types"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
-	"github.com/streamnative/terraform-provider-pulsar/types"
 )
 
 func permissionGrantToHash(v interface{}) int {

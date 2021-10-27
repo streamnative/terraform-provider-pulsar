@@ -19,13 +19,19 @@ package pulsar
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/url"
+	"os"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"github.com/pkg/errors"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+
+	vault "github.com/hashicorp/vault/api"
+	vaultgo "github.com/mittwald/vaultgo"
 )
 
 const DefaultPulsarAPIVersion string = "0" // 0 will automatically match the default api version
@@ -65,6 +71,36 @@ func Provider() terraform.ResourceProvider {
 				Description: descriptions["tls_allow_insecure_connection"],
 				DefaultFunc: schema.EnvDefaultFunc("TLS_ALLOW_INSECURE_CONNECTION", false),
 			},
+			"vault_address": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("VAULT_ADDR", nil),
+				Description: "URL of the root of the target Vault server.",
+			},
+			"vault_token": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("VAULT_TOKEN", ""),
+				Description: "Token to use to authenticate to Vault.",
+			},
+			"vault_role": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("VAULT_ROLE", ""),
+				Description: "Role to use to get to a certificate from Vault.",
+			},
+			"vault_pki": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("VAULT_PKI", ""),
+				Description: "PKI to use to get a certificate from Vault.",
+			},
+			"vault_skip_tls_verify": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("VAULT_SKIP_VERIFY", false),
+				Description: "Set this to true only if the target Vault server is an insecure development instance.",
+			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"pulsar_tenant":    resourcePulsarTenant(),
@@ -102,6 +138,12 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 	TLSTrustCertsFilePath := d.Get("tls_trust_certs_file_path").(string)
 	TLSAllowInsecureConnection := d.Get("tls_allow_insecure_connection").(bool)
 
+	vaultAddr := d.Get("vault_address").(string)
+	vaultToken := d.Get("vault_token").(string)
+	vaultRole := d.Get("vault_role").(string)
+	vaultPki := d.Get("vault_pki").(string)
+	vaultSkipTLSVerify := d.Get("vault_skip_tls_verify").(bool)
+
 	apiVersion, err := strconv.Atoi(pulsarAPIVersion)
 	if err != nil {
 		return nil, err
@@ -115,7 +157,86 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 		TLSAllowInsecureConnection: TLSAllowInsecureConnection,
 	}
 
+	if vaultAddr != "" && vaultToken != "" && vaultRole != "" && vaultPki != "" {
+		// Get certificate from Vault
+		crtPath, keyPath, errVault := getCertificateFromVault(vaultAddr, vaultToken, vaultRole, vaultPki, vaultSkipTLSVerify)
+		if errVault != nil {
+			return nil, errVault
+		}
+
+		config.TLSCertFile = crtPath
+		config.TLSKeyFile = keyPath
+	}
+
 	return pulsar.New(config)
+}
+
+func getCertificateFromVault(addr, token, role, pki string, skipTLSVerify bool) (keyPath, certPath string, err error) {
+
+	c, errVaultClient := vaultgo.NewClient(
+		addr,
+		&vaultgo.TLSConfig{
+			TLSConfig: &vault.TLSConfig{
+				Insecure: skipTLSVerify,
+			},
+		},
+	)
+	if errVaultClient != nil {
+		err = errors.Wrap(errVaultClient, "failed to init vault client")
+		return
+	}
+
+	if token != "" {
+		c.SetToken(token)
+	}
+
+	body := map[string]string{
+		"common_name": "terraform-provider-pulsar",
+		"ttl":         "15m",
+	}
+	type vaultPkiIssueResponse struct {
+		Data struct {
+			Certificate []byte   `json:"certificate"`
+			IssuingCA   []byte   `json:"issuing_ca"`
+			CAChain     [][]byte `json:"ca_chain"`
+			PrivateKey  []byte   `json:"private_key"`
+		} `json:"data"`
+	}
+	var response vaultPkiIssueResponse
+
+	errPost := c.Write([]string{fmt.Sprintf("v1/%s/issue/%s", pki, role)}, &body, &response, nil)
+	if errPost != nil {
+		err = errors.Wrap(errPost, "unable to request certificate from Vault")
+		return
+	}
+
+	crtFile, errTmpCrt := ioutil.TempFile("terraform-provider-pulsar", "pki_*.crt")
+	if errTmpCrt != nil {
+		err = errors.Wrap(errTmpCrt, "unable to create temporary .crt file")
+		return
+	}
+	certPath = crtFile.Name()
+
+	errWriteCrt := os.WriteFile(certPath, response.Data.Certificate, 0644)
+	if errWriteCrt != nil {
+		err = errors.Wrap(errWriteCrt, "unable to output certificate to .crt file")
+		return
+	}
+
+	keyFile, errTmpKey := ioutil.TempFile("terraform-provider-pulsar", "pki_*.key")
+	if errTmpKey != nil {
+		err = errors.Wrap(errTmpKey, "unable to create temporary .key file")
+		return
+	}
+	keyPath = keyFile.Name()
+
+	errWriteKey := os.WriteFile(keyPath, response.Data.PrivateKey, 0644)
+	if errWriteKey != nil {
+		err = errors.Wrap(errWriteKey, "unable to output key to .key file")
+		return
+	}
+
+	return
 }
 
 func validatePulsarConfig(d *schema.ResourceData) error {

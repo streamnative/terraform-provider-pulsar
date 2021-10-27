@@ -18,8 +18,8 @@
 package main
 
 import (
+	"github.com/golgeek/terraform-provider-pulsar/pulsar"
 	"github.com/hashicorp/terraform-plugin-sdk/plugin"
-	"github.com/streamnative/terraform-provider-pulsar/pulsar"
 )
 
 func main() {

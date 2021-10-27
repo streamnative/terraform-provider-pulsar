@@ -25,8 +25,8 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 
+	"github.com/golgeek/terraform-provider-pulsar/types"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
-	"github.com/streamnative/terraform-provider-pulsar/types"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
