@@ -28,6 +28,8 @@ import (
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
 )
 
+const DefaultPulsarAPIVersion string = "0" // 0 will automatically match the default api version
+
 // Provider returns a terraform.ResourceProvider
 func Provider() terraform.ResourceProvider {
 
@@ -48,7 +50,7 @@ func Provider() terraform.ResourceProvider {
 			"api_version": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Default:     "1",
+				Default:     DefaultPulsarAPIVersion,
 				Description: descriptions["api_version"],
 			},
 			"tls_trust_certs_file_path": {
@@ -102,7 +104,7 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, e
 
 	apiVersion, err := strconv.Atoi(pulsarAPIVersion)
 	if err != nil {
-		apiVersion = 1
+		return nil, err
 	}
 
 	config := &common.Config{
@@ -121,23 +123,6 @@ func validatePulsarConfig(d *schema.ResourceData) error {
 
 	if _, err := url.Parse(webServiceURL); err != nil {
 		return fmt.Errorf("ERROR_PULSAR_CONFIG_INVALID_WEB_SERVICE_URL: %w", err)
-	}
-
-	apiVersion, ok := d.Get("api_version").(string)
-	if !ok {
-		_ = d.Set("api_version", "1")
-	}
-
-	switch apiVersion {
-	case "0":
-		_ = d.Set("api_version", "0")
-	case "1":
-		// (@TODO pulsarctl) 1 is for v2, in pulsarctl, Version is set with iota, it should be iota+1
-		_ = d.Set("api_version", "1")
-	case "2":
-		_ = d.Set("api_version", "2")
-	default:
-		_ = d.Set("api_version", "1")
 	}
 
 	return nil
