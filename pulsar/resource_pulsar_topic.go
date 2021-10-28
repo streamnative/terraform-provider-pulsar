@@ -86,6 +86,23 @@ func resourcePulsarTopic() *schema.Resource {
 					},
 				},
 			},
+			"retention_policies": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"retention_minutes": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"retention_size_in_mb": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -132,6 +149,19 @@ func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err)
 	}
 
+	if topicName.IsPersistent() {
+		err = updateRetentionPolicies(d, meta, topicName)
+		if err != nil {
+			return fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err)
+		}
+	} else {
+		retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
+		if retentionPoliciesConfig.Len() != 0 {
+			return fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: " +
+				"unsupported set retention policies for non-persistent topic")
+		}
+	}
+
 	return resourcePulsarTopicRead(d, meta)
 }
 
@@ -165,6 +195,23 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 		setPermissionGrant(d, grants)
 	}
 
+	if retPoliciesCfg, ok := d.GetOk("retention_policies"); ok && retPoliciesCfg.(*schema.Set).Len() > 0 {
+		if topicName.IsPersistent() {
+
+			ret, err := client.GetRetention(*topicName, true)
+			if err != nil {
+				return fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err)
+			}
+
+			_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
+				map[string]interface{}{
+					"retention_minutes":    fmt.Sprint(ret.RetentionTimeInMinutes),
+					"retention_size_in_mb": fmt.Sprint(ret.RetentionSizeInMB),
+				},
+			}))
+		}
+	}
+
 	return nil
 }
 
@@ -175,11 +222,24 @@ func resourcePulsarTopicUpdate(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	if d.HasChange("partitions") {
-		updatePartitions(d, meta, topicName, partitions)
+		err := updatePartitions(d, meta, topicName, partitions)
+		if err != nil {
+			return err
+		}
 	}
 
 	if d.HasChange("permission_grant") {
-		updatePermissionGrant(d, meta, topicName)
+		err := updatePermissionGrant(d, meta, topicName)
+		if err != nil {
+			return err
+		}
+	}
+
+	if d.HasChange("retention_policies") {
+		err := updateRetentionPolicies(d, meta, topicName)
+		if err != nil {
+			return err
+		}
 	}
 
 	return resourcePulsarTopicRead(d, meta)
@@ -305,6 +365,24 @@ func updatePermissionGrant(d *schema.ResourceData, meta interface{}, topicName *
 				return fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: RevokePermission: %w", err)
 			}
 		}
+	}
+
+	return nil
+}
+
+func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	client := meta.(pulsar.Client).Topics()
+
+	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
+	if !topicName.IsPersistent() {
+		return errors.New("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: " +
+			"unsupported set retention policies for non-persistent topic")
+	}
+
+	retentionPolicies := unmarshalRetentionPolicies(retentionPoliciesConfig)
+
+	if err := client.SetRetention(*topicName, *retentionPolicies); err != nil {
+		return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
 	}
 
 	return nil

@@ -275,6 +275,11 @@ resource "pulsar_topic" "sample-topic-1" {
     role    = "some-role"
     actions = ["produce", "consume", "functions"]
   }
+
+  retention_policies {
+    retention_minutes    = "1600"
+    retention_size_in_mb = "20000"
+  }
 }
 
 resource "pulsar_topic" "sample-topic-2" {
@@ -287,6 +292,11 @@ resource "pulsar_topic" "sample-topic-2" {
   permission_grant {
     role    = "some-role"
     actions = ["produce", "consume", "functions"]
+  }
+
+  retention_policies {
+    retention_minutes    = "1600"
+    retention_size_in_mb = "20000"
   }
 }
 ```
@@ -301,6 +311,7 @@ resource "pulsar_topic" "sample-topic-2" {
 | `topic_name`                  | Name of the topic                                                 | Yes
 | `partitions`                  | Number of [partitions](https://pulsar.apache.org/docs/en/concepts-messaging/#partitioned-topics) (`0` for non-partitioned topic, `> 1` for partitioned topic) | Yes
 | `permission_grant`            | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No |
+| `retention_policies`          | Data retention policies                                           | No |
 
 
 Importing existing resources
