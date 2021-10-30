@@ -1,6 +1,6 @@
 # Visit https://goreleaser.com for documentation on how to customize this
 # behavior.
-project_name: pulsar
+project_name: terraform-provider-pulsar
 before:
   hooks:
     # this is just an example and not a requirement for provider building/publishing
@@ -15,7 +15,7 @@ builds:
   flags:
     - -trimpath
   ldflags:
-    - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
+    - '-s -w'
   goos:
     - freebsd
     - windows
