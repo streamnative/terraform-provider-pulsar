@@ -21,6 +21,8 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"github.com/streamnative/pulsarctl/pkg/cli"
+
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/pkg/errors"
 	ctlutil "github.com/streamnative/pulsarctl/pkg/ctl/utils"
@@ -38,7 +40,21 @@ func resourcePulsarSink() *schema.Resource {
 		Delete: resourcePulsarSinkDelete,
 		Exists: resourcePulsarSinkExists,
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+				id := d.Id()
+
+				parts := strings.Split(id, "/")
+				if len(parts) != 3 {
+					return nil, errors.New("id should be tenant/namespace/name format")
+				}
+
+				_ = d.Set("tenant", parts[0])
+				_ = d.Set("namespace", parts[1])
+				_ = d.Set("name", parts[1])
+
+				err := resourcePulsarSinkRead(d, meta)
+				return []*schema.ResourceData{d}, err
+			},
 		},
 		Schema: map[string]*schema.Schema{
 			"tenant": {
@@ -159,7 +175,7 @@ func resourcePulsarSink() *schema.Resource {
 				Description: descriptions["auto_ack"],
 			},
 			"timeout_ms": {
-				Type:        schema.TypeFloat,
+				Type:        schema.TypeInt,
 				Required:    false,
 				Description: descriptions["timeout_ms"],
 			},
@@ -172,25 +188,209 @@ func resourcePulsarSink() *schema.Resource {
 	}
 }
 
-func resourcePulsarSinkExists(data *schema.ResourceData, i interface{}) (bool, error) {
-	return false, nil
+func resourcePulsarSinkExists(d *schema.ResourceData, meta interface{}) (bool, error) {
+	client := meta.(pulsar.Client).Sinks()
+
+	tenant := d.Get("tenant").(string)
+	namespace := d.Get("namespace").(string)
+	name := d.Get("name").(string)
+
+	_, err := client.GetSink(tenant, namespace, name)
+	if err != nil {
+		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+			// sink doesn't exist.
+			return false, nil
+		}
+
+		return false, errors.Wrapf(err, "failed to get sink")
+	}
+
+	return true, nil
 }
 
-func resourcePulsarSinkDelete(data *schema.ResourceData, i interface{}) error {
-	return nil
+func resourcePulsarSinkDelete(d *schema.ResourceData, meta interface{}) error {
+	client := meta.(pulsar.Client).Sinks()
+
+	tenant := d.Get("tenant").(string)
+	namespace := d.Get("namespace").(string)
+	name := d.Get("name").(string)
+
+	return client.DeleteSink(tenant, namespace, name)
 }
 
-func resourcePulsarSinkUpdate(data *schema.ResourceData, i interface{}) error {
-	return nil
+func resourcePulsarSinkUpdate(d *schema.ResourceData, meta interface{}) error {
+	client := meta.(pulsar.Client).Sinks()
+	sinkConfig, err := getSinkConfig(d)
+	if err != nil {
+		return err
+	}
+
+	updateOptions := utils.NewUpdateOptions()
+	if !ctlutil.IsPackageURLSupported(sinkConfig.Archive) &&
+		!strings.HasPrefix(sinkConfig.Archive, ctlutil.BUILTIN) {
+		return client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
+	} else {
+		return client.UpdateSinkWithURL(sinkConfig, sinkConfig.Archive, updateOptions)
+	}
 }
 
-func resourcePulsarSinkRead(data *schema.ResourceData, i interface{}) error {
+func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
+	client := meta.(pulsar.Client).Sinks()
+
+	tenant := d.Get("tenant").(string)
+	namespace := d.Get("namespace").(string)
+	name := d.Get("name").(string)
+
+	sinkConfig, err := client.GetSink(tenant, namespace, name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %s sink from %s/%s", name, tenant, namespace)
+	}
+
+	//sinkConfig.Inputs
+	var inputs []interface{}
+	for _, input := range sinkConfig.Inputs {
+		inputs = append(inputs, input)
+	}
+
+	err = d.Set("inputs", inputs)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set inputs")
+	}
+
+	err = d.Set("topics_pattern", sinkConfig.TopicsPattern)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set topics_pattern")
+	}
+
+	err = d.Set("subscription_name", sinkConfig.SourceSubscriptionName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set subscription_name")
+	}
+
+	err = d.Set("subscription_position", sinkConfig.SourceSubscriptionPosition)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set subscription_position")
+	}
+
+	customSerdeInputs := make(map[string]interface{}, len(sinkConfig.TopicToSerdeClassName))
+	for key, value := range sinkConfig.TopicToSerdeClassName {
+		customSerdeInputs[key] = value
+	}
+	err = d.Set("custom_serde_inputs", customSerdeInputs)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set custom_serde_inputs")
+	}
+
+	customSchemaInputs := make(map[string]interface{}, len(sinkConfig.TopicToSchemaType))
+	for key, value := range sinkConfig.TopicToSchemaType {
+		customSchemaInputs[key] = value
+	}
+	err = d.Set("custom_schema_inputs", customSchemaInputs)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set custom_schema_inputs")
+	}
+
+	inputSpecs := make(map[string]interface{}, len(sinkConfig.InputSpecs))
+	if len(sinkConfig.InputSpecs) > 0 {
+		for key, config := range sinkConfig.InputSpecs {
+			value := make(map[string]interface{})
+			value["schema_type"] = config.SchemaType
+			value["serde_class_name"] = config.SerdeClassName
+			value["is_regex_pattern"] = config.IsRegexPattern
+			value["receiver_queue_size"] = config.ReceiverQueueSize
+			inputSpecs[key] = value
+		}
+	}
+
+	err = d.Set("input_specs", inputSpecs)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set input_specs")
+	}
+
+	err = d.Set("processing_guarantees", sinkConfig.ProcessingGuarantees)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set processing_guarantees")
+	}
+
+	err = d.Set("retain_ordering", sinkConfig.RetainOrdering)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set retain_ordering")
+	}
+
+	err = d.Set("parallelism", sinkConfig.Parallelism)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set parallelism")
+	}
+
+	err = d.Set("archive", sinkConfig.Archive)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set archive")
+	}
+
+	err = d.Set("classname", sinkConfig.ClassName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set classname")
+	}
+
+	if sinkConfig.Resources != nil {
+		err = d.Set("cpu", sinkConfig.Resources.CPU)
+		if err != nil {
+			return errors.Wrapf(err, "failed to set cpu")
+		}
+
+		err = d.Set("ram", float64(sinkConfig.Resources.RAM))
+		if err != nil {
+			return errors.Wrapf(err, "failed to set ram")
+		}
+
+		err = d.Set("disk", float64(sinkConfig.Resources.Disk))
+		if err != nil {
+			return errors.Wrapf(err, "failed to set disk")
+		}
+	}
+
+	err = d.Set("sink_config", sinkConfig.Configs)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set sink_config")
+	}
+
+	err = d.Set("auto_ack", sinkConfig.AutoAck)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set auto_ack")
+	}
+
+	if sinkConfig.TimeoutMs != nil {
+		err = d.Set("timeout_ms", int(*sinkConfig.TimeoutMs))
+		if err != nil {
+			return errors.Wrapf(err, "failed to set timeout_ms")
+		}
+	}
+
+	err = d.Set("custom_runtime_options", sinkConfig.CustomRuntimeOptions)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set custom_runtime_options")
+	}
+
 	return nil
 }
 
 func resourcePulsarSinkCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Sinks()
 
+	sinkConfig, err := getSinkConfig(d)
+	if err != nil {
+		return err
+	}
+
+	if !ctlutil.IsPackageURLSupported(sinkConfig.Archive) &&
+		!strings.HasPrefix(sinkConfig.Archive, ctlutil.BUILTIN) {
+		return client.CreateSink(sinkConfig, sinkConfig.Archive)
+	} else {
+		return client.CreateSinkWithURL(sinkConfig, sinkConfig.Archive)
+	}
+}
+
+func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 	sinkConfig := &utils.SinkConfig{}
 
 	if configFilePathInter, ok := d.GetOk("sink_config_file"); ok {
@@ -198,12 +398,12 @@ func resourcePulsarSinkCreate(d *schema.ResourceData, meta interface{}) error {
 
 		bytes, err := ioutil.ReadFile(configFilePath)
 		if err != nil {
-			return errors.Wrapf(err, "failed to read config file: %s", configFilePath)
+			return nil, errors.Wrapf(err, "failed to read config file: %s", configFilePath)
 		}
 
 		err = yaml.Unmarshal(bytes, &sinkConfig)
 		if err != nil {
-			return errors.Wrapf(err, "failed to parse the config file: %s", configFilePath)
+			return nil, errors.Wrapf(err, "failed to parse the config file: %s", configFilePath)
 		}
 		// continue to override the sink config
 	}
@@ -315,6 +515,7 @@ func resourcePulsarSinkCreate(d *schema.ResourceData, meta interface{}) error {
 	if inter, ok := d.GetOk("archive"); ok {
 		sinkConfig.Archive = inter.(string)
 	}
+
 	if inter, ok := d.GetOk("classname"); ok {
 		sinkConfig.ClassName = inter.(string)
 	}
@@ -359,16 +560,13 @@ func resourcePulsarSinkCreate(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	if inter, ok := d.GetOk("timeout_ms"); ok {
-		sinkConfig.AutoAck = inter.(bool)
+		value := int64(inter.(int))
+		sinkConfig.TimeoutMs = &value
 	}
 
 	if inter, ok := d.GetOk("custom_runtime_options"); ok {
 		sinkConfig.CustomRuntimeOptions = inter.(string)
 	}
 
-	if !ctlutil.IsPackageURLSupported(sinkConfig.Archive) && !strings.HasPrefix(sinkConfig.Archive, ctlutil.BUILTIN) {
-		return client.CreateSink(sinkConfig, sinkConfig.Archive)
-	} else {
-		return client.CreateSinkWithURL(sinkConfig, sinkConfig.Archive)
-	}
+	return sinkConfig, nil
 }
