@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
 
@@ -194,6 +195,27 @@ func testPulsarTopicExists(topic string) resource.TestCheckFunc {
 		}
 
 		client := testAccProvider.Meta().(pulsar.Client).Topics()
+
+		_, retentionPoliciesFound := rs.Primary.Attributes["retention_policies.#"]
+		if retentionPoliciesFound && topicName.IsPersistent() {
+			<-time.After(3 * time.Second)
+			retention, err := client.GetRetention(*topicName, true)
+			if err != nil {
+				return fmt.Errorf("ERROR_READ_RETENTION: %w", err)
+			}
+
+			retentionSizeInMB := int64(20000)
+			retentionTimeInMinutes := 1600
+			if retention.RetentionSizeInMB != retentionSizeInMB {
+				return fmt.Errorf("%s retentionSizeInMB should be %d, but got %d",
+					topicName, retentionSizeInMB, retention.RetentionSizeInMB)
+			}
+			if retention.RetentionTimeInMinutes != retentionTimeInMinutes {
+				return fmt.Errorf("%s retentionTimeInMinutes should be %d, but got %d",
+					topicName, retentionTimeInMinutes, retention.RetentionTimeInMinutes)
+			}
+		}
+
 		partitionedTopics, nonPartitionedTopics, err := client.List(*namespace)
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_TOPIC_DATA: %w", err)
@@ -215,8 +237,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 7 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 7, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 8 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 8, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -249,6 +271,11 @@ resource "pulsar_topic" "sample-topic-1" {
   topic_type = "persistent"
   topic_name = "partitioned-persistent-topic"
   partitions = 4
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
 }
 
 resource "pulsar_topic" "sample-topic-2" {
@@ -271,6 +298,11 @@ resource "pulsar_topic" "sample-topic-3" {
   topic_type = "persistent"
   topic_name = "non-partitioned-persistent-topic"
   partitions = 0
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
 }
 
 resource "pulsar_topic" "sample-topic-4" {
@@ -299,6 +331,11 @@ resource "pulsar_topic" "test" {
 	partitions = %d
 
 	%s
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
 }
 `, url, ttype, tname, pnum, permissionGrants)
 }
