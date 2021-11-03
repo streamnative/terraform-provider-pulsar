@@ -18,7 +18,7 @@
 package pulsar
 
 import (
-	"io/ioutil"
+	"fmt"
 	"strings"
 
 	"github.com/streamnative/pulsarctl/pkg/cli"
@@ -28,8 +28,6 @@ import (
 	ctlutil "github.com/streamnative/pulsarctl/pkg/ctl/utils"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
-
-	"gopkg.in/yaml.v2"
 )
 
 func resourcePulsarSink() *schema.Resource {
@@ -74,64 +72,67 @@ func resourcePulsarSink() *schema.Resource {
 			},
 			"inputs": {
 				Type:        schema.TypeSet,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["inputs"],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"topics_pattern": {
 				Type:        schema.TypeString,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["topics_pattern"],
 			},
 			"subscription_name": {
 				Type:        schema.TypeString,
-				Required:    true,
+				Optional:    true,
 				Description: descriptions["subscription_name"],
 			},
 			"subscription_position": {
 				Type:        schema.TypeString,
-				Required:    true,
+				Optional:    true,
 				Description: descriptions["subscription_position"],
 			},
 			"custom_serde_inputs": {
 				Type:        schema.TypeMap,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["custom_serde_inputs"],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"custom_schema_inputs": {
 				Type:        schema.TypeMap,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["custom_schema_inputs"],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
+			// terraform doesn't nested map, so use TypeSet.
 			"input_specs": {
-				Type:        schema.TypeMap,
-				Required:    false,
+				Type:        schema.TypeSet,
+				Optional:    true,
 				Description: descriptions["input_specs"],
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"schema_type":         {Type: schema.TypeString},
-						"serde_class_name":    {Type: schema.TypeString},
-						"is_regex_pattern":    {Type: schema.TypeBool},
-						"receiver_queue_size": {Type: schema.TypeInt},
+						"key":                 {Type: schema.TypeString, Required: true},
+						"schema_type":         {Type: schema.TypeString, Required: true},
+						"serde_class_name":    {Type: schema.TypeString, Required: true},
+						"is_regex_pattern":    {Type: schema.TypeBool, Required: true},
+						"receiver_queue_size": {Type: schema.TypeInt, Required: true},
 					},
 				},
 			},
 			"processing_guarantees": {
 				Type:        schema.TypeString,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["processing_guarantees"],
 			},
 			"retain_ordering": {
 				Type:        schema.TypeBool,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["retain_ordering"],
 			},
 			"parallelism": {
 				Type:        schema.TypeInt,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["parallelism"],
+				Default:     1,
 			},
 			"archive": {
 				Type:        schema.TypeString,
@@ -140,48 +141,43 @@ func resourcePulsarSink() *schema.Resource {
 			},
 			"classname": {
 				Type:        schema.TypeString,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["classname"],
-			},
-			"sink_config_file": {
-				Type:        schema.TypeString,
-				Required:    false,
-				Description: descriptions["sink_config_file"],
 			},
 			"cpu": {
 				Type:        schema.TypeFloat,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["cpu"],
 			},
 			"ram": {
 				Type:        schema.TypeFloat,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["ram"],
 			},
 			"disk": {
 				Type:        schema.TypeFloat,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["disk"],
 			},
-			"sink_config": {
+			"configs": {
 				Type:        schema.TypeMap,
-				Required:    false,
-				Description: descriptions["sink_config"],
+				Optional:    true,
+				Description: descriptions["configs"],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"auto_ack": {
 				Type:        schema.TypeBool,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["auto_ack"],
 			},
 			"timeout_ms": {
 				Type:        schema.TypeInt,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["timeout_ms"],
 			},
 			"custom_runtime_options": {
 				Type:        schema.TypeString,
-				Required:    false,
+				Optional:    true,
 				Description: descriptions["custom_runtime_options"],
 			},
 		},
@@ -241,15 +237,16 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 	namespace := d.Get("namespace").(string)
 	name := d.Get("name").(string)
 
+	d.SetId(fmt.Sprintf("%s/%s/%s", tenant, namespace, name))
+
 	sinkConfig, err := client.GetSink(tenant, namespace, name)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get %s sink from %s/%s", name, tenant, namespace)
 	}
 
-	//sinkConfig.Inputs
-	var inputs []interface{}
-	for _, input := range sinkConfig.Inputs {
-		inputs = append(inputs, input)
+	inputs := make([]string, len(sinkConfig.Inputs))
+	for index, input := range sinkConfig.Inputs {
+		inputs[index] = input
 	}
 
 	err = d.Set("inputs", inputs)
@@ -290,15 +287,17 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 		return errors.Wrapf(err, "failed to set custom_schema_inputs")
 	}
 
-	inputSpecs := make(map[string]interface{}, len(sinkConfig.InputSpecs))
+	var inputSpecs []interface{}
+
 	if len(sinkConfig.InputSpecs) > 0 {
 		for key, config := range sinkConfig.InputSpecs {
-			value := make(map[string]interface{})
-			value["schema_type"] = config.SchemaType
-			value["serde_class_name"] = config.SerdeClassName
-			value["is_regex_pattern"] = config.IsRegexPattern
-			value["receiver_queue_size"] = config.ReceiverQueueSize
-			inputSpecs[key] = value
+			item := make(map[string]interface{})
+			item["key"] = key
+			item["schema_type"] = config.SchemaType
+			item["serde_class_name"] = config.SerdeClassName
+			item["is_regex_pattern"] = config.IsRegexPattern
+			item["receiver_queue_size"] = config.ReceiverQueueSize
+			inputSpecs = append(inputSpecs, item)
 		}
 	}
 
@@ -349,9 +348,9 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 		}
 	}
 
-	err = d.Set("sink_config", sinkConfig.Configs)
+	err = d.Set("configs", sinkConfig.Configs)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set sink_config")
+		return errors.Wrapf(err, "failed to set configs")
 	}
 
 	err = d.Set("auto_ack", sinkConfig.AutoAck)
@@ -393,21 +392,6 @@ func resourcePulsarSinkCreate(d *schema.ResourceData, meta interface{}) error {
 func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 	sinkConfig := &utils.SinkConfig{}
 
-	if configFilePathInter, ok := d.GetOk("sink_config_file"); ok {
-		configFilePath := configFilePathInter.(string)
-
-		bytes, err := ioutil.ReadFile(configFilePath)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read config file: %s", configFilePath)
-		}
-
-		err = yaml.Unmarshal(bytes, &sinkConfig)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to parse the config file: %s", configFilePath)
-		}
-		// continue to override the sink config
-	}
-
 	if inter, ok := d.GetOk("tenant"); ok {
 		sinkConfig.Tenant = inter.(string)
 	}
@@ -422,7 +406,7 @@ func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 
 	if inter, ok := d.GetOk("inputs"); ok {
 		inputsSet := inter.(*schema.Set)
-		inputs := make([]string, inputsSet.Len())
+		var inputs []string
 
 		for _, item := range inputsSet.List() {
 			inputs = append(inputs, item.(string))
@@ -467,37 +451,21 @@ func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 	}
 
 	if inter, ok := d.GetOk("input_specs"); ok {
-		interMap := inter.(map[string]interface{})
-		inputSpecs := make(map[string]utils.ConsumerConfig, len(interMap))
-
-		for inputSpecKey, inputSpecValueInter := range interMap {
-			inputSpec := utils.ConsumerConfig{}
-			interMap := inputSpecValueInter.(map[string]interface{})
-
-			value, found := interMap["schema_type"]
-			if found {
-				inputSpec.SchemaType = value.(string)
+		set := inter.(*schema.Set)
+		if set.Len() > 0 {
+			inputSpecs := make(map[string]utils.ConsumerConfig)
+			for _, n := range set.List() {
+				m := n.(map[string]interface{})
+				inputSpec := utils.ConsumerConfig{
+					SchemaType:        m["schema_type"].(string),
+					SerdeClassName:    m["serde_class_name"].(string),
+					IsRegexPattern:    m["is_regex_pattern"].(bool),
+					ReceiverQueueSize: m["receiver_queue_size"].(int),
+				}
+				inputSpecs[m["key"].(string)] = inputSpec
 			}
-
-			value, found = interMap["serde_class_name"]
-			if found {
-				inputSpec.SerdeClassName = value.(string)
-			}
-
-			value, found = interMap["is_regex_pattern"]
-			if found {
-				inputSpec.IsRegexPattern = value.(bool)
-			}
-
-			value, found = interMap["receiver_queue_size"]
-			if found {
-				inputSpec.ReceiverQueueSize = value.(int)
-			}
-
-			inputSpecs[inputSpecKey] = inputSpec
+			sinkConfig.InputSpecs = inputSpecs
 		}
-
-		sinkConfig.InputSpecs = inputSpecs
 	}
 
 	if inter, ok := d.GetOk("processing_guarantees"); ok {
@@ -551,7 +519,7 @@ func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.Resources = resource
 	}
 
-	if inter, ok := d.GetOk("sink_config"); ok {
+	if inter, ok := d.GetOk("configs"); ok {
 		sinkConfig.Configs = inter.(map[string]interface{})
 	}
 
