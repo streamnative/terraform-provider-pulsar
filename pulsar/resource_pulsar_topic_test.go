@@ -273,8 +273,8 @@ resource "pulsar_topic" "sample-topic-1" {
   partitions = 4
 
   retention_policies {
-    retention_minutes    = "1600"
-    retention_size_in_mb = "20000"
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
   }
 }
 
@@ -300,8 +300,8 @@ resource "pulsar_topic" "sample-topic-3" {
   partitions = 0
 
   retention_policies {
-    retention_minutes    = "1600"
-    retention_size_in_mb = "20000"
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
   }
 }
 
@@ -333,8 +333,8 @@ resource "pulsar_topic" "test" {
 	%s
 
   retention_policies {
-    retention_minutes    = "1600"
-    retention_size_in_mb = "20000"
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
   }
 }
 `, url, ttype, tname, pnum, permissionGrants)

@@ -92,12 +92,12 @@ func resourcePulsarTopic() *schema.Resource {
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"retention_minutes": {
-							Type:     schema.TypeString,
+						"retention_time_minutes": {
+							Type:     schema.TypeInt,
 							Required: true,
 						},
-						"retention_size_in_mb": {
-							Type:     schema.TypeString,
+						"retention_size_mb": {
+							Type:     schema.TypeInt,
 							Required: true,
 						},
 					},
@@ -203,12 +203,12 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 				return fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err)
 			}
 
-			_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
+			_ = d.Set("retention_policies", []interface{}{
 				map[string]interface{}{
-					"retention_minutes":    fmt.Sprint(ret.RetentionTimeInMinutes),
-					"retention_size_in_mb": fmt.Sprint(ret.RetentionSizeInMB),
+					"retention_time_minutes": ret.RetentionTimeInMinutes,
+					"retention_size_mb":      int(ret.RetentionSizeInMB),
 				},
-			}))
+			})
 		}
 	}
 
@@ -379,9 +379,14 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 			"unsupported set retention policies for non-persistent topic")
 	}
 
-	retentionPolicies := unmarshalRetentionPolicies(retentionPoliciesConfig)
+	var policies utils.RetentionPolicies
+	if retentionPoliciesConfig.Len() > 0 {
+		data := retentionPoliciesConfig.List()[0].(map[string]interface{})
+		policies.RetentionTimeInMinutes = data["retention_time_minutes"].(int)
+		policies.RetentionSizeInMB = int64(data["retention_size_mb"].(int))
+	}
 
-	if err := client.SetRetention(*topicName, *retentionPolicies); err != nil {
+	if err := client.SetRetention(*topicName, policies); err != nil {
 		return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
 	}
 

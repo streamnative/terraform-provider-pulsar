@@ -277,8 +277,8 @@ resource "pulsar_topic" "sample-topic-1" {
   }
 
   retention_policies {
-    retention_minutes    = "1600"
-    retention_size_in_mb = "20000"
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
   }
 }
 
@@ -295,8 +295,8 @@ resource "pulsar_topic" "sample-topic-2" {
   }
 
   retention_policies {
-    retention_minutes    = "1600"
-    retention_size_in_mb = "20000"
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
   }
 }
 ```
