@@ -340,10 +340,10 @@ github.com/spf13/pflag v1.0.3/go.mod h1:DYY7MBk1bdzusC3SYhjObp+wFpr4gzcvqqNjLnIn
 github.com/spf13/pflag v1.0.5 h1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA=
 github.com/spf13/pflag v1.0.5/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/spf13/viper v1.3.2/go.mod h1:ZiWeW+zYFKm7srdB9IoDzzZXaJaI5eL9QjNiN/DMA2s=
-github.com/streamnative/pulsarctl v0.4.3-0.20211023052640-c06c7a299e7a h1:WWTb7crcH11Tfp3Zq/xJ/JC0yJ4o4wlFs3INN5SOKA8=
-github.com/streamnative/pulsarctl v0.4.3-0.20211023052640-c06c7a299e7a/go.mod h1:bKjFz2cl1TnHv5hMLR7rc+taLB0RjBPVtquwrUuqM1Q=
 github.com/streamnative/pulsarctl v0.4.3-0.20211026143524-f9fe4bdf4dc1 h1:aQzXJLUmCRtDDbwJDcJmj9ZKJ5DK6dUnJCHy3deZXxA=
 github.com/streamnative/pulsarctl v0.4.3-0.20211026143524-f9fe4bdf4dc1/go.mod h1:bKjFz2cl1TnHv5hMLR7rc+taLB0RjBPVtquwrUuqM1Q=
+github.com/streamnative/pulsarctl v0.4.3-0.20211104063742-4511197935c4 h1:/o5PeWyEKgg4AFDvL1huYEtoYzhuZmIxzPZ2P4AL+fM=
+github.com/streamnative/pulsarctl v0.4.3-0.20211104063742-4511197935c4/go.mod h1:bKjFz2cl1TnHv5hMLR7rc+taLB0RjBPVtquwrUuqM1Q=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.2.0 h1:Hbg2NidpLE8veEBkEZTL3CvlkUIVzuU9jDplZO54c48=

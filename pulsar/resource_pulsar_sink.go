@@ -18,8 +18,11 @@
 package pulsar
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/streamnative/terraform-provider-pulsar/bytesize"
 
 	"github.com/streamnative/pulsarctl/pkg/cli"
 
@@ -48,7 +51,7 @@ func resourcePulsarSink() *schema.Resource {
 
 				_ = d.Set("tenant", parts[0])
 				_ = d.Set("namespace", parts[1])
-				_ = d.Set("name", parts[1])
+				_ = d.Set("name", parts[2])
 
 				err := resourcePulsarSinkRead(d, meta)
 				return []*schema.ResourceData{d}, err
@@ -86,9 +89,15 @@ func resourcePulsarSink() *schema.Resource {
 				Optional:    true,
 				Description: descriptions["subscription_name"],
 			},
+			"cleanup_subscription": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     true,
+				Description: descriptions["cleanup_subscription"],
+			},
 			"subscription_position": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Required:    true,
 				Description: descriptions["subscription_position"],
 			},
 			"custom_serde_inputs": {
@@ -107,6 +116,7 @@ func resourcePulsarSink() *schema.Resource {
 			"input_specs": {
 				Type:        schema.TypeSet,
 				Optional:    true,
+				Computed:    true,
 				Description: descriptions["input_specs"],
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -120,19 +130,19 @@ func resourcePulsarSink() *schema.Resource {
 			},
 			"processing_guarantees": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Required:    true,
 				Description: descriptions["processing_guarantees"],
 			},
 			"retain_ordering": {
 				Type:        schema.TypeBool,
 				Optional:    true,
+				Computed:    true,
 				Description: descriptions["retain_ordering"],
 			},
 			"parallelism": {
 				Type:        schema.TypeInt,
-				Optional:    true,
+				Required:    true,
 				Description: descriptions["parallelism"],
-				Default:     1,
 			},
 			"archive": {
 				Type:        schema.TypeString,
@@ -142,32 +152,33 @@ func resourcePulsarSink() *schema.Resource {
 			"classname": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: descriptions["classname"],
 			},
 			"cpu": {
 				Type:        schema.TypeFloat,
-				Optional:    true,
+				Required:    true,
 				Description: descriptions["cpu"],
 			},
-			"ram": {
-				Type:        schema.TypeFloat,
-				Optional:    true,
-				Description: descriptions["ram"],
+			"ram_mb": {
+				Type:        schema.TypeInt,
+				Required:    true,
+				Description: descriptions["ram_mb"],
 			},
-			"disk": {
-				Type:        schema.TypeFloat,
-				Optional:    true,
-				Description: descriptions["disk"],
+			"disk_mb": {
+				Type:        schema.TypeInt,
+				Required:    true,
+				Description: descriptions["disk_mb"],
 			},
 			"configs": {
-				Type:        schema.TypeMap,
+				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: descriptions["configs"],
-				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"auto_ack": {
 				Type:        schema.TypeBool,
-				Optional:    true,
+				Required:    true,
 				Description: descriptions["auto_ack"],
 			},
 			"timeout_ms": {
@@ -224,9 +235,17 @@ func resourcePulsarSinkUpdate(d *schema.ResourceData, meta interface{}) error {
 	updateOptions := utils.NewUpdateOptions()
 	if !ctlutil.IsPackageURLSupported(sinkConfig.Archive) &&
 		!strings.HasPrefix(sinkConfig.Archive, ctlutil.BUILTIN) {
-		return client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
+		err = client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
+		if err != nil {
+			return err
+		}
+		return resourcePulsarSinkRead(d, meta)
 	} else {
-		return client.UpdateSinkWithURL(sinkConfig, sinkConfig.Archive, updateOptions)
+		err = client.UpdateSinkWithURL(sinkConfig, sinkConfig.Archive, updateOptions)
+		if err != nil {
+			return err
+		}
+		return resourcePulsarSinkRead(d, meta)
 	}
 }
 
@@ -262,6 +281,11 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 	err = d.Set("subscription_name", sinkConfig.SourceSubscriptionName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to set subscription_name")
+	}
+
+	err = d.Set("cleanup_subscription", sinkConfig.CleanupSubscription)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set cleanup_subscription")
 	}
 
 	err = d.Set("subscription_position", sinkConfig.SourceSubscriptionPosition)
@@ -321,9 +345,11 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 		return errors.Wrapf(err, "failed to set parallelism")
 	}
 
-	err = d.Set("archive", sinkConfig.Archive)
-	if err != nil {
-		return errors.Wrapf(err, "failed to set archive")
+	if sinkConfig.Archive != "" {
+		err = d.Set("archive", sinkConfig.Archive)
+		if err != nil {
+			return errors.Wrapf(err, "failed to set archive")
+		}
 	}
 
 	err = d.Set("classname", sinkConfig.ClassName)
@@ -337,20 +363,27 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 			return errors.Wrapf(err, "failed to set cpu")
 		}
 
-		err = d.Set("ram", float64(sinkConfig.Resources.RAM))
+		err = d.Set("ram_mb", bytesize.FormBytes(uint64(sinkConfig.Resources.RAM)).ToMegaBytes())
 		if err != nil {
-			return errors.Wrapf(err, "failed to set ram")
+			return errors.Wrapf(err, "failed to set ram_mb")
 		}
 
-		err = d.Set("disk", float64(sinkConfig.Resources.Disk))
+		err = d.Set("disk_mb", bytesize.FormBytes(uint64(sinkConfig.Resources.Disk)).ToMegaBytes())
 		if err != nil {
-			return errors.Wrapf(err, "failed to set disk")
+			return errors.Wrapf(err, "failed to set disk_mb")
 		}
 	}
 
-	err = d.Set("configs", sinkConfig.Configs)
-	if err != nil {
-		return errors.Wrapf(err, "failed to set configs")
+	if len(sinkConfig.Configs) != 0 {
+		b, err := json.Marshal(sinkConfig.Configs)
+		if err != nil {
+			return errors.Wrap(err, "cannot marshal configs from sinkConfig")
+		}
+
+		err = d.Set("configs", string(b))
+		if err != nil {
+			return errors.Wrapf(err, "failed to set configs")
+		}
 	}
 
 	err = d.Set("auto_ack", sinkConfig.AutoAck)
@@ -383,9 +416,17 @@ func resourcePulsarSinkCreate(d *schema.ResourceData, meta interface{}) error {
 
 	if !ctlutil.IsPackageURLSupported(sinkConfig.Archive) &&
 		!strings.HasPrefix(sinkConfig.Archive, ctlutil.BUILTIN) {
-		return client.CreateSink(sinkConfig, sinkConfig.Archive)
+		err = client.CreateSink(sinkConfig, sinkConfig.Archive)
+		if err != nil {
+			return err
+		}
+		return resourcePulsarSinkRead(d, meta)
 	} else {
-		return client.CreateSinkWithURL(sinkConfig, sinkConfig.Archive)
+		err = client.CreateSinkWithURL(sinkConfig, sinkConfig.Archive)
+		if err != nil {
+			return err
+		}
+		return resourcePulsarSinkRead(d, meta)
 	}
 }
 
@@ -422,6 +463,10 @@ func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 
 	if inter, ok := d.GetOk("subscription_name"); ok {
 		sinkConfig.SourceSubscriptionName = inter.(string)
+	}
+
+	if inter, ok := d.GetOk("cleanup_subscription"); ok {
+		sinkConfig.CleanupSubscription = inter.(bool)
 	}
 
 	if inter, ok := d.GetOk("subscription_position"); ok {
@@ -488,39 +533,35 @@ func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.ClassName = inter.(string)
 	}
 
-	var resource *utils.Resources
+	var resource utils.Resources
 
 	if inter, ok := d.GetOk("cpu"); ok {
-		if resource == nil {
-			resource = utils.NewDefaultResources()
-		}
-
 		value := inter.(float64)
 		resource.CPU = value
 	}
 
-	if inter, ok := d.GetOk("ram"); ok {
-		if resource == nil {
-			resource = utils.NewDefaultResources()
-		}
-		value := int64(inter.(float64))
-		resource.RAM = value
+	if inter, ok := d.GetOk("ram_mb"); ok {
+		value := bytesize.FormMegaBytes(uint64(inter.(int))).ToBytes()
+		resource.RAM = int64(value)
 	}
 
-	if inter, ok := d.GetOk("disk"); ok {
-		if resource == nil {
-			resource = utils.NewDefaultResources()
-		}
-		value := int64(inter.(float64))
-		resource.Disk = value
+	if inter, ok := d.GetOk("disk_mb"); ok {
+		value := bytesize.FormMegaBytes(uint64(inter.(int))).ToBytes()
+		resource.Disk = int64(value)
 	}
 
-	if resource != nil {
-		sinkConfig.Resources = resource
-	}
+	sinkConfig.Resources = &resource
 
 	if inter, ok := d.GetOk("configs"); ok {
-		sinkConfig.Configs = inter.(map[string]interface{})
+		var configs map[string]interface{}
+		configsJSON := inter.(string)
+
+		err := json.Unmarshal([]byte(configsJSON), &configs)
+		if err != nil {
+			return nil, errors.Wrapf(err, "cannot unmarshal the configs: %s", configsJSON)
+		}
+
+		sinkConfig.Configs = configs
 	}
 
 	if inter, ok := d.GetOk("auto_ack"); ok {
