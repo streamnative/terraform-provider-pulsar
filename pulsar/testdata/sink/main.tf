@@ -33,7 +33,7 @@ resource "pulsar_sink" "sink-1" {
   parallelism = 1
   auto_ack = true
 
-  processing_guarantees = "ATLEAST_ONCE"
+  processing_guarantees = "EFFECTIVELY_ONCE"
 
   cpu = 1
   ram_mb = 2048
@@ -42,4 +42,3 @@ resource "pulsar_sink" "sink-1" {
   archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.8.1.nar"
   configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
 }
-

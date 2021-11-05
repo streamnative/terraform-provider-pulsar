@@ -33,6 +33,84 @@ import (
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
 
+const (
+	resourceSinkTenantKey                            = "tenant"
+	resourceSinkNamespaceKey                         = "namespace"
+	resourceSinkNameKey                              = "name"
+	resourceSinkInputsKey                            = "inputs"
+	resourceSinkTopicsPatternKey                     = "topics_pattern"
+	resourceSinkSubscriptionNameKey                  = "subscription_name"
+	resourceSinkCleanupSubscriptionKey               = "cleanup_subscription"
+	resourceSinkSubscriptionPositionKey              = "subscription_position"
+	resourceSinkCustomSerdeInputsKey                 = "custom_serde_inputs"
+	resourceSinkCustomSchemaInputsKey                = "custom_schema_inputs"
+	resourceSinkInputSpecsKey                        = "input_specs"
+	resourceSinkInputSpecsSubsetTopicKey             = "key"
+	resourceSinkInputSpecsSubsetSchemaTypeKey        = "schema_type"
+	resourceSinkInputSpecsSubsetSerdeClassNameKey    = "serde_class_name"
+	resourceSinkInputSpecsSubsetIsRegexPatternKey    = "is_regex_pattern"
+	resourceSinkInputSpecsSubsetReceiverQueueSizeKey = "receiver_queue_size"
+	resourceSinkProcessingGuaranteesKey              = "processing_guarantees"
+	resourceSinkRetainOrderingKey                    = "retain_ordering"
+	resourceSinkParallelismKey                       = "parallelism"
+	resourceSinkArchiveKey                           = "archive"
+	resourceSinkClassnameKey                         = "classname"
+	resourceSinkCPUKey                               = "cpu"
+	resourceSinkRAMKey                               = "ram_mb"
+	resourceSinkDiskKey                              = "disk_mb"
+	resourceSinkConfigsKey                           = "configs"
+	resourceSinkAutoACKKey                           = "auto_ack"
+	resourceSinkTimeoutKey                           = "timeout_ms"
+	resourceSinkCustomRuntimeOptionsKey              = "custom_runtime_options"
+
+	ProcessingGuaranteesAtLeastOnce     = "ATLEAST_ONCE"
+	ProcessingGuaranteesAtMostOnce      = "ATMOST_ONCE"
+	ProcessingGuaranteesEffectivelyOnce = "EFFECTIVELY_ONCE"
+)
+
+var resourceSinkDescriptions = make(map[string]string)
+
+func init() {
+	resourceSinkDescriptions[resourceSinkTenantKey] = "The sink's tenant"
+	resourceSinkDescriptions[resourceSinkNamespaceKey] = "The sink's namespace"
+	resourceSinkDescriptions[resourceSinkNameKey] = "The sink's name"
+	resourceSinkDescriptions[resourceSinkInputsKey] = "The sink's input topics"
+	resourceSinkDescriptions[resourceSinkTopicsPatternKey] =
+		"TopicsPattern to consume from list of topics under a namespace that match the pattern"
+	resourceSinkDescriptions[resourceSinkSubscriptionNameKey] =
+		"Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer"
+	resourceSinkDescriptions[resourceSinkCleanupSubscriptionKey] =
+		"Whether the subscriptions the functions created/used should be deleted when the functions was deleted"
+	resourceSinkDescriptions[resourceSinkSubscriptionPositionKey] =
+		"Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest)"
+	resourceSinkDescriptions[resourceSinkCustomSerdeInputsKey] =
+		"The map of input topics to SerDe class names (as a JSON string)"
+	resourceSinkDescriptions[resourceSinkCustomSchemaInputsKey] =
+		"The map of input topics to Schema types or class names (as a JSON string)"
+	resourceSinkDescriptions[resourceSinkInputSpecsKey] = "The map of input topics specs"
+	resourceSinkDescriptions[resourceSinkProcessingGuaranteesKey] =
+		"Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)"
+	resourceSinkDescriptions[resourceSinkRetainOrderingKey] = "Sink consumes and sinks messages in order"
+	resourceSinkDescriptions[resourceSinkParallelismKey] = "The sink's parallelism factor"
+	resourceSinkDescriptions[resourceSinkArchiveKey] =
+		"Path to the archive file for the sink. " +
+			"It also supports url-path [http/https/file (file protocol assumes that " +
+			"file already exists on worker host)] from which worker can download the package"
+	resourceSinkDescriptions[resourceSinkClassnameKey] = "The sink's class name if archive is file-url-path (file://)"
+	resourceSinkDescriptions[resourceSinkCPUKey] =
+		"The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)"
+	resourceSinkDescriptions[resourceSinkRAMKey] =
+		"The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes)"
+	resourceSinkDescriptions[resourceSinkDiskKey] =
+		"The disk that need to be allocated per sink instance (applicable only to Docker runtime)"
+	resourceSinkDescriptions[resourceSinkConfigsKey] = "User defined configs key/values (JSON string)"
+	resourceSinkDescriptions[resourceSinkAutoACKKey] =
+		"Whether or not the framework will automatically acknowledge messages"
+	resourceSinkDescriptions[resourceSinkTimeoutKey] = "The message timeout in milliseconds"
+	resourceSinkDescriptions[resourceSinkCustomRuntimeOptionsKey] =
+		"A string that encodes options to customize the runtime"
+}
+
 func resourcePulsarSink() *schema.Resource {
 	return &schema.Resource{
 		Create: resourcePulsarSinkCreate,
@@ -49,147 +127,173 @@ func resourcePulsarSink() *schema.Resource {
 					return nil, errors.New("id should be tenant/namespace/name format")
 				}
 
-				_ = d.Set("tenant", parts[0])
-				_ = d.Set("namespace", parts[1])
-				_ = d.Set("name", parts[2])
+				_ = d.Set(resourceSinkTenantKey, parts[0])
+				_ = d.Set(resourceSinkNamespaceKey, parts[1])
+				_ = d.Set(resourceSinkNameKey, parts[2])
 
 				err := resourcePulsarSinkRead(d, meta)
 				return []*schema.ResourceData{d}, err
 			},
 		},
 		Schema: map[string]*schema.Schema{
-			"tenant": {
+			resourceSinkTenantKey: {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: descriptions["tenant"],
+				Description: resourceSinkDescriptions[resourceSinkTenantKey],
 			},
-			"namespace": {
+			resourceSinkNamespaceKey: {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: descriptions["namespace"],
+				Description: resourceSinkDescriptions[resourceSinkNamespaceKey],
 			},
-			"name": {
+			resourceSinkNameKey: {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: descriptions["name"],
+				Description: resourceSinkDescriptions[resourceSinkNameKey],
 			},
-			"inputs": {
+			resourceSinkInputsKey: {
 				Type:        schema.TypeSet,
 				Optional:    true,
-				Description: descriptions["inputs"],
+				Description: resourceSinkDescriptions[resourceSinkInputsKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
-			"topics_pattern": {
+			resourceSinkTopicsPatternKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: descriptions["topics_pattern"],
+				Description: resourceSinkDescriptions[resourceSinkTopicsPatternKey],
 			},
-			"subscription_name": {
+			resourceSinkSubscriptionNameKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: descriptions["subscription_name"],
+				Description: resourceSinkDescriptions[resourceSinkSubscriptionNameKey],
 			},
-			"cleanup_subscription": {
+			resourceSinkCleanupSubscriptionKey: {
 				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     true,
-				Description: descriptions["cleanup_subscription"],
-			},
-			"subscription_position": {
-				Type:        schema.TypeString,
 				Required:    true,
-				Description: descriptions["subscription_position"],
+				Description: resourceSinkDescriptions[resourceSinkCleanupSubscriptionKey],
 			},
-			"custom_serde_inputs": {
+			resourceSinkSubscriptionPositionKey: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Default:     utils.Earliest,
+				Description: resourceSinkDescriptions[resourceSinkSubscriptionPositionKey],
+			},
+			resourceSinkCustomSerdeInputsKey: {
 				Type:        schema.TypeMap,
 				Optional:    true,
-				Description: descriptions["custom_serde_inputs"],
+				Description: resourceSinkDescriptions[resourceSinkCustomSerdeInputsKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
-			"custom_schema_inputs": {
+			resourceSinkCustomSchemaInputsKey: {
 				Type:        schema.TypeMap,
 				Optional:    true,
-				Description: descriptions["custom_schema_inputs"],
+				Description: resourceSinkDescriptions[resourceSinkCustomSchemaInputsKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			// terraform doesn't nested map, so use TypeSet.
-			"input_specs": {
+			resourceSinkInputSpecsKey: {
 				Type:        schema.TypeSet,
 				Optional:    true,
 				Computed:    true,
-				Description: descriptions["input_specs"],
+				Description: resourceSinkDescriptions[resourceSinkInputSpecsKey],
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"key":                 {Type: schema.TypeString, Required: true},
-						"schema_type":         {Type: schema.TypeString, Required: true},
-						"serde_class_name":    {Type: schema.TypeString, Required: true},
-						"is_regex_pattern":    {Type: schema.TypeBool, Required: true},
-						"receiver_queue_size": {Type: schema.TypeInt, Required: true},
+						resourceSinkInputSpecsSubsetTopicKey:             {Type: schema.TypeString, Required: true},
+						resourceSinkInputSpecsSubsetSchemaTypeKey:        {Type: schema.TypeString, Required: true},
+						resourceSinkInputSpecsSubsetSerdeClassNameKey:    {Type: schema.TypeString, Required: true},
+						resourceSinkInputSpecsSubsetIsRegexPatternKey:    {Type: schema.TypeBool, Required: true},
+						resourceSinkInputSpecsSubsetReceiverQueueSizeKey: {Type: schema.TypeInt, Required: true},
 					},
 				},
 			},
-			"processing_guarantees": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: descriptions["processing_guarantees"],
+			resourceSinkProcessingGuaranteesKey: {
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  ProcessingGuaranteesAtLeastOnce,
+				ValidateFunc: func(val interface{}, key string) ([]string, []error) {
+					v := val.(string)
+					supported := []string{
+						ProcessingGuaranteesAtLeastOnce,
+						ProcessingGuaranteesAtMostOnce,
+						ProcessingGuaranteesEffectivelyOnce,
+					}
+
+					found := false
+					for _, item := range supported {
+						if v == item {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return nil, []error{
+							fmt.Errorf("%s is unsupported, shold be one of %s", v,
+								strings.Join(supported, ",")),
+						}
+					}
+
+					return nil, nil
+				},
+				Description: resourceSinkDescriptions[resourceSinkProcessingGuaranteesKey],
 			},
-			"retain_ordering": {
+			resourceSinkRetainOrderingKey: {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Computed:    true,
-				Description: descriptions["retain_ordering"],
+				Default:     true,
+				Description: resourceSinkDescriptions[resourceSinkRetainOrderingKey],
 			},
-			"parallelism": {
+			resourceSinkParallelismKey: {
 				Type:        schema.TypeInt,
-				Required:    true,
-				Description: descriptions["parallelism"],
+				Optional:    true,
+				Default:     1,
+				Description: resourceSinkDescriptions[resourceSinkParallelismKey],
 			},
-			"archive": {
+			resourceSinkArchiveKey: {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: descriptions["archive"],
+				Description: resourceSinkDescriptions[resourceSinkArchiveKey],
 			},
-			"classname": {
+			resourceSinkClassnameKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				Description: descriptions["classname"],
+				Description: resourceSinkDescriptions[resourceSinkClassnameKey],
 			},
-			"cpu": {
+			resourceSinkCPUKey: {
 				Type:        schema.TypeFloat,
 				Required:    true,
-				Description: descriptions["cpu"],
+				Description: resourceSinkDescriptions[resourceSinkCPUKey],
 			},
-			"ram_mb": {
+			resourceSinkRAMKey: {
 				Type:        schema.TypeInt,
 				Required:    true,
-				Description: descriptions["ram_mb"],
+				Description: resourceSinkDescriptions[resourceSinkRAMKey],
 			},
-			"disk_mb": {
+			resourceSinkDiskKey: {
 				Type:        schema.TypeInt,
 				Required:    true,
-				Description: descriptions["disk_mb"],
+				Description: resourceSinkDescriptions[resourceSinkDiskKey],
 			},
-			"configs": {
+			resourceSinkConfigsKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				Description: descriptions["configs"],
+				Description: resourceSinkDescriptions[resourceSinkConfigsKey],
 			},
-			"auto_ack": {
+			resourceSinkAutoACKKey: {
 				Type:        schema.TypeBool,
 				Required:    true,
-				Description: descriptions["auto_ack"],
+				Description: resourceSinkDescriptions[resourceSinkAutoACKKey],
 			},
-			"timeout_ms": {
+			resourceSinkTimeoutKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Description: descriptions["timeout_ms"],
+				Description: resourceSinkDescriptions[resourceSinkTimeoutKey],
 			},
-			"custom_runtime_options": {
+			resourceSinkCustomRuntimeOptionsKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: descriptions["custom_runtime_options"],
+				Description: resourceSinkDescriptions[resourceSinkCustomRuntimeOptionsKey],
 			},
 		},
 	}
@@ -198,9 +302,9 @@ func resourcePulsarSink() *schema.Resource {
 func resourcePulsarSinkExists(d *schema.ResourceData, meta interface{}) (bool, error) {
 	client := meta.(pulsar.Client).Sinks()
 
-	tenant := d.Get("tenant").(string)
-	namespace := d.Get("namespace").(string)
-	name := d.Get("name").(string)
+	tenant := d.Get(resourceSinkTenantKey).(string)
+	namespace := d.Get(resourceSinkNamespaceKey).(string)
+	name := d.Get(resourceSinkNameKey).(string)
 
 	_, err := client.GetSink(tenant, namespace, name)
 	if err != nil {
@@ -218,43 +322,45 @@ func resourcePulsarSinkExists(d *schema.ResourceData, meta interface{}) (bool, e
 func resourcePulsarSinkDelete(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Sinks()
 
-	tenant := d.Get("tenant").(string)
-	namespace := d.Get("namespace").(string)
-	name := d.Get("name").(string)
+	tenant := d.Get(resourceSinkTenantKey).(string)
+	namespace := d.Get(resourceSinkNamespaceKey).(string)
+	name := d.Get(resourceSinkNameKey).(string)
 
 	return client.DeleteSink(tenant, namespace, name)
 }
 
 func resourcePulsarSinkUpdate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Sinks()
-	sinkConfig, err := getSinkConfig(d)
+
+	sinkConfig, err := marshalSinkConfig(d)
 	if err != nil {
 		return err
 	}
 
 	updateOptions := utils.NewUpdateOptions()
-	if !ctlutil.IsPackageURLSupported(sinkConfig.Archive) &&
-		!strings.HasPrefix(sinkConfig.Archive, ctlutil.BUILTIN) {
+	if isLocalArchive(sinkConfig.Archive) {
 		err = client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
-		if err != nil {
-			return err
-		}
-		return resourcePulsarSinkRead(d, meta)
 	} else {
 		err = client.UpdateSinkWithURL(sinkConfig, sinkConfig.Archive, updateOptions)
-		if err != nil {
-			return err
-		}
-		return resourcePulsarSinkRead(d, meta)
 	}
+	if err != nil {
+		return err
+	}
+
+	return resourcePulsarSinkRead(d, meta)
 }
 
 func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
+	// NOTE: Pulsar cannot returns the fields correctly, so ignore these:
+	// - resourceSinkSubscriptionPositionKey
+	// - resourceSinkProcessingGuaranteesKey
+	// - resourceSinkRetainOrderingKey
+
 	client := meta.(pulsar.Client).Sinks()
 
-	tenant := d.Get("tenant").(string)
-	namespace := d.Get("namespace").(string)
-	name := d.Get("name").(string)
+	tenant := d.Get(resourceSinkTenantKey).(string)
+	namespace := d.Get(resourceSinkNamespaceKey).(string)
+	name := d.Get(resourceSinkNameKey).(string)
 
 	d.SetId(fmt.Sprintf("%s/%s/%s", tenant, namespace, name))
 
@@ -268,47 +374,43 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 		inputs[index] = input
 	}
 
-	err = d.Set("inputs", inputs)
+	err = d.Set(resourceSinkInputsKey, inputs)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set inputs")
+		return err
 	}
 
-	err = d.Set("topics_pattern", sinkConfig.TopicsPattern)
+	err = d.Set(resourceSinkTopicsPatternKey, sinkConfig.TopicsPattern)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set topics_pattern")
+		return err
 	}
 
-	err = d.Set("subscription_name", sinkConfig.SourceSubscriptionName)
+	err = d.Set(resourceSinkSubscriptionNameKey, sinkConfig.SourceSubscriptionName)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set subscription_name")
+		return err
 	}
 
-	err = d.Set("cleanup_subscription", sinkConfig.CleanupSubscription)
+	err = d.Set(resourceSinkCleanupSubscriptionKey, sinkConfig.CleanupSubscription)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set cleanup_subscription")
-	}
-
-	err = d.Set("subscription_position", sinkConfig.SourceSubscriptionPosition)
-	if err != nil {
-		return errors.Wrapf(err, "failed to set subscription_position")
+		return err
 	}
 
 	customSerdeInputs := make(map[string]interface{}, len(sinkConfig.TopicToSerdeClassName))
 	for key, value := range sinkConfig.TopicToSerdeClassName {
 		customSerdeInputs[key] = value
 	}
-	err = d.Set("custom_serde_inputs", customSerdeInputs)
+	err = d.Set(resourceSinkCustomSerdeInputsKey, customSerdeInputs)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set custom_serde_inputs")
+		return err
 	}
 
 	customSchemaInputs := make(map[string]interface{}, len(sinkConfig.TopicToSchemaType))
 	for key, value := range sinkConfig.TopicToSchemaType {
 		customSchemaInputs[key] = value
 	}
-	err = d.Set("custom_schema_inputs", customSchemaInputs)
+
+	err = d.Set(resourceSinkCustomSchemaInputsKey, customSchemaInputs)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set custom_schema_inputs")
+		return err
 	}
 
 	var inputSpecs []interface{}
@@ -316,61 +418,52 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 	if len(sinkConfig.InputSpecs) > 0 {
 		for key, config := range sinkConfig.InputSpecs {
 			item := make(map[string]interface{})
-			item["key"] = key
-			item["schema_type"] = config.SchemaType
-			item["serde_class_name"] = config.SerdeClassName
-			item["is_regex_pattern"] = config.IsRegexPattern
-			item["receiver_queue_size"] = config.ReceiverQueueSize
+			item[resourceSinkInputSpecsSubsetTopicKey] = key
+			item[resourceSinkInputSpecsSubsetSchemaTypeKey] = config.SchemaType
+			item[resourceSinkInputSpecsSubsetSerdeClassNameKey] = config.SerdeClassName
+			item[resourceSinkInputSpecsSubsetIsRegexPatternKey] = config.IsRegexPattern
+			item[resourceSinkInputSpecsSubsetReceiverQueueSizeKey] = config.ReceiverQueueSize
 			inputSpecs = append(inputSpecs, item)
 		}
 	}
 
-	err = d.Set("input_specs", inputSpecs)
+	err = d.Set(resourceSinkInputSpecsKey, inputSpecs)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set input_specs")
+		return err
 	}
 
-	err = d.Set("processing_guarantees", sinkConfig.ProcessingGuarantees)
+	err = d.Set(resourceSinkParallelismKey, sinkConfig.Parallelism)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set processing_guarantees")
+		return err
 	}
 
-	err = d.Set("retain_ordering", sinkConfig.RetainOrdering)
-	if err != nil {
-		return errors.Wrapf(err, "failed to set retain_ordering")
-	}
-
-	err = d.Set("parallelism", sinkConfig.Parallelism)
-	if err != nil {
-		return errors.Wrapf(err, "failed to set parallelism")
-	}
-
+	// When the archive is built-in resource, it is not empty, otherwise it is empty.
 	if sinkConfig.Archive != "" {
-		err = d.Set("archive", sinkConfig.Archive)
+		err = d.Set(resourceSinkArchiveKey, sinkConfig.Archive)
 		if err != nil {
-			return errors.Wrapf(err, "failed to set archive")
+			return err
 		}
 	}
 
-	err = d.Set("classname", sinkConfig.ClassName)
+	err = d.Set(resourceSinkClassnameKey, sinkConfig.ClassName)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set classname")
+		return err
 	}
 
 	if sinkConfig.Resources != nil {
-		err = d.Set("cpu", sinkConfig.Resources.CPU)
+		err = d.Set(resourceSinkCPUKey, sinkConfig.Resources.CPU)
 		if err != nil {
-			return errors.Wrapf(err, "failed to set cpu")
+			return err
 		}
 
-		err = d.Set("ram_mb", bytesize.FormBytes(uint64(sinkConfig.Resources.RAM)).ToMegaBytes())
+		err = d.Set(resourceSinkRAMKey, bytesize.FormBytes(uint64(sinkConfig.Resources.RAM)).ToMegaBytes())
 		if err != nil {
-			return errors.Wrapf(err, "failed to set ram_mb")
+			return err
 		}
 
-		err = d.Set("disk_mb", bytesize.FormBytes(uint64(sinkConfig.Resources.Disk)).ToMegaBytes())
+		err = d.Set(resourceSinkDiskKey, bytesize.FormBytes(uint64(sinkConfig.Resources.Disk)).ToMegaBytes())
 		if err != nil {
-			return errors.Wrapf(err, "failed to set disk_mb")
+			return err
 		}
 	}
 
@@ -380,27 +473,27 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 			return errors.Wrap(err, "cannot marshal configs from sinkConfig")
 		}
 
-		err = d.Set("configs", string(b))
+		err = d.Set(resourceSinkConfigsKey, string(b))
 		if err != nil {
-			return errors.Wrapf(err, "failed to set configs")
+			return err
 		}
 	}
 
-	err = d.Set("auto_ack", sinkConfig.AutoAck)
+	err = d.Set(resourceSinkAutoACKKey, sinkConfig.AutoAck)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set auto_ack")
+		return err
 	}
 
 	if sinkConfig.TimeoutMs != nil {
-		err = d.Set("timeout_ms", int(*sinkConfig.TimeoutMs))
+		err = d.Set(resourceSinkTimeoutKey, int(*sinkConfig.TimeoutMs))
 		if err != nil {
-			return errors.Wrapf(err, "failed to set timeout_ms")
+			return err
 		}
 	}
 
-	err = d.Set("custom_runtime_options", sinkConfig.CustomRuntimeOptions)
+	err = d.Set(resourceSinkCustomRuntimeOptionsKey, sinkConfig.CustomRuntimeOptions)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set custom_runtime_options")
+		return err
 	}
 
 	return nil
@@ -409,43 +502,39 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 func resourcePulsarSinkCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(pulsar.Client).Sinks()
 
-	sinkConfig, err := getSinkConfig(d)
+	sinkConfig, err := marshalSinkConfig(d)
 	if err != nil {
 		return err
 	}
 
-	if !ctlutil.IsPackageURLSupported(sinkConfig.Archive) &&
-		!strings.HasPrefix(sinkConfig.Archive, ctlutil.BUILTIN) {
+	if isLocalArchive(sinkConfig.Archive) {
 		err = client.CreateSink(sinkConfig, sinkConfig.Archive)
-		if err != nil {
-			return err
-		}
-		return resourcePulsarSinkRead(d, meta)
 	} else {
 		err = client.CreateSinkWithURL(sinkConfig, sinkConfig.Archive)
-		if err != nil {
-			return err
-		}
-		return resourcePulsarSinkRead(d, meta)
 	}
+	if err != nil {
+		return err
+	}
+
+	return resourcePulsarSinkRead(d, meta)
 }
 
-func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
+func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 	sinkConfig := &utils.SinkConfig{}
 
-	if inter, ok := d.GetOk("tenant"); ok {
+	if inter, ok := d.GetOk(resourceSinkTenantKey); ok {
 		sinkConfig.Tenant = inter.(string)
 	}
 
-	if inter, ok := d.GetOk("namespace"); ok {
+	if inter, ok := d.GetOk(resourceSinkNamespaceKey); ok {
 		sinkConfig.Namespace = inter.(string)
 	}
 
-	if inter, ok := d.GetOk("name"); ok {
+	if inter, ok := d.GetOk(resourceSinkNameKey); ok {
 		sinkConfig.Name = inter.(string)
 	}
 
-	if inter, ok := d.GetOk("inputs"); ok {
+	if inter, ok := d.GetOk(resourceSinkInputsKey); ok {
 		inputsSet := inter.(*schema.Set)
 		var inputs []string
 
@@ -456,24 +545,24 @@ func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.Inputs = inputs
 	}
 
-	if inter, ok := d.GetOk("topics_pattern"); ok {
+	if inter, ok := d.GetOk(resourceSinkTopicsPatternKey); ok {
 		pattern := inter.(string)
 		sinkConfig.TopicsPattern = &pattern
 	}
 
-	if inter, ok := d.GetOk("subscription_name"); ok {
+	if inter, ok := d.GetOk(resourceSinkSubscriptionNameKey); ok {
 		sinkConfig.SourceSubscriptionName = inter.(string)
 	}
 
-	if inter, ok := d.GetOk("cleanup_subscription"); ok {
+	if inter, ok := d.GetOk(resourceSinkCleanupSubscriptionKey); ok {
 		sinkConfig.CleanupSubscription = inter.(bool)
 	}
 
-	if inter, ok := d.GetOk("subscription_position"); ok {
+	if inter, ok := d.GetOk(resourceSinkSubscriptionPositionKey); ok {
 		sinkConfig.SourceSubscriptionPosition = inter.(string)
 	}
 
-	if inter, ok := d.GetOk("custom_serde_inputs"); ok {
+	if inter, ok := d.GetOk(resourceSinkCustomSerdeInputsKey); ok {
 		interMap := inter.(map[string]interface{})
 		stringMap := make(map[string]string, len(interMap))
 
@@ -484,7 +573,7 @@ func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.TopicToSerdeClassName = stringMap
 	}
 
-	if inter, ok := d.GetOk("custom_schema_inputs"); ok {
+	if inter, ok := d.GetOk(resourceSinkCustomSchemaInputsKey); ok {
 		interMap := inter.(map[string]interface{})
 		stringMap := make(map[string]string, len(interMap))
 
@@ -495,64 +584,64 @@ func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.TopicToSchemaType = stringMap
 	}
 
-	if inter, ok := d.GetOk("input_specs"); ok {
+	if inter, ok := d.GetOk(resourceSinkInputSpecsKey); ok {
 		set := inter.(*schema.Set)
 		if set.Len() > 0 {
 			inputSpecs := make(map[string]utils.ConsumerConfig)
 			for _, n := range set.List() {
 				m := n.(map[string]interface{})
 				inputSpec := utils.ConsumerConfig{
-					SchemaType:        m["schema_type"].(string),
-					SerdeClassName:    m["serde_class_name"].(string),
-					IsRegexPattern:    m["is_regex_pattern"].(bool),
-					ReceiverQueueSize: m["receiver_queue_size"].(int),
+					SchemaType:        m[resourceSinkInputSpecsSubsetSchemaTypeKey].(string),
+					SerdeClassName:    m[resourceSinkInputSpecsSubsetSerdeClassNameKey].(string),
+					IsRegexPattern:    m[resourceSinkInputSpecsSubsetIsRegexPatternKey].(bool),
+					ReceiverQueueSize: m[resourceSinkInputSpecsSubsetReceiverQueueSizeKey].(int),
 				}
-				inputSpecs[m["key"].(string)] = inputSpec
+				inputSpecs[m[resourceSinkInputSpecsSubsetTopicKey].(string)] = inputSpec
 			}
 			sinkConfig.InputSpecs = inputSpecs
 		}
 	}
 
-	if inter, ok := d.GetOk("processing_guarantees"); ok {
+	if inter, ok := d.GetOk(resourceSinkProcessingGuaranteesKey); ok {
 		sinkConfig.ProcessingGuarantees = inter.(string)
 	}
 
-	if inter, ok := d.GetOk("retain_ordering"); ok {
+	if inter, ok := d.GetOk(resourceSinkRetainOrderingKey); ok {
 		sinkConfig.RetainOrdering = inter.(bool)
 	}
 
-	if inter, ok := d.GetOk("parallelism"); ok {
+	if inter, ok := d.GetOk(resourceSinkParallelismKey); ok {
 		sinkConfig.Parallelism = inter.(int)
 	}
 
-	if inter, ok := d.GetOk("archive"); ok {
+	if inter, ok := d.GetOk(resourceSinkArchiveKey); ok {
 		sinkConfig.Archive = inter.(string)
 	}
 
-	if inter, ok := d.GetOk("classname"); ok {
+	if inter, ok := d.GetOk(resourceSinkClassnameKey); ok {
 		sinkConfig.ClassName = inter.(string)
 	}
 
 	var resource utils.Resources
 
-	if inter, ok := d.GetOk("cpu"); ok {
+	if inter, ok := d.GetOk(resourceSinkCPUKey); ok {
 		value := inter.(float64)
 		resource.CPU = value
 	}
 
-	if inter, ok := d.GetOk("ram_mb"); ok {
+	if inter, ok := d.GetOk(resourceSinkRAMKey); ok {
 		value := bytesize.FormMegaBytes(uint64(inter.(int))).ToBytes()
 		resource.RAM = int64(value)
 	}
 
-	if inter, ok := d.GetOk("disk_mb"); ok {
+	if inter, ok := d.GetOk(resourceSinkDiskKey); ok {
 		value := bytesize.FormMegaBytes(uint64(inter.(int))).ToBytes()
 		resource.Disk = int64(value)
 	}
 
 	sinkConfig.Resources = &resource
 
-	if inter, ok := d.GetOk("configs"); ok {
+	if inter, ok := d.GetOk(resourceSinkConfigsKey); ok {
 		var configs map[string]interface{}
 		configsJSON := inter.(string)
 
@@ -564,18 +653,23 @@ func getSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.Configs = configs
 	}
 
-	if inter, ok := d.GetOk("auto_ack"); ok {
+	if inter, ok := d.GetOk(resourceSinkAutoACKKey); ok {
 		sinkConfig.AutoAck = inter.(bool)
 	}
 
-	if inter, ok := d.GetOk("timeout_ms"); ok {
+	if inter, ok := d.GetOk(resourceSinkTimeoutKey); ok {
 		value := int64(inter.(int))
 		sinkConfig.TimeoutMs = &value
 	}
 
-	if inter, ok := d.GetOk("custom_runtime_options"); ok {
+	if inter, ok := d.GetOk(resourceSinkCustomRuntimeOptionsKey); ok {
 		sinkConfig.CustomRuntimeOptions = inter.(string)
 	}
 
 	return sinkConfig, nil
+}
+
+func isLocalArchive(archive string) bool {
+	return !ctlutil.IsPackageURLSupported(archive) &&
+		!strings.HasPrefix(archive, ctlutil.BUILTIN)
 }
