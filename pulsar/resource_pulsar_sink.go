@@ -261,17 +261,20 @@ func resourcePulsarSink() *schema.Resource {
 			},
 			resourceSinkCPUKey: {
 				Type:        schema.TypeFloat,
-				Required:    true,
+				Optional:    true,
+				Default:     utils.NewDefaultResources().CPU,
 				Description: resourceSinkDescriptions[resourceSinkCPUKey],
 			},
 			resourceSinkRAMKey: {
 				Type:        schema.TypeInt,
-				Required:    true,
+				Optional:    true,
+				Default:     int(utils.NewDefaultResources().RAM),
 				Description: resourceSinkDescriptions[resourceSinkRAMKey],
 			},
 			resourceSinkDiskKey: {
 				Type:        schema.TypeInt,
-				Required:    true,
+				Optional:    true,
+				Default:     int(utils.NewDefaultResources().Disk),
 				Description: resourceSinkDescriptions[resourceSinkDiskKey],
 			},
 			resourceSinkConfigsKey: {
@@ -630,7 +633,7 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.ClassName = inter.(string)
 	}
 
-	var resource utils.Resources
+	resource := utils.NewDefaultResources()
 
 	if inter, ok := d.GetOk(resourceSinkCPUKey); ok {
 		value := inter.(float64)
@@ -647,7 +650,7 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		resource.Disk = int64(value)
 	}
 
-	sinkConfig.Resources = &resource
+	sinkConfig.Resources = resource
 
 	if inter, ok := d.GetOk(resourceSinkConfigsKey); ok {
 		var configs map[string]interface{}

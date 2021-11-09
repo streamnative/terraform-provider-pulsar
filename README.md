@@ -328,10 +328,6 @@ resource "pulsar_sink" "sample-sink-1" {
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
-  cpu = 1
-  ram_mb = 2048
-  disk_mb = 102400
-
   archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.8.1.nar"
   configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
 }
@@ -357,9 +353,9 @@ resource "pulsar_sink" "sample-sink-1" {
 | `auto_ack` | Whether or not the framework will automatically acknowledge messages | True
 | `timeout_ms` | The message timeout in milliseconds | False
 | `parallelism` | The sink's parallelism factor | False
-| `cpu` | The CPU that needs to be allocated per sink instance (applicable only to Docker runtime) | True
-| `ram_mb` | The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes) | True
-| `disk_mb` | The disk that need to be allocated per sink instance (applicable only to Docker runtime) | True
+| `cpu` | The CPU that needs to be allocated per sink instance (applicable only to Docker runtime) | False
+| `ram_mb` | The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes) | False
+| `disk_mb` | The disk that need to be allocated per sink instance (applicable only to Docker runtime) | False
 | `custom_schema_inputs` | The map of input topics to Schema types or class names (as a JSON string) | False
 | `custom_serde_inputs` | The map of input topics to SerDe class names (as a JSON string) | False
 | `custom_runtime_options` | A string that encodes options to customize the runtime | False
