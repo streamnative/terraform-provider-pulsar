@@ -302,6 +302,68 @@ resource "pulsar_topic" "sample-topic-2" {
 | `partitions`                  | Number of [partitions](https://pulsar.apache.org/docs/en/concepts-messaging/#partitioned-topics) (`0` for non-partitioned topic, `> 1` for partitioned topic) | Yes
 | `permission_grant`            | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No |
 
+### `pulsar_sink`
+
+A resource for creating and managing Apache Pulsar Sinks.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+  api_version = "3"
+}
+
+resource "pulsar_sink" "sample-sink-1" {
+  provider = "pulsar"
+
+  name = "sample-sink-1"
+  tenant = "public"
+  namespace = "default"
+  inputs = ["sink-1-topic"]
+  subscription_position = "Latest"
+  cleanup_subscription = false
+  parallelism = 1
+  auto_ack = true
+
+  processing_guarantees = "EFFECTIVELY_ONCE"
+
+  cpu = 1
+  ram_mb = 2048
+  disk_mb = 102400
+
+  archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.8.1.nar"
+  configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
+}
+```
+
+#### Properties
+
+| Property                      | Description                                                       | Required                   |
+| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
+| `tenant` | The sink's tenant | True
+| `namespace` | The sink's namespace | True
+| `name` | The sink's name | True
+| `inputs` | The sink's input topics | False
+| `topics_pattern` | TopicsPattern to consume from list of topics under a namespace that match the pattern | False
+| `input_specs` | The map of input topics specs | False
+| `configs` | User defined configs key/values (JSON string) | False
+| `archive` | Path to the archive file for the sink. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package | True
+| `subscription_name` | Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer | False
+| `subscription_position` | Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest) | False
+| `cleanup_subscription` | Whether the subscriptions the functions created/used should be deleted when the functions was deleted | True
+| `processing_guarantees` | Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE) | False
+| `retain_ordering` | Sink consumes and sinks messages in order | False
+| `auto_ack` | Whether or not the framework will automatically acknowledge messages | True
+| `timeout_ms` | The message timeout in milliseconds | False
+| `parallelism` | The sink's parallelism factor | False
+| `cpu` | The CPU that needs to be allocated per sink instance (applicable only to Docker runtime) | True
+| `ram_mb` | The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes) | True
+| `disk_mb` | The disk that need to be allocated per sink instance (applicable only to Docker runtime) | True
+| `custom_schema_inputs` | The map of input topics to Schema types or class names (as a JSON string) | False
+| `custom_serde_inputs` | The map of input topics to SerDe class names (as a JSON string) | False
+| `custom_runtime_options` | A string that encodes options to customize the runtime | False
+
 
 Importing existing resources
 ------------
