@@ -20,6 +20,7 @@ provider "pulsar" {
   api_version = "3"
 }
 
+// Note: sink resource requires v3 api.
 resource "pulsar_sink" "sink-1" {
   provider = "pulsar"
 
