@@ -18,10 +18,16 @@
 package pulsar
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/terraform-provider-pulsar/bytesize"
 
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 	"github.com/pkg/errors"
@@ -104,4 +110,107 @@ func testPulsarSinkDestroy(s *terraform.State) error {
 	}
 
 	return nil
+}
+
+func TestImportExistingSink(t *testing.T) {
+	sinkName := acctest.RandString(6)
+	err := createSampleSink(sinkName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resource.Test(t, resource.TestCase{
+		Providers:    testAccProviders,
+		CheckDestroy: testPulsarSinkDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:     "pulsar_sink.test",
+				ImportState:      true,
+				Config:           testSampleSink(sinkName),
+				ImportStateId:    fmt.Sprintf("public/default/%s", sinkName),
+				ImportStateCheck: testSinkImported(),
+			},
+		},
+	})
+}
+
+func testSinkImported() resource.ImportStateCheckFunc {
+	return func(s []*terraform.InstanceState) error {
+		if len(s) != 1 {
+			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
+		}
+
+		if len(s[0].Attributes) != 17 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 17, len(s[0].Attributes), s[0].Attributes)
+		}
+
+		return nil
+	}
+}
+
+func createSampleSink(name string) error {
+	client, err := sharedClientWithVersion(testWebServiceURL, common.V3)
+	if err != nil {
+		return err
+	}
+
+	configsJSON := "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
+	configs := make(map[string]interface{})
+	err = json.Unmarshal([]byte(configsJSON), &configs)
+	if err != nil {
+		return err
+	}
+
+	config := &utils.SinkConfig{
+		CleanupSubscription:        false,
+		RetainOrdering:             false,
+		AutoAck:                    true,
+		Parallelism:                1,
+		Tenant:                     "public",
+		Namespace:                  "default",
+		Name:                       name,
+		Archive:                    "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.8.1.nar",
+		ProcessingGuarantees:       "EFFECTIVELY_ONCE",
+		SourceSubscriptionPosition: "Latest",
+		Inputs:                     []string{"sink-1-topic"},
+		Configs:                    configs,
+		Resources: &utils.Resources{
+			CPU:  1,
+			Disk: int64(bytesize.FormMegaBytes(102400).ToBytes()),
+			RAM:  int64(bytesize.FormMegaBytes(2048).ToBytes()),
+		},
+	}
+
+	return client.Sinks().CreateSink(config, config.Archive)
+}
+
+func testSampleSink(name string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+  api_version = "3"
+}
+
+resource "pulsar_sink" "test" {
+  provider = "pulsar"
+
+  name = "%s"
+  tenant = "public"
+  namespace = "default"
+  inputs = ["sink-1-topic"]
+  subscription_position = "Latest"
+  cleanup_subscription = false
+  parallelism = 1
+  auto_ack = true
+
+  processing_guarantees = "EFFECTIVELY_ONCE"
+
+  cpu = 1
+  ram_mb = 2048
+  disk_mb = 102400
+
+  archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.8.1.nar"
+  configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
+}
+`, name)
 }

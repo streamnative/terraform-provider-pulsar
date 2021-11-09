@@ -30,3 +30,12 @@ func sharedClient(url string) (interface{}, error) {
 
 	return pulsar.New(config)
 }
+
+func sharedClientWithVersion(url string, version common.APIVersion) (pulsar.Client, error) {
+	config := &common.Config{
+		WebServiceURL:    url,
+		PulsarAPIVersion: version,
+	}
+
+	return pulsar.New(config)
+}

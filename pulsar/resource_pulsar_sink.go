@@ -379,14 +379,18 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	err = d.Set(resourceSinkTopicsPatternKey, sinkConfig.TopicsPattern)
-	if err != nil {
-		return err
+	if sinkConfig.TopicsPattern != nil {
+		err = d.Set(resourceSinkTopicsPatternKey, sinkConfig.TopicsPattern)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = d.Set(resourceSinkSubscriptionNameKey, sinkConfig.SourceSubscriptionName)
-	if err != nil {
-		return err
+	if len(sinkConfig.SourceSubscriptionName) != 0 {
+		err = d.Set(resourceSinkSubscriptionNameKey, sinkConfig.SourceSubscriptionName)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = d.Set(resourceSinkCleanupSubscriptionKey, sinkConfig.CleanupSubscription)
@@ -394,28 +398,31 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	customSerdeInputs := make(map[string]interface{}, len(sinkConfig.TopicToSerdeClassName))
-	for key, value := range sinkConfig.TopicToSerdeClassName {
-		customSerdeInputs[key] = value
-	}
-	err = d.Set(resourceSinkCustomSerdeInputsKey, customSerdeInputs)
-	if err != nil {
-		return err
-	}
-
-	customSchemaInputs := make(map[string]interface{}, len(sinkConfig.TopicToSchemaType))
-	for key, value := range sinkConfig.TopicToSchemaType {
-		customSchemaInputs[key] = value
+	if len(sinkConfig.TopicToSerdeClassName) != 0 {
+		customSerdeInputs := make(map[string]interface{}, len(sinkConfig.TopicToSerdeClassName))
+		for key, value := range sinkConfig.TopicToSerdeClassName {
+			customSerdeInputs[key] = value
+		}
+		err = d.Set(resourceSinkCustomSerdeInputsKey, customSerdeInputs)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = d.Set(resourceSinkCustomSchemaInputsKey, customSchemaInputs)
-	if err != nil {
-		return err
-	}
+	if len(sinkConfig.TopicToSchemaType) != 0 {
+		customSchemaInputs := make(map[string]interface{}, len(sinkConfig.TopicToSchemaType))
+		for key, value := range sinkConfig.TopicToSchemaType {
+			customSchemaInputs[key] = value
+		}
 
-	var inputSpecs []interface{}
+		err = d.Set(resourceSinkCustomSchemaInputsKey, customSchemaInputs)
+		if err != nil {
+			return err
+		}
+	}
 
 	if len(sinkConfig.InputSpecs) > 0 {
+		var inputSpecs []interface{}
 		for key, config := range sinkConfig.InputSpecs {
 			item := make(map[string]interface{})
 			item[resourceSinkInputSpecsSubsetTopicKey] = key
@@ -425,11 +432,10 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 			item[resourceSinkInputSpecsSubsetReceiverQueueSizeKey] = config.ReceiverQueueSize
 			inputSpecs = append(inputSpecs, item)
 		}
-	}
-
-	err = d.Set(resourceSinkInputSpecsKey, inputSpecs)
-	if err != nil {
-		return err
+		err = d.Set(resourceSinkInputSpecsKey, inputSpecs)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = d.Set(resourceSinkParallelismKey, sinkConfig.Parallelism)
@@ -491,9 +497,11 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 		}
 	}
 
-	err = d.Set(resourceSinkCustomRuntimeOptionsKey, sinkConfig.CustomRuntimeOptions)
-	if err != nil {
-		return err
+	if len(sinkConfig.CustomRuntimeOptions) != 0 {
+		err = d.Set(resourceSinkCustomRuntimeOptionsKey, sinkConfig.CustomRuntimeOptions)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
