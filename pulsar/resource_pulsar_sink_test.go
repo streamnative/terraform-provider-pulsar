@@ -154,7 +154,8 @@ func createSampleSink(name string) error {
 		return err
 	}
 
-	configsJSON := "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
+	configsJSON := "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\"," +
+		"\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
 	configs := make(map[string]interface{})
 	err = json.Unmarshal([]byte(configsJSON), &configs)
 	if err != nil {
@@ -185,6 +186,7 @@ func createSampleSink(name string) error {
 }
 
 func testSampleSink(name string) string {
+	//nolint
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
