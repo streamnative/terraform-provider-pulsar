@@ -21,7 +21,7 @@ provider "pulsar" {
 }
 
 resource "pulsar_sink" "sink-1" {
-  provider = "pulsar"
+  provider = pulsar
 
   name = "sink-1"
   tenant = "public"

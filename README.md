@@ -315,7 +315,7 @@ provider "pulsar" {
 }
 
 resource "pulsar_sink" "sample-sink-1" {
-  provider = "pulsar"
+  provider = pulsar
 
   name = "sample-sink-1"
   tenant = "public"

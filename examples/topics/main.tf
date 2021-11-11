@@ -18,7 +18,7 @@
 terraform {
   required_providers {
     pulsar = {
-      versions = ["1.0.0"]
+      version = "1.0.0"
       source = "registry.terraform.io/apache/pulsar"
     }
   }
@@ -33,13 +33,6 @@ resource "pulsar_topic" "sample-topic-1" {
   namespace  = "default"
   topic_type = "persistent"
   topic_name = "partition-topic"
-  partitions = 4                     # partitions > 0 means this is a partition topic
+  partitions =  0
 }
 
-resource "pulsar_topic" "sample-topic-2" {
-  tenant     = "public"
-  namespace  = "default"
-  topic_type = "persistent"
-  topic_name = "non-partition-topic"
-  partitions = 0                     # partitions = 0 means this is a non-partition topic
-}

@@ -15,6 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
+terraform {
+  required_providers {
+    pulsar = {
+      version = "1.0.0"
+      source = "registry.terraform.io/apache/pulsar"
+    }
+  }
+}
+
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
   api_version = "3"
@@ -22,7 +31,7 @@ provider "pulsar" {
 
 // Note: sink resource requires v3 api.
 resource "pulsar_sink" "sink-1" {
-  provider = "pulsar"
+  provider = pulsar
 
   name = "sink-1"
   tenant = "public"
