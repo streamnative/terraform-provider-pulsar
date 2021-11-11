@@ -180,20 +180,20 @@ func resourcePulsarSource() *schema.Resource {
 			resourceSourceCPUKey: {
 				Type:        schema.TypeFloat,
 				Optional:    true,
-				Computed:    true,
 				Description: resourceSourceDescriptions[resourceSourceCPUKey],
+				Default:     utils.NewDefaultResources().CPU,
 			},
 			resourceSourceRAMKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Computed:    true,
 				Description: resourceSourceDescriptions[resourceSourceRAMKey],
+				Default:     int(bytesize.FormBytes(uint64(utils.NewDefaultResources().RAM)).ToMegaBytes()),
 			},
 			resourceSourceDiskKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Computed:    true,
 				Description: resourceSourceDescriptions[resourceSourceDiskKey],
+				Default:     int(bytesize.FormBytes(uint64(utils.NewDefaultResources().Disk)).ToMegaBytes()),
 			},
 			resourceSourceConfigsKey: {
 				Type:        schema.TypeString,
@@ -409,24 +409,24 @@ func marshalSourceConfig(d *schema.ResourceData) (*utils.SourceConfig, error) {
 		sourceConfig.ClassName = inter.(string)
 	}
 
-	resource := utils.NewDefaultResources()
+	resources := utils.NewDefaultResources()
 
 	if inter, ok := d.GetOk(resourceSourceCPUKey); ok {
 		value := inter.(float64)
-		resource.CPU = value
+		resources.CPU = value
 	}
 
 	if inter, ok := d.GetOk(resourceSourceRAMKey); ok {
 		value := bytesize.FormMegaBytes(uint64(inter.(int))).ToBytes()
-		resource.RAM = int64(value)
+		resources.RAM = int64(value)
 	}
 
 	if inter, ok := d.GetOk(resourceSourceDiskKey); ok {
 		value := bytesize.FormMegaBytes(uint64(inter.(int))).ToBytes()
-		resource.Disk = int64(value)
+		resources.Disk = int64(value)
 	}
 
-	sourceConfig.Resources = resource
+	sourceConfig.Resources = resources
 
 	if inter, ok := d.GetOk(resourceSourceConfigsKey); ok {
 		var configs map[string]interface{}
