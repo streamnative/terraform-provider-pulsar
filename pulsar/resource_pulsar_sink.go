@@ -124,7 +124,7 @@ func resourcePulsarSink() *schema.Resource {
 
 				parts := strings.Split(id, "/")
 				if len(parts) != 3 {
-					return nil, errors.New("id should be tenant/namespace/name format")
+					return nil, errors.New("ID should be tenant/namespace/name format")
 				}
 
 				_ = d.Set(resourceSinkTenantKey, parts[0])
@@ -268,13 +268,13 @@ func resourcePulsarSink() *schema.Resource {
 			resourceSinkRAMKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Default:     int(utils.NewDefaultResources().RAM),
+				Default:     int(bytesize.FormBytes(uint64(utils.NewDefaultResources().RAM)).ToMegaBytes()),
 				Description: resourceSinkDescriptions[resourceSinkRAMKey],
 			},
 			resourceSinkDiskKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Default:     int(utils.NewDefaultResources().Disk),
+				Default:     int(bytesize.FormBytes(uint64(utils.NewDefaultResources().Disk)).ToMegaBytes()),
 				Description: resourceSinkDescriptions[resourceSinkDiskKey],
 			},
 			resourceSinkConfigsKey: {
@@ -633,24 +633,24 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.ClassName = inter.(string)
 	}
 
-	resource := utils.NewDefaultResources()
+	resources := utils.NewDefaultResources()
 
 	if inter, ok := d.GetOk(resourceSinkCPUKey); ok {
 		value := inter.(float64)
-		resource.CPU = value
+		resources.CPU = value
 	}
 
 	if inter, ok := d.GetOk(resourceSinkRAMKey); ok {
 		value := bytesize.FormMegaBytes(uint64(inter.(int))).ToBytes()
-		resource.RAM = int64(value)
+		resources.RAM = int64(value)
 	}
 
 	if inter, ok := d.GetOk(resourceSinkDiskKey); ok {
 		value := bytesize.FormMegaBytes(uint64(inter.(int))).ToBytes()
-		resource.Disk = int64(value)
+		resources.Disk = int64(value)
 	}
 
-	sinkConfig.Resources = resource
+	sinkConfig.Resources = resources
 
 	if inter, ok := d.GetOk(resourceSinkConfigsKey); ok {
 		var configs map[string]interface{}
