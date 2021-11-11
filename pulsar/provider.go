@@ -71,7 +71,7 @@ func Provider() terraform.ResourceProvider {
 			"pulsar_cluster":   resourcePulsarCluster(),
 			"pulsar_namespace": resourcePulsarNamespace(),
 			"pulsar_topic":     resourcePulsarTopic(),
-			"pulsar_sink":      resourcePulsarSource(),
+			"pulsar_source":    resourcePulsarSource(),
 		},
 	}
 

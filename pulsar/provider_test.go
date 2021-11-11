@@ -63,6 +63,7 @@ func initTestWebServiceURL() {
 	url, ok := os.LookupEnv("WEB_SERVICE_URL")
 	if !ok {
 		testWebServiceURL = "http://localhost:8080"
+		return
 	}
 
 	testWebServiceURL = url
