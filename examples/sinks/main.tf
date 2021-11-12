@@ -48,6 +48,6 @@ resource "pulsar_sink" "sink-1" {
   ram_mb = 2048
   disk_mb = 102400
 
-  archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.8.1.nar"
+  archive = "pulsar-io-jdbc-postgres-2.8.1.nar"
   configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
 }
