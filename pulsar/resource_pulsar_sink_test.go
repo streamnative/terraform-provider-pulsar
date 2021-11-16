@@ -37,6 +37,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 )
 
+var testdataArchive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?" +
+	"action=download&filename=pulsar/pulsar-2.8.1/connectors/pulsar-io-jdbc-postgres-2.8.1.nar"
+
 func init() {
 	initTestWebServiceURL()
 }
@@ -154,8 +157,8 @@ func createSampleSink(name string) error {
 		return err
 	}
 
-	configsJSON := "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\"," +
-		"\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
+	configsJSON := "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\"," +
+		"\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
 	configs := make(map[string]interface{})
 	err = json.Unmarshal([]byte(configsJSON), &configs)
 	if err != nil {
@@ -170,7 +173,7 @@ func createSampleSink(name string) error {
 		Tenant:                     "public",
 		Namespace:                  "default",
 		Name:                       name,
-		Archive:                    "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.8.1.nar",
+		Archive:                    testdataArchive,
 		ProcessingGuarantees:       "EFFECTIVELY_ONCE",
 		SourceSubscriptionPosition: "Latest",
 		Inputs:                     []string{"sink-1-topic"},
@@ -182,7 +185,7 @@ func createSampleSink(name string) error {
 		},
 	}
 
-	return client.Sinks().CreateSink(config, config.Archive)
+	return client.Sinks().CreateSinkWithURL(config, config.Archive)
 }
 
 func testSampleSink(name string) string {
@@ -211,8 +214,8 @@ resource "pulsar_sink" "test" {
   ram_mb = 2048
   disk_mb = 102400
 
-  archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.8.1.nar"
-  configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
+  archive = "%s"
+  configs = "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
 }
-`, name)
+`, name, testdataArchive)
 }
