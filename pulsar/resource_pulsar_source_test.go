@@ -43,6 +43,9 @@ func init() {
 	initTestWebServiceURL()
 }
 
+var testdataSourceArchive = "https://www.apache.org/dyn/mirrors/mirrors.cgi" +
+	"?action=download&filename=pulsar/pulsar-2.8.1/connectors/pulsar-io-file-2.8.1.nar"
+
 func TestSource(t *testing.T) {
 	configBytes, err := ioutil.ReadFile("testdata/source/main.tf")
 	if err != nil {
@@ -187,7 +190,7 @@ func createSampleSource(name string) error {
 		Name:                 name,
 		TopicName:            "source-1-topic",
 		Parallelism:          1,
-		Archive:              "testdata/pulsar-io/pulsar-io-file-2.8.1.nar",
+		Archive:              testdataSourceArchive,
 		ProcessingGuarantees: ProcessingGuaranteesEffectivelyOnce,
 		Configs:              configs,
 		Resources: &utils.Resources{
@@ -197,7 +200,7 @@ func createSampleSource(name string) error {
 		},
 	}
 
-	return client.Sources().CreateSource(config, config.Archive)
+	return client.Sources().CreateSourceWithURL(config, config.Archive)
 }
 
 func testSampleSource(name string) string {
@@ -215,7 +218,7 @@ resource "pulsar_source" "source-1" {
   tenant = "public"
   namespace = "default"
 
-  archive = "testdata/pulsar-io/pulsar-io-file-2.8.1.nar"
+  archive = "%s"
 
   destination_topic_name = "source-1-topic"
 
@@ -227,5 +230,5 @@ resource "pulsar_source" "source-1" {
   disk_mb = 20480
   ram_mb = 2048
 }
-`, testWebServiceURL, name)
+`, testWebServiceURL, name, testdataSourceArchive)
 }

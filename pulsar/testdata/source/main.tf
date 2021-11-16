@@ -27,7 +27,7 @@ resource "pulsar_source" "source-1" {
   tenant = "public"
   namespace = "default"
 
-  archive = "testdata/pulsar-io/pulsar-io-file-2.8.1.nar"
+  archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.8.1/connectors/pulsar-io-file-2.8.1.nar"
 
   destination_topic_name = "source-1-topic"
 
