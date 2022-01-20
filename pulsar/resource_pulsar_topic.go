@@ -380,11 +380,13 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 	}
 
 	var policies utils.RetentionPolicies
-	if retentionPoliciesConfig.Len() > 0 {
-		data := retentionPoliciesConfig.List()[0].(map[string]interface{})
-		policies.RetentionTimeInMinutes = data["retention_time_minutes"].(int)
-		policies.RetentionSizeInMB = int64(data["retention_size_mb"].(int))
+	if retentionPoliciesConfig.Len() < 1 {
+		return nil
 	}
+
+	data := retentionPoliciesConfig.List()[0].(map[string]interface{})
+	policies.RetentionTimeInMinutes = data["retention_time_minutes"].(int)
+	policies.RetentionSizeInMB = int64(data["retention_size_mb"].(int))
 
 	if err := client.SetRetention(*topicName, policies); err != nil {
 		return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
