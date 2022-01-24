@@ -379,17 +379,15 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 			"unsupported set retention policies for non-persistent topic")
 	}
 
-	var policies utils.RetentionPolicies
-	if retentionPoliciesConfig.Len() < 1 {
-		return nil
-	}
+	if retentionPoliciesConfig.Len() > 0 {
+		var policies utils.RetentionPolicies
+		data := retentionPoliciesConfig.List()[0].(map[string]interface{})
+		policies.RetentionTimeInMinutes = data["retention_time_minutes"].(int)
+		policies.RetentionSizeInMB = int64(data["retention_size_mb"].(int))
 
-	data := retentionPoliciesConfig.List()[0].(map[string]interface{})
-	policies.RetentionTimeInMinutes = data["retention_time_minutes"].(int)
-	policies.RetentionSizeInMB = int64(data["retention_size_mb"].(int))
-
-	if err := client.SetRetention(*topicName, policies); err != nil {
-		return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
+		if err := client.SetRetention(*topicName, policies); err != nil {
+			return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
+		}
 	}
 
 	return nil
