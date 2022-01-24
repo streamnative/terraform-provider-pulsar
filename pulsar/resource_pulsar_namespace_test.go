@@ -425,6 +425,7 @@ resource "pulsar_namespace" "test" {
     max_consumers_per_topic        = "50"
     max_producers_per_topic        = "50"
     replication_clusters           = ["standalone"]
+    is_allow_auto_update_schema    = false
   }
 
   dispatch_rate {

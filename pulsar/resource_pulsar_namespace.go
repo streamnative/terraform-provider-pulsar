@@ -166,6 +166,11 @@ func resourcePulsarNamespace() *schema.Resource {
 							Default:      "Full",
 							ValidateFunc: validateNotBlank,
 						},
+						"is_allow_auto_update_schema": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  true,
+						},
 					},
 				},
 				Set: namespaceConfigToHash,
@@ -310,6 +315,11 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 			replClusters[i] = cl
 		}
 
+		isAllowAutoUpdateSchema, err := client.GetIsAllowAutoUpdateSchema(*ns)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE: GetIsAllowAutoUpdateSchema: %w", err)
+		}
+
 		_ = d.Set("namespace_config", schema.NewSet(namespaceConfigToHash, []interface{}{
 			map[string]interface{}{
 				"anti_affinity":                  strings.Trim(strings.TrimSpace(afgrp), "\""),
@@ -319,6 +329,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 				"replication_clusters":           replClusters,
 				"schema_validation_enforce":      schemaValidationEnforce,
 				"schema_compatibility_strategy":  schemaCompatibilityStrategy.String(),
+				"is_allow_auto_update_schema":    isAllowAutoUpdateSchema,
 			},
 		}))
 	}
@@ -462,6 +473,9 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 			} else if err = client.SetSchemaAutoUpdateCompatibilityStrategy(*nsName, strategy); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
 			}
+		}
+		if err = client.SetIsAllowAutoUpdateSchema(*nsName, nsCfg.IsAllowAutoUpdateSchema); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("SetIsAllowAutoUpdateSchema: %w", err))
 		}
 	}
 
@@ -685,6 +699,7 @@ func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
 		nsConfig.AntiAffinity = data["anti_affinity"].(string)
 		nsConfig.SchemaValidationEnforce = data["schema_validation_enforce"].(bool)
 		nsConfig.SchemaCompatibilityStrategy = data["schema_compatibility_strategy"].(string)
+		nsConfig.IsAllowAutoUpdateSchema = data["is_allow_auto_update_schema"].(bool)
 	}
 
 	return &nsConfig
