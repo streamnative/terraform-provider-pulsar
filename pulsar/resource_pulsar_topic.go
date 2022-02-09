@@ -20,6 +20,7 @@ package pulsar
 import (
 	"fmt"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/pkg/errors"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
@@ -149,17 +150,11 @@ func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err)
 	}
 
-	if topicName.IsPersistent() {
-		err = updateRetentionPolicies(d, meta, topicName)
-		if err != nil {
-			return fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err)
-		}
-	} else {
-		retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
-		if retentionPoliciesConfig.Len() != 0 {
-			return fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: " +
-				"unsupported set retention policies for non-persistent topic")
-		}
+	err = retry(func() error {
+		return updateRetentionPolicies(d, meta, topicName)
+	})
+	if err != nil {
+		return fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err)
 	}
 
 	return resourcePulsarTopicRead(d, meta)
@@ -197,7 +192,6 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 
 	if retPoliciesCfg, ok := d.GetOk("retention_policies"); ok && retPoliciesCfg.(*schema.Set).Len() > 0 {
 		if topicName.IsPersistent() {
-
 			ret, err := client.GetRetention(*topicName, true)
 			if err != nil {
 				return fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err)
@@ -209,6 +203,8 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 					"retention_size_mb":      int(ret.RetentionSizeInMB),
 				},
 			})
+		} else {
+			return errors.New("ERROR_READ_TOPIC: unsupported get retention policies for non-persistent topic")
 		}
 	}
 
@@ -374,20 +370,22 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 	client := meta.(pulsar.Client).Topics()
 
 	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
+	if retentionPoliciesConfig.Len() == 0 {
+		return nil
+	}
+
 	if !topicName.IsPersistent() {
 		return errors.New("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: " +
 			"unsupported set retention policies for non-persistent topic")
 	}
 
-	if retentionPoliciesConfig.Len() > 0 {
-		var policies utils.RetentionPolicies
-		data := retentionPoliciesConfig.List()[0].(map[string]interface{})
-		policies.RetentionTimeInMinutes = data["retention_time_minutes"].(int)
-		policies.RetentionSizeInMB = int64(data["retention_size_mb"].(int))
+	var policies utils.RetentionPolicies
+	data := retentionPoliciesConfig.List()[0].(map[string]interface{})
+	policies.RetentionTimeInMinutes = data["retention_time_minutes"].(int)
+	policies.RetentionSizeInMB = int64(data["retention_size_mb"].(int))
 
-		if err := client.SetRetention(*topicName, policies); err != nil {
-			return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
-		}
+	if err := client.SetRetention(*topicName, policies); err != nil {
+		return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
 	}
 
 	return nil
@@ -411,4 +409,8 @@ func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils
 	}
 
 	return nil
+}
+
+func retry(operation func() error) error {
+	return backoff.Retry(operation, backoff.NewExponentialBackOff())
 }
