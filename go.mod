@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/aws/aws-sdk-go v1.25.48 // indirect
+	github.com/cenkalti/backoff/v4 v4.1.2
 	github.com/hashicorp/go-multierror v1.0.0
 	github.com/hashicorp/hcl/v2 v2.1.0 // indirect
 	github.com/hashicorp/terraform-plugin-sdk v1.4.0
