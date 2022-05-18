@@ -7,20 +7,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      - name: Set up Go 1.16
+      - name: Set up Go 1.18
         uses: actions/setup-go@v2
         with:
-          go-version: 1.16
+          go-version: 1.18
         id: go
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v2
 
-      - name: Install terraform@0.12.17
+      - name: Install terraform@1.1.9
         run: |
-          wget https://releases.hashicorp.com/terraform/0.12.17/terraform_0.12.17_linux_amd64.zip
-          unzip terraform_0.12.17_linux_amd64.zip && sudo mv terraform /usr/local/bin
+          wget https://releases.hashicorp.com/terraform/1.1.9/terraform_1.1.9_linux_amd64.zip
+          unzip terraform_1.1.9_linux_amd64.zip && sudo mv terraform /usr/local/bin
           mkdir -p $HOME/.terraform.d/plugins/linux_amd64
+          export TF_ACC_TERRAFORM_PATH=/usr/local/bin/terraform
 
       - name: Run pulsar standalone in Docker
         run: make run-pulsar-in-docker

@@ -25,7 +25,7 @@ If you would like to contribute code to this project, fork the repository and se
 
 ## Prerequisite
 
-In this project, use `go mod` as the package management tool and make sure your Go version is higher then `Go 1.13`.
+In this project, use `go mod` as the package management tool and make sure your Go version is higher then `Go 1.18`.
 
 ## Fork
 
@@ -81,5 +81,5 @@ add the license at the beginning of each file. The location of the header file: 
 
 ## Update dependencies
 
-The `terraform-provider-pulsar` uses [Go 1.17 module](https://github.com/golang/go/wiki/Modules) to manage dependencies.
+The `terraform-provider-pulsar` uses [Go 1.16 module](https://github.com/golang/go/wiki/Modules) to manage dependencies.
 To add or update a dependency, use the `go mod edit` command to change the dependencies

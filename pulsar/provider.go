@@ -19,10 +19,13 @@ package pulsar
 
 import (
 	"context"
-	"fmt"
 	"net/url"
+	"strconv"
+
+	"github.com/pkg/errors"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
@@ -30,40 +33,42 @@ import (
 
 const DefaultPulsarAPIVersion string = "0" // 0 will automatically match the default api version
 
-// Provider returns a terraform.ResourceProvider
+// Provider returns a schema.Provider
 func Provider() *schema.Provider {
 	provider := &schema.Provider{
 		Schema: map[string]*schema.Schema{
 			"web_service_url": {
 				Type:        schema.TypeString,
-				Required:    true,
+				Optional:    true,
 				Description: descriptions["web_service_url"],
-				DefaultFunc: schema.EnvDefaultFunc("WEB_SERVICE_URL", nil),
+				DefaultFunc: schema.MultiEnvDefaultFunc(
+					[]string{"PUSLAR_WEB_SERVICE_URL", "WEB_SERVICE_URL"}, ""),
 			},
 			"token": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("PULSAR_AUTH_TOKEN", nil),
 				Description: descriptions["token"],
+				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PULSAR_TOKEN", "PULSAR_AUTH_TOKEN"}, ""),
 			},
 			"api_version": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Default:     DefaultPulsarAPIVersion,
-				Deprecated:  "The newer versions can use the right version for the right type of resource",
 				Description: descriptions["api_version"],
+				DefaultFunc: schema.EnvDefaultFunc("PULSAR_API_VERSION", DefaultPulsarAPIVersion),
 			},
 			"tls_trust_certs_file_path": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: descriptions["tls_trust_certs_file_path"],
-				DefaultFunc: schema.EnvDefaultFunc("TLS_TRUST_CERTS_FILE_PATH", nil),
+				DefaultFunc: schema.MultiEnvDefaultFunc(
+					[]string{"PULSAR_TLS_TRUST_CERTS_FILE_PATH", "TLS_TRUST_CERTS_FILE_PATH"}, ""),
 			},
 			"tls_allow_insecure_connection": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Description: descriptions["tls_allow_insecure_connection"],
-				DefaultFunc: schema.EnvDefaultFunc("TLS_ALLOW_INSECURE_CONNECTION", false),
+				DefaultFunc: schema.MultiEnvDefaultFunc(
+					[]string{"PULSAR_TLS_TRUST_CERTS_FILE_PATH", "TLS_ALLOW_INSECURE_CONNECTION"}, false),
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
@@ -75,63 +80,48 @@ func Provider() *schema.Provider {
 	}
 
 	provider.ConfigureContextFunc = func(_ context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-		tfVersion := provider.TerraformVersion
-		if tfVersion == "" {
-			// Terraform 0.12 introduced this field to the protocol, so if this field is missing,
-			// we can assume Terraform version is <= 0.11
-			tfVersion = "0.11+compatible"
-		}
-
-		if err := validatePulsarConfig(d); err != nil {
-			return nil, diag.FromErr(err)
-		}
-
-		output, err := providerConfigure(d, tfVersion)
-		if err != nil {
-			return nil, diag.FromErr(err)
-		}
-		return output, nil
+		return providerConfigure(d, provider.TerraformVersion)
 	}
 
 	return provider
 }
 
-func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, error) {
-
+func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, diag.Diagnostics) {
 	// can be used for version locking or version specific feature sets
 	_ = tfVersion
 	clusterURL := d.Get("web_service_url").(string)
 	token := d.Get("token").(string)
+	pulsarAPIVersion := d.Get("api_version").(string)
 	TLSTrustCertsFilePath := d.Get("tls_trust_certs_file_path").(string)
 	TLSAllowInsecureConnection := d.Get("tls_allow_insecure_connection").(bool)
 
-	meta := make(map[common.APIVersion]pulsar.Client, 3)
-	for _, version := range []common.APIVersion{common.V1, common.V2, common.V3} {
-		config := &common.Config{
-			WebServiceURL:              clusterURL,
-			Token:                      token,
-			PulsarAPIVersion:           version,
-			TLSTrustCertsFilePath:      TLSTrustCertsFilePath,
-			TLSAllowInsecureConnection: TLSAllowInsecureConnection,
-		}
-
-		client, err := pulsar.New(config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create pulsar client: %w", err)
-		}
-		meta[version] = client
-	}
-	return meta, nil
-}
-
-func validatePulsarConfig(d *schema.ResourceData) error {
-	webServiceURL := d.Get("web_service_url").(string)
-
-	if _, err := url.Parse(webServiceURL); err != nil {
-		return fmt.Errorf("ERROR_PULSAR_CONFIG_INVALID_WEB_SERVICE_URL: %w", err)
+	if clusterURL == "" {
+		clusterURL = "http://localhost:8080"
 	}
 
-	return nil
+	if _, err := url.Parse(clusterURL); err != nil {
+		return nil, diag.FromErr(errors.Wrap(err, "invalid web_service_url"))
+	}
+
+	apiVersion, err := strconv.Atoi(pulsarAPIVersion)
+	if err != nil {
+		return nil, diag.FromErr(errors.Wrap(err, "invalid api_version"))
+	}
+
+	config := &common.Config{
+		WebServiceURL:              clusterURL,
+		Token:                      token,
+		PulsarAPIVersion:           common.APIVersion(apiVersion),
+		TLSTrustCertsFilePath:      TLSTrustCertsFilePath,
+		TLSAllowInsecureConnection: TLSAllowInsecureConnection,
+	}
+
+	client, err := pulsar.New(config)
+	if err != nil {
+		return nil, diag.FromErr(errors.Wrapf(err, "failed to create pulsar client"))
+	}
+
+	return client, nil
 }
 
 var descriptions map[string]string

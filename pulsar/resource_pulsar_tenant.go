@@ -65,7 +65,7 @@ func resourcePulsarTenant() *schema.Resource {
 }
 
 func resourcePulsarTenantExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := getClientV2FromMeta(meta).Tenants()
+	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
@@ -83,7 +83,7 @@ func resourcePulsarTenantExists(d *schema.ResourceData, meta interface{}) (bool,
 }
 
 func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Tenants()
+	client := getClientFromMeta(meta).Tenants()
 
 	ok, err := resourcePulsarTenantExists(d, meta)
 	if err != nil {
@@ -112,7 +112,7 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Tenants()
+	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
@@ -130,7 +130,7 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Tenants()
+	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
@@ -152,7 +152,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Tenants()
+	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
@@ -170,7 +170,7 @@ func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error 
 }
 
 func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	nsList, err := client.GetNamespaces(tenant)
 	if err != nil {

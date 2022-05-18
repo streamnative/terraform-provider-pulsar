@@ -227,7 +227,7 @@ func resourcePulsarNamespace() *schema.Resource {
 }
 
 func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	ok, err := resourcePulsarNamespaceExists(d, meta)
 	if err != nil {
@@ -258,7 +258,7 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	tenant := d.Get("tenant").(string)
 	namespace := d.Get("namespace").(string)
@@ -279,16 +279,12 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceAntiAffinityGroup: %w", err)
 		}
 
-		maxConsPerSub, err := fixClientIntConversion(func() (int, error) {
-			return client.GetMaxConsumersPerSubscription(*ns)
-		})
+		maxConsPerSub, err := client.GetMaxConsumersPerSubscription(*ns)
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerSubscription: %w", err)
 		}
 
-		maxConsPerTopic, err := fixClientIntConversion(func() (int, error) {
-			return client.GetMaxConsumersPerTopic(*ns)
-		})
+		maxConsPerTopic, err := client.GetMaxConsumersPerTopic(*ns)
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerTopic: %w", err)
 		}
@@ -414,7 +410,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
@@ -563,7 +559,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
@@ -588,7 +584,7 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := getClientV2FromMeta(meta).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	tenant := d.Get("tenant").(string)
 	namespace := d.Get("namespace").(string)

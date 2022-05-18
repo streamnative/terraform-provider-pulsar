@@ -38,9 +38,9 @@ func init() {
 func TestTopic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testPulsarTopicDestroy,
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarPartitionTopic,
@@ -72,8 +72,8 @@ func TestImportExistingTopic(t *testing.T) {
 			testAccPreCheck(t)
 			createTopic(t, fullID, pnum)
 		},
-		Providers:    testAccProviders,
-		CheckDestroy: testPulsarTopicDestroy,
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
 				ResourceName:     "pulsar_topic.test",
@@ -100,9 +100,9 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 	ttype := "persistent"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testPulsarTopicDestroy,
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum,
@@ -147,7 +147,7 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 }
 
 func testPulsarTopicDestroy(s *terraform.State) error {
-	client := getClientV2FromMeta(testAccProvider.Meta()).Topics()
+	client := getClientFromMeta(testAccProvider.Meta()).Topics()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_topic" {
@@ -194,9 +194,9 @@ func testPulsarTopicExists(topic string) resource.TestCheckFunc {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: %w", err)
 		}
 
-		client := getClientV2FromMeta(testAccProvider.Meta()).Topics()
+		client := getClientFromMeta(testAccProvider.Meta()).Topics()
 
-		_, retentionPoliciesFound := rs.Primary.Attributes["retention_policies.#"]
+		_, retentionPoliciesFound := rs.Primary.Attributes["retention_policies.0.%"]
 		if retentionPoliciesFound && topicName.IsPersistent() {
 			<-time.After(3 * time.Second)
 			retention, err := client.GetRetention(*topicName, true)
@@ -237,8 +237,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 8 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 8, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 9 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 9, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil

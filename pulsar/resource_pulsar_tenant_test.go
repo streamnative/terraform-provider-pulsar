@@ -37,7 +37,7 @@ func TestTenant(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
-		Providers:                 testAccProviders,
+		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarTenantDestroy,
 		Steps: []resource.TestStep{
@@ -57,7 +57,7 @@ func TestHandleExistingTenant(t *testing.T) {
 			testAccPreCheck(t)
 			createTenant(t, tName)
 		},
-		Providers:                 testAccProviders,
+		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarTenantDestroy,
 		Steps: []resource.TestStep{
@@ -78,8 +78,8 @@ func TestImportExistingTenant(t *testing.T) {
 			testAccPreCheck(t)
 			createTenant(t, tName)
 		},
-		CheckDestroy: testPulsarTenantDestroy,
-		Providers:    testAccProviders,
+		CheckDestroy:      testPulsarTenantDestroy,
+		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				ResourceName:     "pulsar_tenant.test",
@@ -128,7 +128,7 @@ func testPulsarTenantExists(tenant string) resource.TestCheckFunc {
 			return fmt.Errorf("NOT_FOUND: %s", tenant)
 		}
 
-		client := getClientV2FromMeta(testAccProvider.Meta()).Tenants()
+		client := getClientFromMeta(testAccProvider.Meta()).Tenants()
 
 		_, err := client.Get(rs.Primary.ID)
 		if err != nil {
@@ -140,7 +140,7 @@ func testPulsarTenantExists(tenant string) resource.TestCheckFunc {
 }
 
 func testPulsarTenantDestroy(s *terraform.State) error {
-	client := getClientV2FromMeta(testAccProvider.Meta()).Tenants()
+	client := getClientFromMeta(testAccProvider.Meta()).Tenants()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_tenant" {

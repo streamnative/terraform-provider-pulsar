@@ -36,8 +36,8 @@ A [Terraform][1] provider for managing [Apache Pulsar Entities][2].
 Requirements
 ------------
 
-- [Terraform](https://www.terraform.io/downloads.html) 0.10+
-- [Go](https://golang.org/doc/install) 1.16 or higher (to build the provider plugin)
+- [Terraform](https://www.terraform.io/downloads.html) 0.12.0 or later
+- [Go](https://golang.org/doc/install) 1.16 or later (to build the provider plugin)
 
 Installation
 ------------

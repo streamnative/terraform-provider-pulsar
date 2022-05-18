@@ -93,7 +93,7 @@ func resourcePulsarCluster() *schema.Resource {
 }
 
 func resourcePulsarClusterCreate(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Clusters()
+	client := getClientFromMeta(meta).Clusters()
 
 	ok, err := resourcePulsarClusterExists(d, meta)
 	if err != nil {
@@ -119,7 +119,7 @@ func resourcePulsarClusterCreate(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Clusters()
+	client := getClientFromMeta(meta).Clusters()
 
 	cluster := d.Get("cluster").(string)
 
@@ -148,7 +148,7 @@ func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Clusters()
+	client := getClientFromMeta(meta).Clusters()
 
 	clusterDataSet := d.Get("cluster_data").(*schema.Set)
 	cluster := d.Get("cluster").(string)
@@ -167,7 +167,7 @@ func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarClusterDelete(d *schema.ResourceData, meta interface{}) error {
-	client := getClientV2FromMeta(meta).Clusters()
+	client := getClientFromMeta(meta).Clusters()
 
 	Cluster := d.Get("cluster").(string)
 
@@ -182,7 +182,7 @@ func resourcePulsarClusterDelete(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarClusterExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := getClientV2FromMeta(meta).Clusters()
+	client := getClientFromMeta(meta).Clusters()
 
 	cluster := d.Get("cluster").(string)
 

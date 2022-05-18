@@ -1,42 +1,26 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 package pulsar
 
-// As an instance of pulsarctl can only handle one version at a time, this makes sure we can
-// request the right version for the right API resource.
-
 import (
-	"errors"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
-	"strconv"
 )
 
-func getClientFromMeta(version common.APIVersion, meta interface{}) pulsar.Client {
-	versions := meta.(map[common.APIVersion]pulsar.Client)
-	return versions[version]
-}
-
-func getClientV1FromMeta(meta interface{}) pulsar.Client {
-	return getClientFromMeta(common.V1, meta)
-}
-
-func getClientV2FromMeta(meta interface{}) pulsar.Client {
-	return getClientFromMeta(common.V2, meta)
-}
-
-func getClientV3FromMeta(meta interface{}) pulsar.Client {
-	return getClientFromMeta(common.V3, meta)
-}
-
-func fixClientIntConversion(fn func() (int, error)) (int, error) {
-	rv, err := fn()
-
-	if err != nil {
-		if err, ok := err.(*strconv.NumError); ok && errors.Is(err, strconv.ErrSyntax) {
-			// At least on 2.8 the default number on the api is blank and pulsarctl
-			// will break because it tries to convert "" to an integer
-			return 0, nil
-		}
-		return 0, err
-	}
-	return rv, nil
+func getClientFromMeta(meta interface{}) pulsar.Client {
+	return meta.(pulsar.Client)
 }

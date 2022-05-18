@@ -18,24 +18,29 @@
 package pulsar
 
 import (
+	"context"
 	"net/url"
 	"os"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 var (
-	testAccProviders map[string]*schema.Provider
-	testAccProvider  *schema.Provider
-
-	testWebServiceURL string
+	testAccProvider          *schema.Provider
+	testAccProviderFactories = map[string]func() (*schema.Provider, error){}
+	testWebServiceURL        string
 )
 
 func init() {
 	testAccProvider = Provider()
-	testAccProviders = map[string]*schema.Provider{
-		"pulsar": testAccProvider,
+	testAccProviderFactories = map[string]func() (*schema.Provider, error){
+		//nolint:unparam
+		"pulsar": func() (*schema.Provider, error) {
+			return Provider(), nil
+		},
 	}
 }
 
@@ -56,12 +61,18 @@ func testAccPreCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal("err: %w", err)
 	}
+
+	diags := testAccProvider.Configure(context.Background(), terraform.NewResourceConfigRaw(nil))
+	if diags.HasError() {
+		t.Fatal(diags[0].Summary)
+	}
 }
 
 func initTestWebServiceURL() {
 	url, ok := os.LookupEnv("WEB_SERVICE_URL")
 	if !ok {
 		testWebServiceURL = "http://localhost:8080"
+		return
 	}
 
 	testWebServiceURL = url

@@ -97,7 +97,7 @@ lint:
 
 tools:
 	go install github.com/bflad/tfproviderlint/cmd/tfproviderlint@v0.27.1
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.42.1
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.46.2
 
 test-compile:
 	@if [ "$(TEST)" = "./..." ]; then \
