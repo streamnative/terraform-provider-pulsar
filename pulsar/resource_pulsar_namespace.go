@@ -28,9 +28,8 @@ import (
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 	"github.com/streamnative/terraform-provider-pulsar/types"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
 
 func resourcePulsarNamespace() *schema.Resource {
@@ -202,7 +201,7 @@ func resourcePulsarNamespace() *schema.Resource {
 				Set: persistencePoliciesToHash,
 			},
 			"permission_grant": {
-				Type:     schema.TypeList,
+				Type:     schema.TypeSet,
 				Optional: true,
 				MinItems: 0,
 				Elem: &schema.Resource{
@@ -228,7 +227,7 @@ func resourcePulsarNamespace() *schema.Resource {
 }
 
 func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	ok, err := resourcePulsarNamespaceExists(d, meta)
 	if err != nil {
@@ -259,7 +258,7 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	tenant := d.Get("tenant").(string)
 	namespace := d.Get("namespace").(string)
@@ -398,7 +397,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 		}))
 	}
 
-	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.([]interface{})) > 0 {
+	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.(*schema.Set).List()) > 0 {
 		grants, err := client.GetNamespacePermissions(*ns)
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err)
@@ -411,7 +410,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
@@ -421,7 +420,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 	backlogQuotaConfig := d.Get("backlog_quota").(*schema.Set)
 	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
 	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
-	permissionGrantConfig := d.Get("permission_grant").([]interface{})
+	permissionGrantConfig := d.Get("permission_grant").(*schema.Set)
 
 	nsName, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
@@ -533,7 +532,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 
 			// Revoke permissions for roles removed from the set
 			oldPermissionGrants, _ := d.GetChange("permission_grant")
-			for _, oldGrant := range oldPermissionGrants.([]interface{}) {
+			for _, oldGrant := range oldPermissionGrants.(*schema.Set).List() {
 				oldRole := oldGrant.(map[string]interface{})["role"].(string)
 				found := false
 				for _, newGrant := range permissionGrants {
@@ -560,7 +559,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
@@ -585,7 +584,7 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	tenant := d.Get("tenant").(string)
 	namespace := d.Get("namespace").(string)

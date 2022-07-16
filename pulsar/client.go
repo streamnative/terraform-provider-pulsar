@@ -15,15 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package main
+package pulsar
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
-	"github.com/streamnative/terraform-provider-pulsar/pulsar"
+	"github.com/streamnative/pulsarctl/pkg/pulsar"
 )
 
-func main() {
-	plugin.Serve(&plugin.ServeOpts{
-		ProviderFunc: pulsar.Provider,
-	})
+func getClientFromMeta(meta interface{}) pulsar.Client {
+	return meta.(pulsar.Client)
 }

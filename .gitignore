@@ -59,3 +59,9 @@ override.tf.json
 *.iml
 out
 gen
+
+# pulsar data mapped to docker
+/data
+
+# generated binary
+/terraform-provider-pulsar

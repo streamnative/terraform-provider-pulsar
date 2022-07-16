@@ -22,11 +22,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 )
 
@@ -38,7 +38,7 @@ func TestCluster(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
-		Providers:                 testAccProviders,
+		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarClusterDestroy,
 		Steps: []resource.TestStep{
@@ -59,8 +59,8 @@ func TestHandleExistingCluster(t *testing.T) {
 			testAccPreCheck(t)
 			createCluster(t, cName)
 		},
-		CheckDestroy: testPulsarClusterDestroy,
-		Providers:    testAccProviders,
+		CheckDestroy:      testPulsarClusterDestroy,
+		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarExistingCluster(testWebServiceURL, cName),
@@ -78,8 +78,8 @@ func TestImportExistingCluster(t *testing.T) {
 			testAccPreCheck(t)
 			createCluster(t, cName)
 		},
-		CheckDestroy: testPulsarClusterDestroy,
-		Providers:    testAccProviders,
+		CheckDestroy:      testPulsarClusterDestroy,
+		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				ResourceName:     "pulsar_cluster.test",
@@ -118,8 +118,8 @@ func testClusterImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 9 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 9, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 11 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 11, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -133,7 +133,7 @@ func testPulsarClusterExists(cluster string) resource.TestCheckFunc {
 			return fmt.Errorf("NOT_FOUND: %s", cluster)
 		}
 
-		client := testAccProvider.Meta().(pulsar.Client).Clusters()
+		client := getClientFromMeta(testAccProvider.Meta()).Clusters()
 
 		_, err := client.Get(rs.Primary.ID)
 		if err != nil {
@@ -145,7 +145,7 @@ func testPulsarClusterExists(cluster string) resource.TestCheckFunc {
 }
 
 func testPulsarClusterDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(pulsar.Client).Clusters()
+	client := getClientFromMeta(testAccProvider.Meta()).Clusters()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_cluster" {
