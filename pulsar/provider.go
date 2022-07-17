@@ -77,6 +77,7 @@ func Provider() *schema.Provider {
 			"pulsar_namespace": resourcePulsarNamespace(),
 			"pulsar_topic":     resourcePulsarTopic(),
 			"pulsar_source":    resourcePulsarSource(),
+			"pulsar_sink":      resourcePulsarSink(),
 		},
 	}
 

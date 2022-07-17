@@ -15,24 +15,25 @@
 // specific language governing permissions and limitations
 // under the License.
 
-terraform {
-  required_providers {
-    pulsar = {
-      version = "1.0.0"
-      source = "registry.terraform.io/apache/pulsar"
-    }
-  }
-}
-
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
+  api_version = "3"
 }
 
-resource "pulsar_topic" "sample-topic-1" {
-  tenant     = "public"
-  namespace  = "default"
-  topic_type = "persistent"
-  topic_name = "partition-topic"
-  partitions =  0
-}
+resource "pulsar_sink" "sink-1" {
+  provider = pulsar
 
+  name = "sink-1"
+  tenant = "public"
+  namespace = "default"
+  inputs = ["sink-1-topic"]
+  subscription_position = "Latest"
+  cleanup_subscription = false
+  parallelism = 1
+  auto_ack = true
+
+  processing_guarantees = "EFFECTIVELY_ONCE"
+
+  archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.8.1/connectors/pulsar-io-jdbc-postgres-2.8.1.nar"
+  configs = "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
+}
