@@ -20,9 +20,9 @@ package pulsar
 import (
 	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
 
@@ -65,7 +65,7 @@ func resourcePulsarTopic() *schema.Resource {
 				ValidateFunc: validateGtEq0,
 			},
 			"permission_grant": {
-				Type:     schema.TypeList,
+				Type:     schema.TypeSet,
 				Optional: true,
 				MinItems: 0,
 				Elem: &schema.Resource{
@@ -123,7 +123,7 @@ func resourcePulsarTopicImport(d *schema.ResourceData, meta interface{}) ([]*sch
 }
 
 func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Topics()
+	client := getClientFromMeta(meta).Topics()
 
 	ok, err := resourcePulsarTopicExists(d, meta)
 	if err != nil {
@@ -149,24 +149,18 @@ func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err)
 	}
 
-	if topicName.IsPersistent() {
-		err = updateRetentionPolicies(d, meta, topicName)
-		if err != nil {
-			return fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err)
-		}
-	} else {
-		retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
-		if retentionPoliciesConfig.Len() != 0 {
-			return fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: " +
-				"unsupported set retention policies for non-persistent topic")
-		}
+	err = retry(func() error {
+		return updateRetentionPolicies(d, meta, topicName)
+	})
+	if err != nil {
+		return fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err)
 	}
 
 	return resourcePulsarTopicRead(d, meta)
 }
 
 func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Topics()
+	client := getClientFromMeta(meta).Topics()
 
 	topicName, found, err := getTopic(d, meta)
 	if !found || err != nil {
@@ -186,7 +180,7 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 	_ = d.Set("topic_name", topicName.GetLocalName())
 	_ = d.Set("partitions", tm.Partitions)
 
-	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.([]interface{})) > 0 {
+	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && permissionGrantCfg.(*schema.Set).Len() > 0 {
 		grants, err := client.GetPermissions(*topicName)
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_TOPIC: GetPermissions: %w", err)
@@ -209,6 +203,8 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 					"retention_size_mb":      int(ret.RetentionSizeInMB),
 				},
 			})
+		} else {
+			return errors.New("ERROR_READ_TOPIC: unsupported get retention policies for non-persistent topic")
 		}
 	}
 
@@ -246,7 +242,7 @@ func resourcePulsarTopicUpdate(d *schema.ResourceData, meta interface{}) error {
 }
 
 func resourcePulsarTopicDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Topics()
+	client := getClientFromMeta(meta).Topics()
 
 	topicName, partitions, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
@@ -273,7 +269,7 @@ func resourcePulsarTopicExists(d *schema.ResourceData, meta interface{}) (bool, 
 func getTopic(d *schema.ResourceData, meta interface{}) (*utils.TopicName, bool, error) {
 	const found, notFound = true, false
 
-	client := meta.(pulsar.Client).Topics()
+	client := getClientFromMeta(meta).Topics()
 
 	topicName, _, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
@@ -334,9 +330,9 @@ func unmarshalPartitions(d *schema.ResourceData) (int, error) {
 }
 
 func updatePermissionGrant(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
-	client := meta.(pulsar.Client).Topics()
+	client := getClientFromMeta(meta).Topics()
 
-	permissionGrantConfig := d.Get("permission_grant").([]interface{})
+	permissionGrantConfig := d.Get("permission_grant").(*schema.Set)
 	permissionGrants, err := unmarshalPermissionGrants(permissionGrantConfig)
 
 	if err != nil {
@@ -351,7 +347,7 @@ func updatePermissionGrant(d *schema.ResourceData, meta interface{}, topicName *
 
 	// Revoke permissions for roles removed from the set
 	oldPermissionGrants, _ := d.GetChange("permission_grant")
-	for _, oldGrant := range oldPermissionGrants.([]interface{}) {
+	for _, oldGrant := range oldPermissionGrants.(*schema.Set).List() {
 		oldRole := oldGrant.(map[string]interface{})["role"].(string)
 		found := false
 		for _, newGrant := range permissionGrants {
@@ -371,30 +367,33 @@ func updatePermissionGrant(d *schema.ResourceData, meta interface{}, topicName *
 }
 
 func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
-	client := meta.(pulsar.Client).Topics()
+	client := getClientFromMeta(meta).Topics()
 
 	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
+	if retentionPoliciesConfig.Len() == 0 {
+		return nil
+	}
+
 	if !topicName.IsPersistent() {
 		return errors.New("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: " +
 			"unsupported set retention policies for non-persistent topic")
 	}
 
-	var policies utils.RetentionPolicies
 	if retentionPoliciesConfig.Len() > 0 {
+		var policies utils.RetentionPolicies
 		data := retentionPoliciesConfig.List()[0].(map[string]interface{})
 		policies.RetentionTimeInMinutes = data["retention_time_minutes"].(int)
 		policies.RetentionSizeInMB = int64(data["retention_size_mb"].(int))
-	}
-
-	if err := client.SetRetention(*topicName, policies); err != nil {
-		return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
+		if err := client.SetRetention(*topicName, policies); err != nil {
+			return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
+		}
 	}
 
 	return nil
 }
 
 func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName, partitions int) error {
-	client := meta.(pulsar.Client).Topics()
+	client := getClientFromMeta(meta).Topics()
 
 	// Note: only partition number in partitioned-topic can apply update
 	// For more info: https://github.com/streamnative/pulsarctl/blob/master/pkg/pulsar/topic.go#L36-L39
@@ -411,4 +410,8 @@ func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils
 	}
 
 	return nil
+}
+
+func retry(operation func() error) error {
+	return backoff.Retry(operation, backoff.NewExponentialBackOff())
 }

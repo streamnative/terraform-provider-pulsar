@@ -29,6 +29,7 @@ type (
 		MaxConsumersPerSubscription int
 		SchemaValidationEnforce     bool
 		SchemaCompatibilityStrategy string
+		IsAllowAutoUpdateSchema     bool
 	}
 
 	SplitNS struct {

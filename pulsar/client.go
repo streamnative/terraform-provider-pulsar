@@ -15,36 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-terraform {
-  required_providers {
-    pulsar = {
-      version = "1.0.0"
-      source = "registry.terraform.io/apache/pulsar"
-    }
-  }
-}
+package pulsar
 
-provider "pulsar" {
-  web_service_url = "http://localhost:8080"
-  api_version = "3"
-}
+import (
+	"github.com/streamnative/pulsarctl/pkg/pulsar"
+)
 
-resource "pulsar_source" "source-1" {
-  provider = pulsar
-
-  name = "source-1"
-  tenant = "public"
-  namespace = "default"
-
-  archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.8.1/connectors/pulsar-io-file-2.8.1.nar"
-
-  destination_topic_name = "source-1-topic"
-
-  processing_guarantees = "EFFECTIVELY_ONCE"
-
-  configs = "{\"inputDirectory\":\"opt\"}"
-
-  cpu = 2
-  disk_mb = 20480
-  ram_mb = 2048
+func getClientFromMeta(meta interface{}) pulsar.Client {
+	return meta.(pulsar.Client)
 }

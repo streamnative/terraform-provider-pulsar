@@ -22,10 +22,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 )
 
@@ -78,10 +78,10 @@ func TestNamespace(t *testing.T) {
 	nsName := acctest.RandString(10)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:      func() { testAccPreCheck(t) },
-		Providers:     testAccProviders,
-		IDRefreshName: resourceName,
-		CheckDestroy:  testPulsarNamespaceDestroy,
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
@@ -101,10 +101,10 @@ func TestNamespaceWithUpdate(t *testing.T) {
 	nsName := acctest.RandString(10)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:      func() { testAccPreCheck(t) },
-		Providers:     testAccProviders,
-		IDRefreshName: resourceName,
-		CheckDestroy:  testPulsarNamespaceDestroy,
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
@@ -114,7 +114,7 @@ func TestNamespaceWithUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "0"),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
-					resource.TestCheckNoResourceAttr(resourceName, "permission_grant"),
+					resource.TestCheckNoResourceAttr(resourceName, "permission_grant.#"),
 				),
 			},
 			{
@@ -128,13 +128,13 @@ func TestNamespaceWithUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1794959023", "functions"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2", "produce"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.1", "produce"),
 				),
 			},
 		},
@@ -149,10 +149,10 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 	nsName := acctest.RandString(10)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:      func() { testAccPreCheck(t) },
-		Providers:     testAccProviders,
-		IDRefreshName: resourceName,
-		CheckDestroy:  testPulsarNamespaceDestroy,
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
@@ -163,7 +163,7 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "0"),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
-					resource.TestCheckNoResourceAttr(resourceName, "permission_grant"),
+					resource.TestCheckNoResourceAttr(resourceName, "permission_grant.#"),
 				),
 			},
 			{
@@ -175,7 +175,7 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
-					resource.TestCheckNoResourceAttr(resourceName, "permission_grant"),
+					resource.TestCheckNoResourceAttr(resourceName, "permission_grant.#"),
 				),
 				ExpectNonEmptyPlan: true,
 			},
@@ -191,16 +191,16 @@ func TestNamespaceWithPermissionGrantUpdate(t *testing.T) {
 	nsName := acctest.RandString(10)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:      func() { testAccPreCheck(t) },
-		Providers:     testAccProviders,
-		IDRefreshName: resourceName,
-		CheckDestroy:  testPulsarNamespaceDestroy,
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
-					resource.TestCheckNoResourceAttr(resourceName, "permission_grant"),
+					resource.TestCheckNoResourceAttr(resourceName, "permission_grant.#"),
 				),
 			},
 			{
@@ -219,13 +219,13 @@ func TestNamespaceWithPermissionGrantUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1794959023", "functions"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2", "produce"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.1", "produce"),
 				),
 			},
 			{
@@ -239,7 +239,7 @@ func TestNamespaceWithPermissionGrantUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "produce"),
 				),
 			},
 		},
@@ -257,8 +257,8 @@ func TestImportExistingNamespace(t *testing.T) {
 			testAccPreCheck(t)
 			createNamespace(t, id)
 		},
-		CheckDestroy: testPulsarNamespaceDestroy,
-		Providers:    testAccProviders,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				ResourceName:     "pulsar_namespace.test",
@@ -291,7 +291,7 @@ func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 			return fmt.Errorf("NOT_FOUND: %s", ns)
 		}
 
-		client := testAccProvider.Meta().(pulsar.Client).Namespaces()
+		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
 
 		if rs.Primary.ID == "" || !strings.Contains(rs.Primary.ID, "/") {
 			return fmt.Errorf(`ERROR_NAMESPACE_ID_INVALID: "%s"`, rs.Primary.ID)
@@ -323,8 +323,8 @@ func testNamespaceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 9 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 9, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 10 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 10, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -332,7 +332,7 @@ func testNamespaceImported() resource.ImportStateCheckFunc {
 }
 
 func testPulsarNamespaceDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(pulsar.Client).Namespaces()
+	client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_namespace" {
@@ -425,6 +425,7 @@ resource "pulsar_namespace" "test" {
     max_consumers_per_topic        = "50"
     max_producers_per_topic        = "50"
     replication_clusters           = ["standalone"]
+    is_allow_auto_update_schema    = false
   }
 
   dispatch_rate {
