@@ -15,30 +15,27 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package types
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+  api_version = "3"
+}
 
-import "github.com/streamnative/pulsarctl/pkg/pulsar/common"
+resource "pulsar_source" "source-1" {
+  provider = pulsar
 
-type (
-	// configurable features of the Pulsar Namespace Entity via Terraform
-	NamespaceConfig struct {
-		AntiAffinity                string
-		ReplicationClusters         []string
-		MaxConsumersPerTopic        int
-		MaxProducersPerTopic        int
-		MaxConsumersPerSubscription int
-		SchemaValidationEnforce     bool
-		SchemaCompatibilityStrategy string
-		IsAllowAutoUpdateSchema     bool
-	}
+  name = "source-1"
+  tenant = "public"
+  namespace = "default"
 
-	SplitNS struct {
-		Bundle             string
-		UnloadSplitBundles bool
-	}
+  archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.8.1/connectors/pulsar-io-file-2.8.1.nar"
 
-	PermissionGrant struct {
-		Role    string
-		Actions []common.AuthAction
-	}
-)
+  destination_topic_name = "source-1-topic"
+
+  processing_guarantees = "EFFECTIVELY_ONCE"
+
+  configs = "{\"inputDirectory\":\"opt\"}"
+
+  cpu = 2
+  disk_mb = 20480
+  ram_mb = 2048
+}

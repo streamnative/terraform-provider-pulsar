@@ -28,9 +28,8 @@ import (
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 	"github.com/streamnative/terraform-provider-pulsar/types"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
 
 func resourcePulsarNamespace() *schema.Resource {
@@ -155,6 +154,22 @@ func resourcePulsarNamespace() *schema.Resource {
 								Type: schema.TypeString,
 							},
 						},
+						"schema_validation_enforce": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+						},
+						"schema_compatibility_strategy": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							Default:      "Full",
+							ValidateFunc: validateNotBlank,
+						},
+						"is_allow_auto_update_schema": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  true,
+						},
 					},
 				},
 				Set: namespaceConfigToHash,
@@ -186,7 +201,7 @@ func resourcePulsarNamespace() *schema.Resource {
 				Set: persistencePoliciesToHash,
 			},
 			"permission_grant": {
-				Type:     schema.TypeList,
+				Type:     schema.TypeSet,
 				Optional: true,
 				MinItems: 0,
 				Elem: &schema.Resource{
@@ -212,7 +227,7 @@ func resourcePulsarNamespace() *schema.Resource {
 }
 
 func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	ok, err := resourcePulsarNamespaceExists(d, meta)
 	if err != nil {
@@ -243,7 +258,7 @@ func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	tenant := d.Get("tenant").(string)
 	namespace := d.Get("namespace").(string)
@@ -279,6 +294,16 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err)
 		}
 
+		schemaValidationEnforce, err := client.GetSchemaValidationEnforced(*ns)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaValidationEnforced: %w", err)
+		}
+
+		schemaCompatibilityStrategy, err := client.GetSchemaAutoUpdateCompatibilityStrategy(*ns)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaAutoUpdateCompatibilityStrategy: %w", err)
+		}
+
 		replClustersRaw, err := client.GetNamespaceReplicationClusters(ns.String())
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err)
@@ -289,6 +314,11 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 			replClusters[i] = cl
 		}
 
+		isAllowAutoUpdateSchema, err := client.GetIsAllowAutoUpdateSchema(*ns)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE: GetIsAllowAutoUpdateSchema: %w", err)
+		}
+
 		_ = d.Set("namespace_config", schema.NewSet(namespaceConfigToHash, []interface{}{
 			map[string]interface{}{
 				"anti_affinity":                  strings.Trim(strings.TrimSpace(afgrp), "\""),
@@ -296,6 +326,9 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 				"max_consumers_per_topic":        maxConsPerTopic,
 				"max_producers_per_topic":        maxProdPerTopic,
 				"replication_clusters":           replClusters,
+				"schema_validation_enforce":      schemaValidationEnforce,
+				"schema_compatibility_strategy":  schemaCompatibilityStrategy.String(),
+				"is_allow_auto_update_schema":    isAllowAutoUpdateSchema,
 			},
 		}))
 	}
@@ -364,7 +397,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 		}))
 	}
 
-	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.([]interface{})) > 0 {
+	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.(*schema.Set).List()) > 0 {
 		grants, err := client.GetNamespacePermissions(*ns)
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err)
@@ -377,7 +410,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 }
 
 func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
@@ -387,7 +420,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 	backlogQuotaConfig := d.Get("backlog_quota").(*schema.Set)
 	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
 	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
-	permissionGrantConfig := d.Get("permission_grant").([]interface{})
+	permissionGrantConfig := d.Get("permission_grant").(*schema.Set)
 
 	nsName, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
@@ -427,6 +460,21 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 			if err = client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetMaxProducersPerTopic: %w", err))
 			}
+		}
+		if err = client.SetSchemaValidationEnforced(*nsName, nsCfg.SchemaValidationEnforce); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("SetSchemaValidationEnforced: %w", err))
+		}
+
+		if len(nsCfg.SchemaCompatibilityStrategy) > 0 {
+			strategy, err := utils.ParseSchemaAutoUpdateCompatibilityStrategy(nsCfg.SchemaCompatibilityStrategy)
+			if err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
+			} else if err = client.SetSchemaAutoUpdateCompatibilityStrategy(*nsName, strategy); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
+			}
+		}
+		if err = client.SetIsAllowAutoUpdateSchema(*nsName, nsCfg.IsAllowAutoUpdateSchema); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("SetIsAllowAutoUpdateSchema: %w", err))
 		}
 	}
 
@@ -484,7 +532,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 
 			// Revoke permissions for roles removed from the set
 			oldPermissionGrants, _ := d.GetChange("permission_grant")
-			for _, oldGrant := range oldPermissionGrants.([]interface{}) {
+			for _, oldGrant := range oldPermissionGrants.(*schema.Set).List() {
 				oldRole := oldGrant.(map[string]interface{})["role"].(string)
 				found := false
 				for _, newGrant := range permissionGrants {
@@ -511,7 +559,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
@@ -536,7 +584,7 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 }
 
 func resourcePulsarNamespaceExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := meta.(pulsar.Client).Namespaces()
+	client := getClientFromMeta(meta).Namespaces()
 
 	tenant := d.Get("tenant").(string)
 	namespace := d.Get("namespace").(string)
@@ -587,6 +635,8 @@ func namespaceConfigToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%d-", m["max_consumers_per_topic"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["max_producers_per_topic"].(int)))
 	buf.WriteString(fmt.Sprintf("%s-", m["replication_clusters"].([]interface{})))
+	buf.WriteString(fmt.Sprintf("%t-", m["schema_validation_enforce"].(bool)))
+	buf.WriteString(fmt.Sprintf("%s-", m["schema_compatibility_strategy"].(string)))
 
 	return hashcode.String(buf.String())
 }
@@ -646,6 +696,9 @@ func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
 		nsConfig.MaxConsumersPerTopic = data["max_consumers_per_topic"].(int)
 		nsConfig.MaxConsumersPerSubscription = data["max_consumers_per_subscription"].(int)
 		nsConfig.AntiAffinity = data["anti_affinity"].(string)
+		nsConfig.SchemaValidationEnforce = data["schema_validation_enforce"].(bool)
+		nsConfig.SchemaCompatibilityStrategy = data["schema_compatibility_strategy"].(string)
+		nsConfig.IsAllowAutoUpdateSchema = data["is_allow_auto_update_schema"].(bool)
 	}
 
 	return &nsConfig

@@ -15,30 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package types
+package pulsar
 
-import "github.com/streamnative/pulsarctl/pkg/pulsar/common"
-
-type (
-	// configurable features of the Pulsar Namespace Entity via Terraform
-	NamespaceConfig struct {
-		AntiAffinity                string
-		ReplicationClusters         []string
-		MaxConsumersPerTopic        int
-		MaxProducersPerTopic        int
-		MaxConsumersPerSubscription int
-		SchemaValidationEnforce     bool
-		SchemaCompatibilityStrategy string
-		IsAllowAutoUpdateSchema     bool
-	}
-
-	SplitNS struct {
-		Bundle             string
-		UnloadSplitBundles bool
-	}
-
-	PermissionGrant struct {
-		Role    string
-		Actions []common.AuthAction
-	}
+import (
+	"github.com/streamnative/pulsarctl/pkg/pulsar"
 )
+
+func getClientFromMeta(meta interface{}) pulsar.Client {
+	return meta.(pulsar.Client)
+}

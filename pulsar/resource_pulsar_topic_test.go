@@ -21,11 +21,12 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
@@ -37,9 +38,9 @@ func init() {
 func TestTopic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testPulsarTopicDestroy,
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarPartitionTopic,
@@ -71,8 +72,8 @@ func TestImportExistingTopic(t *testing.T) {
 			testAccPreCheck(t)
 			createTopic(t, fullID, pnum)
 		},
-		Providers:    testAccProviders,
-		CheckDestroy: testPulsarTopicDestroy,
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
 				ResourceName:     "pulsar_topic.test",
@@ -99,9 +100,9 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 	ttype := "persistent"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testPulsarTopicDestroy,
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum,
@@ -118,13 +119,13 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1794959023", "functions"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2", "produce"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2136722963", "consume"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.1", "produce"),
 				),
 			},
 			{
@@ -138,7 +139,7 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2556735720", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "produce"),
 				),
 			},
 		},
@@ -146,7 +147,7 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 }
 
 func testPulsarTopicDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(pulsar.Client).Topics()
+	client := getClientFromMeta(testAccProvider.Meta()).Topics()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_topic" {
@@ -193,7 +194,28 @@ func testPulsarTopicExists(topic string) resource.TestCheckFunc {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: %w", err)
 		}
 
-		client := testAccProvider.Meta().(pulsar.Client).Topics()
+		client := getClientFromMeta(testAccProvider.Meta()).Topics()
+
+		_, retentionPoliciesFound := rs.Primary.Attributes["retention_policies.0.%"]
+		if retentionPoliciesFound && topicName.IsPersistent() {
+			<-time.After(3 * time.Second)
+			retention, err := client.GetRetention(*topicName, true)
+			if err != nil {
+				return fmt.Errorf("ERROR_READ_RETENTION: %w", err)
+			}
+
+			retentionSizeInMB := int64(20000)
+			retentionTimeInMinutes := 1600
+			if retention.RetentionSizeInMB != retentionSizeInMB {
+				return fmt.Errorf("%s retentionSizeInMB should be %d, but got %d",
+					topicName, retentionSizeInMB, retention.RetentionSizeInMB)
+			}
+			if retention.RetentionTimeInMinutes != retentionTimeInMinutes {
+				return fmt.Errorf("%s retentionTimeInMinutes should be %d, but got %d",
+					topicName, retentionTimeInMinutes, retention.RetentionTimeInMinutes)
+			}
+		}
+
 		partitionedTopics, nonPartitionedTopics, err := client.List(*namespace)
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_TOPIC_DATA: %w", err)
@@ -215,8 +237,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 7 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 7, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 9 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 9, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -249,6 +271,11 @@ resource "pulsar_topic" "sample-topic-1" {
   topic_type = "persistent"
   topic_name = "partitioned-persistent-topic"
   partitions = 4
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
 }
 
 resource "pulsar_topic" "sample-topic-2" {
@@ -271,6 +298,11 @@ resource "pulsar_topic" "sample-topic-3" {
   topic_type = "persistent"
   topic_name = "non-partitioned-persistent-topic"
   partitions = 0
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
 }
 
 resource "pulsar_topic" "sample-topic-4" {
@@ -299,6 +331,11 @@ resource "pulsar_topic" "test" {
 	partitions = %d
 
 	%s
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
 }
 `, url, ttype, tname, pnum, permissionGrants)
 }

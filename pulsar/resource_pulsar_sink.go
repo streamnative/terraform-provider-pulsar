@@ -22,15 +22,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/streamnative/terraform-provider-pulsar/bytesize"
-
-	"github.com/streamnative/pulsarctl/pkg/cli"
-
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
-	ctlutil "github.com/streamnative/pulsarctl/pkg/ctl/utils"
+	"github.com/streamnative/pulsarctl/pkg/cli"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+
+	"github.com/streamnative/terraform-provider-pulsar/bytesize"
 )
 
 const (
@@ -62,10 +60,6 @@ const (
 	resourceSinkAutoACKKey                           = "auto_ack"
 	resourceSinkTimeoutKey                           = "timeout_ms"
 	resourceSinkCustomRuntimeOptionsKey              = "custom_runtime_options"
-
-	ProcessingGuaranteesAtLeastOnce     = "ATLEAST_ONCE"
-	ProcessingGuaranteesAtMostOnce      = "ATMOST_ONCE"
-	ProcessingGuaranteesEffectivelyOnce = "EFFECTIVELY_ONCE"
 )
 
 var resourceSinkDescriptions = make(map[string]string)
@@ -678,9 +672,4 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 	}
 
 	return sinkConfig, nil
-}
-
-func isLocalArchive(archive string) bool {
-	return !ctlutil.IsPackageURLSupported(archive) &&
-		!strings.HasPrefix(archive, ctlutil.BUILTIN)
 }

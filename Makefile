@@ -41,6 +41,12 @@ test: fmtcheck
 testacc: fmtcheck
 	TF_ACC=1 go test $(TEST) -v -count 3 $(TESTARGS) -timeout 120m
 
+run-pulsar-in-docker: fmtcheck
+	hack/pulsar-docker.sh run
+
+remove-pulsar-from-docker:
+	hack/pulsar-docker.sh remove
+
 release: fmtcheck
 	GOOS=darwin GOARCH=amd64 go build -o ./bin/${BINARY}_${VERSION}_darwin_amd64
 	GOOS=freebsd GOARCH=386 go build -o ./bin/${BINARY}_${VERSION}_freebsd_386
@@ -91,7 +97,7 @@ lint:
 
 tools:
 	go install github.com/bflad/tfproviderlint/cmd/tfproviderlint@v0.27.1
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.42.1
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.46.2
 
 test-compile:
 	@if [ "$(TEST)" = "./..." ]; then \
