@@ -15,15 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-terraform {
-  required_providers {
-    pulsar = {
-      version = "1.0.0"
-      source = "registry.terraform.io/apache/pulsar"
-    }
-  }
-}
-
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
   api_version = "3"
