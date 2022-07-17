@@ -313,6 +313,57 @@ resource "pulsar_topic" "sample-topic-2" {
 | `permission_grant`            | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No |
 | `retention_policies`          | Data retention policies                                           | No |
 
+### `pulsar_source`
+
+A resource for creating and managing Apache Pulsar Sources.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+  api_version = "3"
+}
+
+resource "pulsar_source" "source-1" {
+  provider = pulsar
+
+  name = "source-1"
+  tenant = "public"
+  namespace = "default"
+
+  archive = "testdata/pulsar-io/pulsar-io-file-2.8.1.nar"
+
+  destination_topic_name = "source-1-topic"
+
+  processing_guarantees = "EFFECTIVELY_ONCE"
+
+  configs = "{\"inputDirectory\":\"opt\"}"
+
+  cpu = 2
+  disk_mb = 20480
+  ram_mb = 2048
+}
+```
+
+#### Properties
+
+| Property | Description | Required|  
+| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
+| `name` | The source's name | True
+| `tenant` | The source's tenant | True  
+| `namespace` | The source's namespace | True
+| `destination_topic_name` | The Pulsar topic to which data is sent | True
+| `archive` | The path to the NAR archive for the Source. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package | True  
+| `classname` | The source's class name if archive is file-url-path (file://) | False
+| `configs` | User defined configs key/values (JSON string) | False
+| `deserialization_classname` | The SerDe classname for the source | False  
+| `processing_guarantees` | Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE) | False  
+| `parallelism` | The source's parallelism factor | False  
+| `cpu` | The CPU that needs to be allocated per source instance (applicable only to Docker runtime) | False
+| `ram_mb` | The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes) | False
+| `disk_mb` | The disk that need to be allocated per source instance (applicable only to Docker runtime) | False
+| `runtime_flags` | User defined configs key/values (JSON string) | False
 
 Importing existing resources
 ------------

@@ -15,27 +15,38 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsar
+package bytesize
 
 import (
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func sharedClient(url string) (interface{}, error) {
-	config := &common.Config{
-		WebServiceURL:    url,
-		PulsarAPIVersion: common.V2,
-	}
+func TestFormBytes(t *testing.T) {
+	testcases := make(map[uint64]uint64)
+	testcases[1] = 1 * 1024 * 1024
+	testcases[2] = 2 * 1024 * 1024
+	testcases[10] = 10 * 1024 * 1024
+	testcases[20] = 20 * 1024 * 1024
 
-	return pulsar.New(config)
+	for mb, bytes := range testcases {
+		b := FormBytes(bytes)
+		assert.Equal(t, bytes, b.ToBytes())
+		assert.Equal(t, mb, b.ToMegaBytes())
+	}
 }
 
-func sharedClientWithVersion(url string, version common.APIVersion) (pulsar.Client, error) {
-	config := &common.Config{
-		WebServiceURL:    url,
-		PulsarAPIVersion: version,
-	}
+func TestFormMegaBytes(t *testing.T) {
+	testcases := make(map[uint64]uint64)
+	testcases[1] = 1 * 1024 * 1024
+	testcases[2] = 2 * 1024 * 1024
+	testcases[10] = 10 * 1024 * 1024
+	testcases[20] = 20 * 1024 * 1024
 
-	return pulsar.New(config)
+	for mb, bytes := range testcases {
+		b := FormMegaBytes(mb)
+		assert.Equal(t, bytes, b.ToBytes())
+		assert.Equal(t, mb, b.ToMegaBytes())
+	}
 }

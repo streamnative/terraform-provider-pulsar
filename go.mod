@@ -8,6 +8,7 @@ require (
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.16.0
 	github.com/pkg/errors v0.9.1
 	github.com/streamnative/pulsarctl v0.4.3-0.20220124120652-ed7f74559899
+	github.com/stretchr/testify v1.7.0
 )
 
 require (
@@ -54,6 +55,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/mtibben/percent v0.2.1 // indirect
 	github.com/oklog/run v1.0.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
 	github.com/vmihailenco/msgpack/v4 v4.3.12 // indirect
 	github.com/vmihailenco/tagparser v0.1.1 // indirect
@@ -68,4 +70,5 @@ require (
 	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987 // indirect
 	google.golang.org/grpc v1.45.0 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )

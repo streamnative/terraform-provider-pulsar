@@ -15,27 +15,30 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsar
+package bytesize
 
-import (
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
-)
+const MB = 1 << (10 * 2)
 
-func sharedClient(url string) (interface{}, error) {
-	config := &common.Config{
-		WebServiceURL:    url,
-		PulsarAPIVersion: common.V2,
-	}
-
-	return pulsar.New(config)
+type byteSize struct {
+	value uint64
 }
 
-func sharedClientWithVersion(url string, version common.APIVersion) (pulsar.Client, error) {
-	config := &common.Config{
-		WebServiceURL:    url,
-		PulsarAPIVersion: version,
-	}
+func newByteSize(n uint64) *byteSize {
+	return &byteSize{value: n}
+}
 
-	return pulsar.New(config)
+func FormBytes(n uint64) *byteSize {
+	return newByteSize(n)
+}
+
+func FormMegaBytes(n uint64) *byteSize {
+	return newByteSize(n * MB)
+}
+
+func (b *byteSize) ToBytes() uint64 {
+	return b.value
+}
+
+func (b *byteSize) ToMegaBytes() uint64 {
+	return b.value / MB
 }
