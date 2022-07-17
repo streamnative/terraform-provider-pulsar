@@ -52,7 +52,7 @@ func TestSource(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
-		Providers:                 testAccProviders,
+		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSourceDestroy,
 		Steps: []resource.TestStep{
@@ -140,8 +140,8 @@ func TestImportExistingSource(t *testing.T) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		Providers:    testAccProviders,
-		CheckDestroy: testPulsarSourceDestroy,
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarSourceDestroy,
 		Steps: []resource.TestStep{
 			{
 				ResourceName:     "pulsar_source.test",
