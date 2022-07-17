@@ -367,9 +367,7 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	inputs := make([]string, len(sinkConfig.Inputs))
-	for index, input := range sinkConfig.Inputs {
-		inputs[index] = input
-	}
+	copy(inputs, sinkConfig.Inputs)
 
 	err = d.Set(resourceSinkInputsKey, inputs)
 	if err != nil {
