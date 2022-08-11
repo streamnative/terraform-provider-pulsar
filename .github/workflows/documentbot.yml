@@ -1,4 +1,3 @@
-
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -18,7 +17,7 @@
 # under the License.
 #
 
-name: Auto Labeling
+name: Document Bot
 
 on:
   pull_request_target :
@@ -26,8 +25,6 @@ on:
       - opened
       - edited
       - labeled
-
-  
 
 # A GitHub token created for a PR coming from a fork doesn't have
 # 'admin' or 'write' permission (which is required to add labels)
@@ -37,12 +34,13 @@ on:
 
 jobs:
   labeling:
+    name: Labeling
     if: ${{ github.repository == 'streamnative/terraform-provider-pulsar' }}
     permissions:
       pull-requests: write 
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: streamnative/github-workflow-libraries/doc-label-check@master
         with:
