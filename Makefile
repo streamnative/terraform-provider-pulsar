@@ -18,7 +18,7 @@
 TEST?=./...
 GOFMT_FILES?=$$(find . -name '*.go' |grep -v vendor)
 HOSTNAME=registry.terraform.io
-NAMESPACE=apache
+NAMESPACE=streamnative
 PKG_NAME=pulsar
 BINARY=terraform-provider-${PKG_NAME}
 VERSION=1.0.0

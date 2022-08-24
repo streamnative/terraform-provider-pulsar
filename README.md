@@ -21,8 +21,6 @@ under the License.
 
 A [Terraform][1] provider for managing [Apache Pulsar Entities][2].
 
-<img alt="" src="https://cdn.rawgit.com/hashicorp/terraform-website/master/content/source/assets/images/logo-hashicorp.svg" width="600px">
-
 ## Contents
 
 * [Requirements](#requirements)
@@ -42,11 +40,32 @@ Requirements
 Installation
 ------------
 
-* Clone this repository and cd into the directory
-* Run `make build`, it will out a file named `terraform-provider-pulsar`
-* Copy this `terraform-provider-pulsar` bin file to your [terraform plugin directory][third-party-plugins]
-* Typically this plugin directory is `~/.terraform.d/plugins/`
-* On Linux based 64-bit devices, this directory can be `~/.terraform.d/plugins/linux_amd64`
+- Manual build
+
+  * Clone this repository and cd into the directory
+  * Run `make build`, it will out a file named `terraform-provider-pulsar`
+  * Copy this `terraform-provider-pulsar` bin file to your terraform plugin directory:
+
+      Operating system  | User plugins directory
+      ------------------|-----------------------
+      Windows(amd64)    | %APPDATA%\terraform.d\plugins\registry.terraform.io\streamnative\pulsar\0.1.0\windows_amd64\
+      Linux(amd64)      | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar\0.1.0\linux_amd64\
+      MacOS(amd64)      | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar\0.1.0\darwin_amd64\
+
+- From Terraform registry
+
+  This plugin has been released to [Terraform registry](https://registry.terraform.io/providers/streamnative/pulsar/latest):
+  
+  ```terraform
+  terraform {
+    required_providers {
+      pulsar = {
+        version = "0.1.0"
+        source = "registry.terraform.io/streamnative/pulsar"
+      }
+    }
+  }
+  ```
 
 
 Testing the Apache Pulsar Terraform Provider
@@ -67,15 +86,6 @@ Provider Configuration
 Example provider with apache pulsar cluster, running locally with authentication disabled.
 
 ```hcl
-terraform {
-  required_providers {
-    pulsar = {
-      versions = ["1.0.0"]
-      source = "registry.terraform.io/apache/pulsar"
-    }
-  }
-}
-
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
   token = "my_auth_token"
