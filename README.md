@@ -17,46 +17,22 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-# `terraform-provider-pulsar`
+# Terraform Provider for Pulsar
 
-A [Terraform][1] provider for managing [Apache Pulsar Entities][2].
+A [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar Entities](https://pulsar.apache.org).
 
-## Contents
-
-* [Requirements](#requirements)
-* [Installation](#installation)
-* [Resources](#resources)
-  * [`pulsar_tenant`](#pulsar_tenant)
-  * [`pulsar_cluster`](#pulsar_cluster)
-  * [`pulsar_namespace`](#pulsar_namespace)
-  * [`pulsar_topic`](#pulsar_topic)
-
-Requirements
-------------
+# Prerequisites 
 
 - [Terraform](https://www.terraform.io/downloads.html) 0.12.0 or later
 - [Go](https://golang.org/doc/install) 1.16 or later (to build the provider plugin)
 
-Installation
-------------
+# Installation
 
-- Manual build
+- From terraform registry
 
-  * Clone this repository and cd into the directory
-  * Run `make build`, it will out a file named `terraform-provider-pulsar`
-  * Copy this `terraform-provider-pulsar` bin file to your terraform plugin directory:
+  This provider has been published in the [Terraform Registry](https://registry.terraform.io/providers/streamnative/pulsar/latest):
 
-      Operating system  | User plugins directory
-      ------------------|-----------------------
-      Windows(amd64)    | %APPDATA%\terraform.d\plugins\registry.terraform.io\streamnative\pulsar\0.1.0\windows_amd64\
-      Linux(amd64)      | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar\0.1.0\linux_amd64\
-      MacOS(amd64)      | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar\0.1.0\darwin_amd64\
-
-- From Terraform registry
-
-  This plugin has been released to [Terraform registry](https://registry.terraform.io/providers/streamnative/pulsar/latest):
-  
-  ```terraform
+  ```hcl
   terraform {
     required_providers {
       pulsar = {
@@ -67,20 +43,21 @@ Installation
   }
   ```
 
+- From source code
 
-Testing the Apache Pulsar Terraform Provider
-------------
+  - Clone this repository and cd into the directory
+  - Run `make build`, it will generate a binary file named `terraform-provider-pulsar`
+  - Copy this `terraform-provider-pulsar` binary file to your terraform plugin directory based on your OS:
 
-* Change directory to the project </path/to/provider/terraform-provider-pulsar>
-* In order to test the provider, you can run `make test`
-* In order to run the full suite of Acceptance tests, run `make testacc`
+    | Operating System | User plugins directory                                                                       |
+    |----------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+    | Windows(amd64)   | %APPDATA%\terraform.d\plugins\registry.terraform.io\streamnative\pulsar\0.1.0\windows_amd64\ |
+    | Linux(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/linux_amd64/          |
+    | MacOS(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/darwin_amd64/         |
 
-`Note: Acceptance tests create real resources, and often cost money to run.`
+# Using the Provider 
 
-
-Provider Configuration
-------------
-
+## Configurations
 ### Example
 
 Example provider with apache pulsar cluster, running locally with authentication disabled.
@@ -92,41 +69,17 @@ provider "pulsar" {
 }
 ```
 
-| Property                      | Description                                                                                                           | Required    |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `web_service_url`             | URL of your Apache Pulsar Cluster                             | Yes |
-| `token`           | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled| No       |
-| `tls_trust_certs_file_path` | Path to a custom trusted TLS certificate file | No       |
-| `tls_allow_insecure_connection` | Boolean flag to accept untrusted TLS certificates | No       |
-| `api_version`| Used to request Apache Pulsar API service, default by 0, which represents use default version | No |      
-Resources
-------------
+### Properties
 
-### `pulsar_tenant`
+| Property                        | Description                                                                                                            | Required |
+|---------------------------------|------------------------------------------------------------------------------------------------------------------------|----------|
+| `web_service_url`               | URL of your Apache Pulsar Cluster                                                                                      | Yes      |
+| `token`                         | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled | No       |
+| `tls_trust_certs_file_path`     | Path to a custom trusted TLS certificate file                                                                          | No       |
+| `tls_allow_insecure_connection` | Boolean flag to accept untrusted TLS certificates                                                                      | No       |
+| `api_version`                   | Used to request Apache Pulsar API service, default by 0, which represents use default version                          | No       |      
 
-A resource for managing Pulsar Tenants, can update admin roles and allowed clusters for a tenant.
-
-#### Example
-
-```hcl
-provider "pulsar" {
-  web_service_url = "http://localhost:8080"
-}
-
-resource "pulsar_tenant" "my_tenant" {
-  tenant           = "thanos"
-  allowed_clusters = ["pulsar-cluster-1"]
-  admin_roles      = ["godmode"]
-}
-```
-
-#### Properties
-
-| Property                      | Description                                         | Required                   |
-| ----------------------------- | --------------------------------------------------- |----------------------------|
-| `tenant`                      | Name of the Tenant that you want to create          | Yes
-| `allowed_clusters`            | An Array of clusters, accessible by this tenant     | No
-| `admin_roles`                 | Admin Roles to be assumed by this Tenant            | No
+## Resources
 
 ### `pulsar_cluster`
 
@@ -152,15 +105,42 @@ resource "pulsar_cluster" "my_cluster" {
 
 #### Properties
 
-| Property                      | Description                                                       | Required                   |
-| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
-| `cluster`                     | Name of the Cluster that you want to create                       | Yes
-| `cluster_data`                | A Map of required fields for the cluster                          | Yes
-| `web_service_url`             | Required in cluster data, pointing to your broker web service     | Yes
-| `web_service_url_tls`         | Pointing to your broker web service via tls                       | No
-| `broker_service_url`          | Required in cluster data for broker discovery                     | Yes
-| `broker_service_url_tls`      | Required in cluster data for broker discovery via tls             | No
-| `peer_clusters`               | Required in cluster data for adding peer clusters                 | Yes
+| Property                 | Description                                                   | Required |
+|--------------------------|---------------------------------------------------------------|----------|
+| `cluster`                | Name of the Cluster that you want to create                   | Yes      |
+| `cluster_data`           | A Map of required fields for the cluster                      | Yes      |
+| `web_service_url`        | Required in cluster data, pointing to your broker web service | Yes      |
+| `web_service_url_tls`    | Pointing to your broker web service via tls                   | No       |
+| `broker_service_url`     | Required in cluster data for broker discovery                 | Yes      |
+| `broker_service_url_tls` | Required in cluster data for broker discovery via tls         | No       |
+| `peer_clusters`          | Required in cluster data for adding peer clusters             | Yes      |
+
+
+### `pulsar_tenant`
+
+A resource for managing Pulsar Tenants, can update admin roles and allowed clusters for a tenant.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+}
+
+resource "pulsar_tenant" "my_tenant" {
+  tenant           = "thanos"
+  allowed_clusters = ["pulsar-cluster-1"]
+  admin_roles      = ["godmode"]
+}
+```
+
+#### Properties
+
+| Property           | Description                                     | Required |
+|--------------------|-------------------------------------------------|----------|
+| `tenant`           | Name of the Tenant that you want to create      | Yes      |
+| `allowed_clusters` | An Array of clusters, accessible by this tenant | No       |
+| `admin_roles`      | Admin Roles to be assumed by this Tenant        | No       |
 
 ### `pulsar_namespace`
 
@@ -238,30 +218,30 @@ resource "pulsar_namespace" "test" {
 
 #### Properties
 
-| Property                        | Description                                                       | Required                   |
-| ------------------------------- | ----------------------------------------------------------------- |----------------------------|
-| `tenant`                        | Name of the Tenant managing this namespace                        | Yes
-| `namespace`                     | name of the namespace                                             | Yes
-| `enable_deduplication`          | Message deduplication state on a namespace                        | No |
-| `namespace_config`              | Configuration for your namespaces like max allowed producers to produce messages | No |
-| `dispatch_rate`                 | Apache Pulsar throttling config                                   | No |
-| `retention_policies`            | Data retention policies                                           | No |
-| `schema_validation_enforce`     | Enable or disable schema validation                               | No |
-| `schema_compatibility_strategy` | Set schema compatibility strategy                                 | No |
-| `backlog_quota`                 | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics | No |
-| `persistence_policies`          | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace       | No |
-| `permission_grant`              | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No |
+| Property                        | Description                                                                                                                                               | Required |
+|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| `tenant`                        | Name of the Tenant managing this namespace                                                                                                                | Yes      |
+| `namespace`                     | name of the namespace                                                                                                                                     | Yes      |
+| `enable_deduplication`          | Message deduplication state on a namespace                                                                                                                | No       |
+| `namespace_config`              | Configuration for your namespaces like max allowed producers to produce messages                                                                          | No       |
+| `dispatch_rate`                 | Apache Pulsar throttling config                                                                                                                           | No       |
+| `retention_policies`            | Data retention policies                                                                                                                                   | No       |
+| `schema_validation_enforce`     | Enable or disable schema validation                                                                                                                       | No       |
+| `schema_compatibility_strategy` | Set schema compatibility strategy                                                                                                                         | No       |
+| `backlog_quota`                 | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics                                        | No       |
+| `persistence_policies`          | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace           | No       |
+| `permission_grant`              | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No       |
 
-##### `schema_compatibility_strategy`
+The `schema_compatibility_strategy` can take the following values:
 
-* AutoUpdateDisabled
-* Backward
-* Forward
-* Full
-* AlwaysCompatible
-* BackwardTransitive
-* ForwardTransitive
-* FullTransitive
+- AutoUpdateDisabled
+- Backward
+- Forward
+- Full
+- AlwaysCompatible
+- BackwardTransitive
+- ForwardTransitive
+- FullTransitive
 
 ### `pulsar_topic`
 
@@ -313,15 +293,15 @@ resource "pulsar_topic" "sample-topic-2" {
 
 #### Properties
 
-| Property                      | Description                                                       | Required                   |
-| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
-| `tenant`                      | Name of the Tenant managing this topic                            | Yes
-| `namespace`                   | Name of the Namespace for this topic                              | Yes
-| `topic_type`                  | Topic persistence (`persistent`, `non-persistent`)                | Yes
-| `topic_name`                  | Name of the topic                                                 | Yes
-| `partitions`                  | Number of [partitions](https://pulsar.apache.org/docs/en/concepts-messaging/#partitioned-topics) (`0` for non-partitioned topic, `> 1` for partitioned topic) | Yes
-| `permission_grant`            | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No |
-| `retention_policies`          | Data retention policies                                           | No |
+| Property             | Description                                                                                                                                                                                                             | Required |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| `tenant`             | Name of the Tenant managing this topic                                                                                                                                                                                  | Yes      |
+| `namespace`          | Name of the Namespace for this topic                                                                                                                                                                                    | Yes      |
+| `topic_type`         | Topic persistence (`persistent`, `non-persistent`)                                                                                                                                                                      | Yes      |
+| `topic_name`         | Name of the topic                                                                                                                                                                                                       | Yes      |
+| `partitions`         | Number of [partitions](https://pulsar.apache.org/docs/en/concepts-messaging/#partitioned-topics) (`0` for non-partitioned topic, `> 1` for partitioned topic)                                                           | Yes      |
+| `permission_grant`   | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No       |
+| `retention_policies` | Data retention policies                                                                                                                                                                                                 | No       |
 
 ### `pulsar_source`
 
@@ -358,22 +338,22 @@ resource "pulsar_source" "source-1" {
 
 #### Properties
 
-| Property | Description | Required|  
-| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
-| `name` | The source's name | True
-| `tenant` | The source's tenant | True  
-| `namespace` | The source's namespace | True
-| `destination_topic_name` | The Pulsar topic to which data is sent | True
-| `archive` | The path to the NAR archive for the Source. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package | True  
-| `classname` | The source's class name if archive is file-url-path (file://) | False
-| `configs` | User defined configs key/values (JSON string) | False
-| `deserialization_classname` | The SerDe classname for the source | False  
-| `processing_guarantees` | Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE) | False  
-| `parallelism` | The source's parallelism factor | False  
-| `cpu` | The CPU that needs to be allocated per source instance (applicable only to Docker runtime) | False
-| `ram_mb` | The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes) | False
-| `disk_mb` | The disk that need to be allocated per source instance (applicable only to Docker runtime) | False
-| `runtime_flags` | User defined configs key/values (JSON string) | False
+| Property                    | Description                                                                                                                                                                                        | Required |  
+|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| `name`                      | The source's name                                                                                                                                                                                  | True     |
+| `tenant`                    | The source's tenant                                                                                                                                                                                | True     |  
+| `namespace`                 | The source's namespace                                                                                                                                                                             | True     |
+| `destination_topic_name`    | The Pulsar topic to which data is sent                                                                                                                                                             | True     |
+| `archive`                   | The path to the NAR archive for the Source. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package | True     |  
+| `classname`                 | The source's class name if archive is file-url-path (file://)                                                                                                                                      | False    |
+| `configs`                   | User defined configs key/values (JSON string)                                                                                                                                                      | False    |
+| `deserialization_classname` | The SerDe classname for the source                                                                                                                                                                 | False    |  
+| `processing_guarantees`     | Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)                                                                                       | False    |  
+| `parallelism`               | The source's parallelism factor                                                                                                                                                                    | False    |  
+| `cpu`                       | The CPU that needs to be allocated per source instance (applicable only to Docker runtime)                                                                                                         | False    |
+| `ram_mb`                    | The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes)                                                                                         | False    |
+| `disk_mb`                   | The disk that need to be allocated per source instance (applicable only to Docker runtime)                                                                                                         | False    |
+| `runtime_flags`             | User defined configs key/values (JSON string)                                                                                                                                                      | False    |
 
 ### `pulsar_sink`
 
@@ -410,45 +390,50 @@ resource "pulsar_sink" "sample-sink-1" {
 
 #### Properties
 
-| Property                      | Description                                                       | Required                   |
-| ----------------------------- | ----------------------------------------------------------------- |----------------------------|
-| `tenant` | The sink's tenant | True
-| `namespace` | The sink's namespace | True
-| `name` | The sink's name | True
-| `inputs` | The sink's input topics | False
-| `topics_pattern` | TopicsPattern to consume from list of topics under a namespace that match the pattern | False
-| `input_specs` | The map of input topics specs | False
-| `configs` | User defined configs key/values (JSON string) | False
-| `archive` | Path to the archive file for the sink. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package | True
-| `subscription_name` | Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer | False
-| `subscription_position` | Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest) | False
-| `cleanup_subscription` | Whether the subscriptions the functions created/used should be deleted when the functions was deleted | True
-| `processing_guarantees` | Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE) | False
-| `retain_ordering` | Sink consumes and sinks messages in order | False
-| `auto_ack` | Whether or not the framework will automatically acknowledge messages | True
-| `timeout_ms` | The message timeout in milliseconds | False
-| `parallelism` | The sink's parallelism factor | False
-| `cpu` | The CPU that needs to be allocated per sink instance (applicable only to Docker runtime) | False
-| `ram_mb` | The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes) | False
-| `disk_mb` | The disk that need to be allocated per sink instance (applicable only to Docker runtime) | False
-| `custom_schema_inputs` | The map of input topics to Schema types or class names (as a JSON string) | False
-| `custom_serde_inputs` | The map of input topics to SerDe class names (as a JSON string) | False
-| `custom_runtime_options` | A string that encodes options to customize the runtime | False
+| Property                 | Description                                                                                                                                                                                   | Required |
+|--------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| `tenant`                 | The sink's tenant                                                                                                                                                                             | True     |
+| `namespace`              | The sink's namespace                                                                                                                                                                          | True     |
+| `name`                   | The sink's name                                                                                                                                                                               | True     |
+| `inputs`                 | The sink's input topics                                                                                                                                                                       | False    |
+| `topics_pattern`         | TopicsPattern to consume from list of topics under a namespace that match the pattern                                                                                                         | False    |
+| `input_specs`            | The map of input topics specs                                                                                                                                                                 | False    |
+| `configs`                | User defined configs key/values (JSON string)                                                                                                                                                 | False    |
+| `archive`                | Path to the archive file for the sink. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package | True     |
+| `subscription_name`      | Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer                                                                                           | False    |
+| `subscription_position`  | Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest)                                                                          | False    |
+| `cleanup_subscription`   | Whether the subscriptions the functions created/used should be deleted when the functions was deleted                                                                                         | True     |
+| `processing_guarantees`  | Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)                                                                                  | False    |
+| `retain_ordering`        | Sink consumes and sinks messages in order                                                                                                                                                     | False    |
+| `auto_ack`               | Whether or not the framework will automatically acknowledge messages                                                                                                                          | True     |
+| `timeout_ms`             | The message timeout in milliseconds                                                                                                                                                           | False    |
+| `parallelism`            | The sink's parallelism factor                                                                                                                                                                 | False    |
+| `cpu`                    | The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)                                                                                                      | False    |
+| `ram_mb`                 | The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes)                                                                                      | False    |
+| `disk_mb`                | The disk that need to be allocated per sink instance (applicable only to Docker runtime)                                                                                                      | False    |
+| `custom_schema_inputs`   | The map of input topics to Schema types or class names (as a JSON string)                                                                                                                     | False    |
+| `custom_serde_inputs`    | The map of input topics to SerDe class names (as a JSON string)                                                                                                                               | False    |
+| `custom_runtime_options` | A string that encodes options to customize the runtime                                                                                                                                        | False    |
 
-
-Importing existing resources
-------------
+## Importing existing resources
 
 All resources could be imported using the [standard terraform way](https://www.terraform.io/docs/import/usage.html).
 
-#### Example
+### Example
 
-```
+```shell
 terraform import pulsar_cluster.standalone standalone
 ```
 
-Contributing
----------------------------
+# Testing the Provider
+
+- Change directory to the project </path/to/provider/terraform-provider-pulsar>
+- In order to test the provider, you can run `make test`
+- In order to run the full suite of Acceptance tests, run `make testacc`
+
+> Note: Acceptance tests create real resources, and often cost money to run.
+
+# Contributing
 
 Terraform is the work of thousands of contributors. We appreciate your help!
 
@@ -456,10 +441,3 @@ To contribute, please read the contribution guidelines: [Contributing to Terrafo
 
 Issues on GitHub are intended to be related to bugs or feature requests with provider codebase.
 See https://www.terraform.io/docs/extend/community/index.html for a list of community resources to ask questions about Terraform.
-
-
-
-[1]: https://www.terraform.io
-[2]: https://pulsar.apache.org
-[third-party-plugins]: https://www.terraform.io/docs/configuration/providers.html#third-party-plugins
-[install-go]: https://golang.org/doc/install#install
