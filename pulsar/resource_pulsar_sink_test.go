@@ -50,7 +50,7 @@ func TestSink(t *testing.T) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheck(t) },
+		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, common.V3) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSinkDestroy,
@@ -64,7 +64,7 @@ func TestSink(t *testing.T) {
 						return fmt.Errorf("%s not be found", name)
 					}
 
-					client := testAccProvider.Meta().(pulsar.Client).Sinks()
+					client := getClientFromMeta(testAccProvider.Meta()).Sinks()
 
 					parts := strings.Split(rs.Primary.ID, "/")
 					if len(parts) != 3 {
@@ -142,8 +142,8 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 17 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 17, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 19 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 19, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil

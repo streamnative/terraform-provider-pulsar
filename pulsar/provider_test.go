@@ -21,11 +21,12 @@ import (
 	"context"
 	"net/url"
 	"os"
+	"strconv"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
 )
 
 var (
@@ -55,6 +56,10 @@ func TestProvider_impl(t *testing.T) {
 }
 
 func testAccPreCheck(t *testing.T) {
+	testAccPreCheckWithAPIVersion(t, 0)
+}
+
+func testAccPreCheckWithAPIVersion(t *testing.T, apiVersion common.APIVersion) {
 	webServiceURL := os.Getenv("WEB_SERVICE_URL")
 
 	_, err := url.Parse(webServiceURL)
@@ -62,7 +67,14 @@ func testAccPreCheck(t *testing.T) {
 		t.Fatal("err: %w", err)
 	}
 
-	diags := testAccProvider.Configure(context.Background(), terraform.NewResourceConfigRaw(nil))
+	config := make(map[string]interface{})
+	if apiVersion >= 0 && apiVersion <= 3 {
+		config["api_version"] = strconv.Itoa(int(apiVersion))
+	} else {
+		t.Fatal("unknown api version", err)
+	}
+
+	diags := testAccProvider.Configure(context.Background(), terraform.NewResourceConfigRaw(config))
 	if diags.HasError() {
 		t.Fatal(diags[0].Summary)
 	}
