@@ -29,7 +29,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/pkg/errors"
 	"github.com/streamnative/pulsarctl/pkg/cli"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 	"github.com/stretchr/testify/assert"
@@ -51,7 +50,7 @@ func TestSource(t *testing.T) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheck(t) },
+		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, common.V3) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSourceDestroy,
@@ -115,7 +114,7 @@ func testPulsarSourceDestroy(s *terraform.State) error {
 }
 
 func getPulsarSourceByResourceID(id string) (*utils.SourceConfig, error) {
-	client := testAccProvider.Meta().(pulsar.Client).Sources()
+	client := getClientFromMeta(testAccProvider.Meta()).Sources()
 
 	parts := strings.Split(id, "/")
 	if len(parts) != 3 {
@@ -160,7 +159,7 @@ func testSourceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		count := 12
+		count := 13
 		if len(s[0].Attributes) != count {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", count, len(s[0].Attributes), s[0].Attributes)
 		}
@@ -209,7 +208,7 @@ provider "pulsar" {
   api_version = "3"
 }
 
-resource "pulsar_source" "source-1" {
+resource "pulsar_source" "test" {
   provider = pulsar
 
   name = "%s"
