@@ -22,16 +22,48 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+
+	"github.com/streamnative/terraform-provider-pulsar/pkg/admin"
 )
 
 const DefaultPulsarAPIVersion string = "0" // 0 will automatically match the default api version
+
+var descriptions map[string]string
+
+func init() {
+	descriptions = map[string]string{
+		"web_service_url": "Web service url is used to connect to your apache pulsar cluster",
+		"token": `Authentication Token used to grant terraform permissions
+to modify Apace Pulsar Entities`,
+		"api_version":                   "Api Version to be used for the pulsar admin interaction",
+		"tls_trust_certs_file_path":     "Path to a custom trusted TLS certificate file",
+		"tls_allow_insecure_connection": "Boolean flag to accept untrusted TLS certificates",
+		"admin_roles":                   "Admin roles to be attached to tenant",
+		"allowed_clusters":              "Tenant will be able to interact with these clusters",
+		"namespace":                     "Pulsar namespaces are logical groupings of topics",
+		"tenant": `An administrative unit for allocating capacity and enforcing an 
+authentication/authorization scheme`,
+		"namespace_list": "List of namespaces for a given tenant",
+		"enable_duplication": `ensures that each message produced on Pulsar topics is persisted to disk 
+only once, even if the message is produced more than once`,
+		"encrypt_topics":                 "encrypt messages at the producer and decrypt at the consumer",
+		"max_producers_per_topic":        "Max number of producers per topic",
+		"max_consumers_per_subscription": "Max number of consumers per subscription",
+		"max_consumers_per_topic":        "Max number of consumers per topic",
+		"dispatch_rate":                  "Data transfer rate, in and out of the Pulsar Broker",
+		"persistence_policy":             "Policy for the namespace for data persistence",
+		"backlog_quota":                  "",
+		"issuer_url":                     "The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token",
+		"audience":                       "The OAuth 2.0 resource server identifier for the Pulsar cluster",
+		"client_id":                      "The OAuth 2.0 client identifier",
+		"key_file_path":                  "The path of the private key file",
+	}
+}
 
 // Provider returns a schema.Provider
 func Provider() *schema.Provider {
@@ -70,6 +102,26 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.MultiEnvDefaultFunc(
 					[]string{"PULSAR_TLS_TRUST_CERTS_FILE_PATH", "TLS_ALLOW_INSECURE_CONNECTION"}, false),
 			},
+			"issuer_url": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: descriptions["issuer_url"],
+			},
+			"audience": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: descriptions["audience"],
+			},
+			"client_id": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: descriptions["client_id"],
+			},
+			"key_file_path": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: descriptions["key_file_path"],
+			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"pulsar_tenant":    resourcePulsarTenant(),
@@ -96,6 +148,10 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 	pulsarAPIVersion := d.Get("api_version").(string)
 	TLSTrustCertsFilePath := d.Get("tls_trust_certs_file_path").(string)
 	TLSAllowInsecureConnection := d.Get("tls_allow_insecure_connection").(bool)
+	issuerEndpoint := d.Get("issuer_url").(string)
+	clientID := d.Get("client_id").(string)
+	audience := d.Get("audience").(string)
+	keyFilePath := d.Get("key_file_path").(string)
 
 	if clusterURL == "" {
 		clusterURL = "http://localhost:8080"
@@ -116,40 +172,18 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 		PulsarAPIVersion:           common.APIVersion(apiVersion),
 		TLSTrustCertsFilePath:      TLSTrustCertsFilePath,
 		TLSAllowInsecureConnection: TLSAllowInsecureConnection,
+		IssuerEndpoint:             issuerEndpoint,
+		ClientID:                   clientID,
+		Audience:                   audience,
+		KeyFile:                    keyFilePath,
 	}
 
-	client, err := pulsar.New(config)
+	client, err := admin.NewPulsarAdminClient(&admin.PulsarAdminConfig{
+		Config: config,
+	})
 	if err != nil {
-		return nil, diag.FromErr(errors.Wrapf(err, "failed to create pulsar client"))
+		return nil, diag.FromErr(err)
 	}
 
 	return client, nil
-}
-
-var descriptions map[string]string
-
-func init() {
-	descriptions = map[string]string{
-		"web_service_url": "Web service url is used to connect to your apache pulsar cluster",
-		"token": `Authentication Token used to grant terraform permissions
-to modify Apace Pulsar Entities`,
-		"api_version":                   "Api Version to be used for the pulsar admin interaction",
-		"tls_trust_certs_file_path":     "Path to a custom trusted TLS certificate file",
-		"tls_allow_insecure_connection": "Boolean flag to accept untrusted TLS certificates",
-		"admin_roles":                   "Admin roles to be attached to tenant",
-		"allowed_clusters":              "Tenant will be able to interact with these clusters",
-		"namespace":                     "Pulsar namespaces are logical groupings of topics",
-		"tenant": `An administrative unit for allocating capacity and enforcing an 
-authentication/authorization scheme`,
-		"namespace_list": "List of namespaces for a given tenant",
-		"enable_duplication": `ensures that each message produced on Pulsar topics is persisted to disk 
-only once, even if the message is produced more than once`,
-		"encrypt_topics":                 "encrypt messages at the producer and decrypt at the consumer",
-		"max_producers_per_topic":        "Max number of producers per topic",
-		"max_consumers_per_subscription": "Max number of consumers per subscription",
-		"max_consumers_per_topic":        "Max number of consumers per topic",
-		"dispatch_rate":                  "Data transfer rate, in and out of the Pulsar Broker",
-		"persistence_policy":             "Policy for the namespace for data persistence",
-		"backlog_quota":                  "",
-	}
 }
