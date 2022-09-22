@@ -18,6 +18,10 @@ description: |-
 ### Optional
 
 - `api_version` (String) Api Version to be used for the pulsar admin interaction
+- `audience` (String) The OAuth 2.0 resource server identifier for the Pulsar cluster
+- `client_id` (String) The OAuth 2.0 client identifier
+- `issuer_url` (String) The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token
+- `key_file_path` (String) The path of the private key file
 - `tls_allow_insecure_connection` (Boolean) Boolean flag to accept untrusted TLS certificates
 - `tls_trust_certs_file_path` (String) Path to a custom trusted TLS certificate file
 - `token` (String) Authentication Token used to grant terraform permissions

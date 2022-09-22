@@ -78,6 +78,10 @@ provider "pulsar" {
 | `tls_trust_certs_file_path`     | Path to a custom trusted TLS certificate file                                                                          | No       |
 | `tls_allow_insecure_connection` | Boolean flag to accept untrusted TLS certificates                                                                      | No       |
 | `api_version`                   | Used to request Apache Pulsar API service, default by 0, which represents use default version                          | No       |      
+| `audience`                      | The OAuth 2.0 resource server identifier for the Pulsar cluster                                                        | No       |  
+| `client_id`                     | The OAuth 2.0 client identifier                                                                                        | No       |
+| `issuer_url`                    | The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token              | No       |
+| `key_file_path`                 | The path of the private key file                                                                                       | No       |
 
 ## Resources
 
