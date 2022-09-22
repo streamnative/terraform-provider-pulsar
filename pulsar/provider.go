@@ -58,10 +58,11 @@ only once, even if the message is produced more than once`,
 		"dispatch_rate":                  "Data transfer rate, in and out of the Pulsar Broker",
 		"persistence_policy":             "Policy for the namespace for data persistence",
 		"backlog_quota":                  "",
-		"issuer_url":                     "The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token",
-		"audience":                       "The OAuth 2.0 resource server identifier for the Pulsar cluster",
-		"client_id":                      "The OAuth 2.0 client identifier",
-		"key_file_path":                  "The path of the private key file",
+		"issuer_url": `The OAuth 2.0 URL of the authentication provider which allows the 
+Pulsar client to obtain an access token`,
+		"audience":      "The OAuth 2.0 resource server identifier for the Pulsar cluster",
+		"client_id":     "The OAuth 2.0 client identifier",
+		"key_file_path": "The path of the private key file",
 	}
 }
 
