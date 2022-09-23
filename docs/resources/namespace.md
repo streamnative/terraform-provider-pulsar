@@ -66,6 +66,7 @@ Optional:
 - `max_consumers_per_subscription` (Number)
 - `max_consumers_per_topic` (Number)
 - `max_producers_per_topic` (Number)
+- `message_ttl_seconds` (Number)
 - `replication_clusters` (List of String)
 - `schema_compatibility_strategy` (String)
 - `schema_validation_enforce` (Boolean)

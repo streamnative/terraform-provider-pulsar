@@ -145,6 +145,7 @@ authentication/authorization scheme`,
 		"enable_duplication": `ensures that each message produced on Pulsar topics is persisted to disk 
 only once, even if the message is produced more than once`,
 		"encrypt_topics":                 "encrypt messages at the producer and decrypt at the consumer",
+		"message_ttl_seconds":            "Message TTL in seconds",
 		"max_producers_per_topic":        "Max number of producers per topic",
 		"max_consumers_per_subscription": "Max number of consumers per subscription",
 		"max_consumers_per_topic":        "Max number of consumers per topic",

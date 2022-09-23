@@ -181,6 +181,7 @@ resource "pulsar_namespace" "test" {
     max_consumers_per_subscription = "50"
     max_consumers_per_topic        = "50"
     max_producers_per_topic        = "50"
+    message_ttl_seconds            = "86400"
     replication_clusters           = ["standalone"]
   }
 
