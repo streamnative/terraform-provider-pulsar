@@ -28,8 +28,8 @@ type PulsarAdminConfig struct {
 }
 
 func (p *PulsarAdminConfig) AuthenticationType() authentication.AuthenticationType {
-	if len(p.Config.IssuerEndpoint) > 0 && len(p.Config.ClientID) > 0 &&
-		len(p.Config.Audience) > 0 && len(p.Config.KeyFile) > 0 {
+	if len(p.Config.IssuerEndpoint) > 0 || len(p.Config.ClientID) > 0 ||
+		len(p.Config.Audience) > 0 || len(p.Config.KeyFile) > 0 || len(p.Config.Scope) > 0 {
 		return authentication.AuthenticationOauth2
 	}
 	return authentication.AuthenticationToken

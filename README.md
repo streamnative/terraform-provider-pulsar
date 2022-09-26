@@ -81,6 +81,7 @@ provider "pulsar" {
 | `audience`                      | The OAuth 2.0 resource server identifier for the Pulsar cluster                                                        | No       |  
 | `client_id`                     | The OAuth 2.0 client identifier                                                                                        | No       |
 | `issuer_url`                    | The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token              | No       |
+| `scope`                         | The OAuth 2.0 scope to request                                                                                         | No       |
 | `key_file_path`                 | The path of the private key file                                                                                       | No       |
 
 ## Resources

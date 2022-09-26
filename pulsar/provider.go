@@ -62,6 +62,7 @@ only once, even if the message is produced more than once`,
 Pulsar client to obtain an access token`,
 		"audience":      "The OAuth 2.0 resource server identifier for the Pulsar cluster",
 		"client_id":     "The OAuth 2.0 client identifier",
+		"scope":         "The OAuth 2.0 scope(s) to request",
 		"key_file_path": "The path of the private key file",
 	}
 }
@@ -118,6 +119,11 @@ func Provider() *schema.Provider {
 				Optional:    true,
 				Description: descriptions["client_id"],
 			},
+			"scope": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: descriptions["scope"],
+			},
 			"key_file_path": {
 				Type:        schema.TypeString,
 				Optional:    true,
@@ -152,6 +158,7 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 	issuerEndpoint := d.Get("issuer_url").(string)
 	clientID := d.Get("client_id").(string)
 	audience := d.Get("audience").(string)
+	scope := d.Get("scope").(string)
 	keyFilePath := d.Get("key_file_path").(string)
 
 	if clusterURL == "" {
@@ -176,6 +183,7 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 		IssuerEndpoint:             issuerEndpoint,
 		ClientID:                   clientID,
 		Audience:                   audience,
+		Scope:                      scope,
 		KeyFile:                    keyFilePath,
 	}
 
