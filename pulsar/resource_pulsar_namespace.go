@@ -474,8 +474,8 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 			}
 		}
 
-		if nsCfg.MessageTtlInSeconds >= 0 {
-			if err = client.SetNamespaceMessageTTL(nsName.String(), nsCfg.MessageTtlInSeconds); err != nil {
+		if nsCfg.MessageTTLInSeconds >= 0 {
+			if err = client.SetNamespaceMessageTTL(nsName.String(), nsCfg.MessageTTLInSeconds); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetNamespaceMessageTTL: %w", err))
 			}
 		}
@@ -715,7 +715,7 @@ func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
 		nsConfig.MaxProducersPerTopic = data["max_producers_per_topic"].(int)
 		nsConfig.MaxConsumersPerTopic = data["max_consumers_per_topic"].(int)
 		nsConfig.MaxConsumersPerSubscription = data["max_consumers_per_subscription"].(int)
-		nsConfig.MessageTtlInSeconds = data["message_ttl_seconds"].(int)
+		nsConfig.MessageTTLInSeconds = data["message_ttl_seconds"].(int)
 		nsConfig.AntiAffinity = data["anti_affinity"].(string)
 		nsConfig.SchemaValidationEnforce = data["schema_validation_enforce"].(bool)
 		nsConfig.SchemaCompatibilityStrategy = data["schema_compatibility_strategy"].(string)

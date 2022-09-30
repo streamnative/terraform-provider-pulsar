@@ -27,7 +27,7 @@ type (
 		MaxConsumersPerTopic        int
 		MaxProducersPerTopic        int
 		MaxConsumersPerSubscription int
-		MessageTtlInSeconds         int
+		MessageTTLInSeconds         int
 		SchemaValidationEnforce     bool
 		SchemaCompatibilityStrategy string
 		IsAllowAutoUpdateSchema     bool
