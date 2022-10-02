@@ -49,11 +49,11 @@ A [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar Ent
   - Run `make build`, it will generate a binary file named `terraform-provider-pulsar`
   - Copy this `terraform-provider-pulsar` binary file to your terraform plugin directory based on your OS:
 
-    | Operating System | User plugins directory                                                                       |
-    |----------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
-    | Windows(amd64)   | %APPDATA%\terraform.d\plugins\registry.terraform.io\streamnative\pulsar\0.1.0\windows_amd64\ |
-    | Linux(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/linux_amd64/          |
-    | MacOS(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/darwin_amd64/         |
+| Operating System | User plugins directory                                                                       |
+|------------------|----------------------------------------------------------------------------------------------|
+| Windows(amd64)   | %APPDATA%\terraform.d\plugins\registry.terraform.io\streamnative\pulsar\0.1.0\windows_amd64\ |
+| Linux(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/linux_amd64/          |
+| MacOS(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/darwin_amd64/         |
 
 # Using the Provider 
 
@@ -186,6 +186,7 @@ resource "pulsar_namespace" "test" {
     max_consumers_per_subscription = "50"
     max_consumers_per_topic        = "50"
     max_producers_per_topic        = "50"
+    message_ttl_seconds            = "86400"
     replication_clusters           = ["standalone"]
   }
 
@@ -231,11 +232,25 @@ resource "pulsar_namespace" "test" {
 | `namespace_config`              | Configuration for your namespaces like max allowed producers to produce messages                                                                          | No       |
 | `dispatch_rate`                 | Apache Pulsar throttling config                                                                                                                           | No       |
 | `retention_policies`            | Data retention policies                                                                                                                                   | No       |
-| `schema_validation_enforce`     | Enable or disable schema validation                                                                                                                       | No       |
-| `schema_compatibility_strategy` | Set schema compatibility strategy                                                                                                                         | No       |
 | `backlog_quota`                 | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics                                        | No       |
 | `persistence_policies`          | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace           | No       |
 | `permission_grant`              | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No       |
+
+
+namespace_config nested schema
+
+| Property                         | Description                                                       | Required |
+|----------------------------------|-------------------------------------------------------------------|----------|
+| `anti_affinity`                  | Anti-affinity group name                                          | No       |
+| `is_allow_auto_update_schema`    | Is schema auto-update allowed                                     | No       |
+| `max_consumers_per_subscription` | Sets the max consumers per subscription                           | No       |
+| `max_consumers_per_topic`        | Sets the max consumers per topic                                  | No       |
+| `max_producers_per_topic`        | Sets the max producers per topic                                  | No       |
+| `message_ttl_seconds`            | Sets the message TTL in seconds                                   | No       |
+| `replication_clusters`           | List of replication clusters for the namespace                    | No       |
+| `schema_compatibility_strategy`  | Set schema compatibility strategy                                 | No       |
+| `schema_validation_enforce`      | Enable or disable schema validation                               | No       |
+
 
 The `schema_compatibility_strategy` can take the following values:
 

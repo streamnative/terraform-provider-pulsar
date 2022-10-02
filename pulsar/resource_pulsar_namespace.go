@@ -146,6 +146,12 @@ func resourcePulsarNamespace() *schema.Resource {
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
 						},
+						"message_ttl_seconds": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      -1,
+							ValidateFunc: validateGtEq0,
+						},
 						"replication_clusters": {
 							Type:     schema.TypeList,
 							Optional: true,
@@ -294,6 +300,11 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err)
 		}
 
+		messageTTL, err := client.GetNamespaceMessageTTL(ns.String())
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceMessageTTL: %w", err)
+		}
+
 		schemaValidationEnforce, err := client.GetSchemaValidationEnforced(*ns)
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaValidationEnforced: %w", err)
@@ -325,6 +336,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 				"max_consumers_per_subscription": maxConsPerSub,
 				"max_consumers_per_topic":        maxConsPerTopic,
 				"max_producers_per_topic":        maxProdPerTopic,
+				"message_ttl_seconds":            messageTTL,
 				"replication_clusters":           replClusters,
 				"schema_validation_enforce":      schemaValidationEnforce,
 				"schema_compatibility_strategy":  schemaCompatibilityStrategy.String(),
@@ -461,6 +473,13 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 				errs = multierror.Append(errs, fmt.Errorf("SetMaxProducersPerTopic: %w", err))
 			}
 		}
+
+		if nsCfg.MessageTTLInSeconds >= 0 {
+			if err = client.SetNamespaceMessageTTL(nsName.String(), nsCfg.MessageTTLInSeconds); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetNamespaceMessageTTL: %w", err))
+			}
+		}
+
 		if err = client.SetSchemaValidationEnforced(*nsName, nsCfg.SchemaValidationEnforce); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("SetSchemaValidationEnforced: %w", err))
 		}
@@ -634,6 +653,7 @@ func namespaceConfigToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%d-", m["max_consumers_per_subscription"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["max_consumers_per_topic"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["max_producers_per_topic"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["message_ttl_seconds"].(int)))
 	buf.WriteString(fmt.Sprintf("%s-", m["replication_clusters"].([]interface{})))
 	buf.WriteString(fmt.Sprintf("%t-", m["schema_validation_enforce"].(bool)))
 	buf.WriteString(fmt.Sprintf("%s-", m["schema_compatibility_strategy"].(string)))
@@ -695,6 +715,7 @@ func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
 		nsConfig.MaxProducersPerTopic = data["max_producers_per_topic"].(int)
 		nsConfig.MaxConsumersPerTopic = data["max_consumers_per_topic"].(int)
 		nsConfig.MaxConsumersPerSubscription = data["max_consumers_per_subscription"].(int)
+		nsConfig.MessageTTLInSeconds = data["message_ttl_seconds"].(int)
 		nsConfig.AntiAffinity = data["anti_affinity"].(string)
 		nsConfig.SchemaValidationEnforce = data["schema_validation_enforce"].(bool)
 		nsConfig.SchemaCompatibilityStrategy = data["schema_compatibility_strategy"].(string)
