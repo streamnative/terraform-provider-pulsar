@@ -18,9 +18,13 @@
 package pulsar
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 
 	"github.com/streamnative/terraform-provider-pulsar/bytesize"
 
@@ -82,13 +86,12 @@ func init() {
 
 func resourcePulsarSource() *schema.Resource {
 	return &schema.Resource{
-		Create: resourcePulsarSourceCreate,
-		Read:   resourcePulsarSourceRead,
-		Update: resourcePulsarSourceUpdate,
-		Delete: resourcePulsarSourceDelete,
-		Exists: resourcePulsarSourceExists,
+		CreateContext: resourcePulsarSourceCreate,
+		ReadContext:   resourcePulsarSourceRead,
+		UpdateContext: resourcePulsarSourceUpdate,
+		DeleteContext: resourcePulsarSourceDelete,
 		Importer: &schema.ResourceImporter{
-			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				id := d.Id()
 
 				parts := strings.Split(id, "/")
@@ -100,8 +103,11 @@ func resourcePulsarSource() *schema.Resource {
 				_ = d.Set(resourceSourceNamespaceKey, parts[1])
 				_ = d.Set(resourceSourceNameKey, parts[2])
 
-				err := resourcePulsarSourceRead(d, meta)
-				return []*schema.ResourceData{d}, err
+				diags := resourcePulsarSourceRead(ctx, d, meta)
+				if diags.HasError() {
+					return nil, fmt.Errorf("import %q: %s", d.Id(), diags[0].Summary)
+				}
+				return []*schema.ResourceData{d}, nil
 			},
 		},
 		Schema: map[string]*schema.Schema{
@@ -210,58 +216,29 @@ func resourcePulsarSource() *schema.Resource {
 	}
 }
 
-func resourcePulsarSourceExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := meta.(pulsar.Client).Sources()
-
-	tenant := d.Get(resourceSourceTenantKey).(string)
-	namespace := d.Get(resourceSourceNamespaceKey).(string)
-	name := d.Get(resourceSourceNameKey).(string)
-
-	_, err := client.GetSource(tenant, namespace, name)
-	if err != nil {
-		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
-			// source doesn't exist.
-			return false, nil
-		}
-
-		return false, errors.Wrapf(err, "failed to get source")
-	}
-
-	return true, nil
-}
-
-func resourcePulsarSourceDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Sources()
-
-	tenant := d.Get(resourceSourceTenantKey).(string)
-	namespace := d.Get(resourceSourceNamespaceKey).(string)
-	name := d.Get(resourceSourceNameKey).(string)
-
-	return client.DeleteSource(tenant, namespace, name)
-}
-
-func resourcePulsarSourceUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarSourceCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(pulsar.Client).Sources()
 
 	sourceConfig, err := marshalSourceConfig(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
-	updateOptions := utils.NewUpdateOptions()
 	if isLocalArchive(sourceConfig.Archive) {
-		err = client.UpdateSource(sourceConfig, sourceConfig.Archive, updateOptions)
+		err = client.CreateSource(sourceConfig, sourceConfig.Archive)
 	} else {
-		err = client.UpdateSourceWithURL(sourceConfig, sourceConfig.Archive, updateOptions)
+		err = client.CreateSourceWithURL(sourceConfig, sourceConfig.Archive)
 	}
 	if err != nil {
-		return err
+		tflog.Debug(ctx, fmt.Sprintf("@@@Create source: %v", err))
+		return diag.Errorf("ERROR_CREATE_SOURCE: %v", err)
 	}
+	tflog.Debug(ctx, "@@@Create source complete")
 
-	return resourcePulsarSourceRead(d, meta)
+	return resourcePulsarSourceRead(ctx, d, meta)
 }
 
-func resourcePulsarSourceRead(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(pulsar.Client).Sources()
 
 	tenant := d.Get(resourceSourceTenantKey).(string)
@@ -272,101 +249,115 @@ func resourcePulsarSourceRead(d *schema.ResourceData, meta interface{}) error {
 
 	sourceConfig, err := client.GetSource(tenant, namespace, name)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %s source from %s/%s", name, tenant, namespace)
+		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+			return diag.Errorf("ERROR_SOURCE_NOT_FOUND")
+		}
+		return diag.FromErr(errors.Wrapf(err, "failed to get %s source from %s/%s", name, tenant, namespace))
 	}
 
 	// When the archive is built-in resource, it is not empty, otherwise it is empty.
 	if sourceConfig.Archive != "" {
 		err = d.Set(resourceSourceArchiveKey, sourceConfig.Archive)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	err = d.Set(resourceSourceProcessingGuaranteesKey, sourceConfig.ProcessingGuarantees)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	err = d.Set(resourceSourceDestinationTopicNamesKey, sourceConfig.TopicName)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	if len(sourceConfig.SerdeClassName) != 0 {
 		err = d.Set(resourceSourceDeserializationClassnameKey, sourceConfig.SerdeClassName)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	err = d.Set(resourceSourceParallelismKey, sourceConfig.Parallelism)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	err = d.Set(resourceSourceClassnameKey, sourceConfig.ClassName)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	if sourceConfig.Resources != nil {
 		err = d.Set(resourceSourceCPUKey, sourceConfig.Resources.CPU)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 
 		err = d.Set(resourceSourceRAMKey, bytesize.FormBytes(uint64(sourceConfig.Resources.RAM)).ToMegaBytes())
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 
 		err = d.Set(resourceSourceDiskKey, bytesize.FormBytes(uint64(sourceConfig.Resources.Disk)).ToMegaBytes())
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	if len(sourceConfig.Configs) != 0 {
 		b, err := json.Marshal(sourceConfig.Configs)
 		if err != nil {
-			return errors.Wrap(err, "cannot marshal configs from sourceConfig")
+			return diag.FromErr(errors.Wrap(err, "cannot marshal configs from sourceConfig"))
 		}
 
 		err = d.Set(resourceSourceConfigsKey, string(b))
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	if len(sourceConfig.RuntimeFlags) != 0 {
 		err = d.Set(resourceSourceRuntimeFlagsKey, sourceConfig.RuntimeFlags)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	return nil
 }
 
-func resourcePulsarSourceCreate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarSourceUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(pulsar.Client).Sources()
 
 	sourceConfig, err := marshalSourceConfig(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
+	updateOptions := utils.NewUpdateOptions()
 	if isLocalArchive(sourceConfig.Archive) {
-		err = client.CreateSource(sourceConfig, sourceConfig.Archive)
+		err = client.UpdateSource(sourceConfig, sourceConfig.Archive, updateOptions)
 	} else {
-		err = client.CreateSourceWithURL(sourceConfig, sourceConfig.Archive)
+		err = client.UpdateSourceWithURL(sourceConfig, sourceConfig.Archive, updateOptions)
 	}
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
-	return resourcePulsarSourceRead(d, meta)
+	return resourcePulsarSourceRead(ctx, d, meta)
+}
+
+func resourcePulsarSourceDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(pulsar.Client).Sources()
+
+	tenant := d.Get(resourceSourceTenantKey).(string)
+	namespace := d.Get(resourceSourceNamespaceKey).(string)
+	name := d.Get(resourceSourceNameKey).(string)
+
+	return diag.FromErr(client.DeleteSource(tenant, namespace, name))
 }
 
 func marshalSourceConfig(d *schema.ResourceData) (*utils.SourceConfig, error) {

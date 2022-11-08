@@ -19,27 +19,31 @@ package pulsar
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/streamnative/pulsarctl/pkg/cli"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
 
 func resourcePulsarCluster() *schema.Resource {
-
 	return &schema.Resource{
-		Create: resourcePulsarClusterCreate,
-		Read:   resourcePulsarClusterRead,
-		Update: resourcePulsarClusterUpdate,
-		Delete: resourcePulsarClusterDelete,
-		Exists: resourcePulsarClusterExists,
+		CreateContext: resourcePulsarClusterCreate,
+		ReadContext:   resourcePulsarClusterRead,
+		UpdateContext: resourcePulsarClusterUpdate,
+		DeleteContext: resourcePulsarClusterDelete,
 		Importer: &schema.ResourceImporter{
-			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				_ = d.Set("cluster", d.Id())
-				err := resourcePulsarClusterRead(d, meta)
-				return []*schema.ResourceData{d}, err
+				err := resourcePulsarClusterRead(ctx, d, meta)
+				if err.HasError() {
+					return nil, fmt.Errorf("import %q: %s", d.Id(), err[0].Summary)
+				}
+				return []*schema.ResourceData{d}, nil
 			},
 		},
 		Schema: map[string]*schema.Schema{
@@ -92,17 +96,8 @@ func resourcePulsarCluster() *schema.Resource {
 	}
 }
 
-func resourcePulsarClusterCreate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarClusterCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Clusters()
-
-	ok, err := resourcePulsarClusterExists(d, meta)
-	if err != nil {
-		return err
-	}
-
-	if ok {
-		return resourcePulsarClusterRead(d, meta)
-	}
 
 	cluster := d.Get("cluster").(string)
 	clusterDataSet := d.Get("cluster_data").(*schema.Set)
@@ -111,21 +106,25 @@ func resourcePulsarClusterCreate(d *schema.ResourceData, meta interface{}) error
 	clusterData.Name = cluster
 
 	if err := client.Create(*clusterData); err != nil {
-		return fmt.Errorf("ERROR_CREATE_CLUSTER: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_CLUSTER: %w", err))
 	}
 
 	_ = d.Set("cluster", cluster)
-	return resourcePulsarClusterRead(d, meta)
+
+	return resourcePulsarClusterRead(ctx, d, meta)
 }
 
-func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarClusterRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Clusters()
 
 	cluster := d.Get("cluster").(string)
 
 	clusterData, err := client.Get(cluster)
 	if err != nil {
-		return fmt.Errorf("ERROR_READ_CLUSTER_DATA: %w", err)
+		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+			return diag.Errorf("ERROR_CLUSTER_NOT_FOUND")
+		}
+		return diag.FromErr(fmt.Errorf("ERROR_READ_CLUSTER_DATA: %w", err))
 	}
 
 	peerClusterNames := make([]interface{}, len(clusterData.PeerClusterNames))
@@ -147,7 +146,7 @@ func resourcePulsarClusterRead(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarClusterUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Clusters()
 
 	clusterDataSet := d.Get("cluster_data").(*schema.Set)
@@ -157,7 +156,7 @@ func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error
 	clusterData.Name = cluster
 
 	if err := client.Update(*clusterData); err != nil {
-		return fmt.Errorf("ERROR_UPDATE_CLUSTER_DATA: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_UPDATE_CLUSTER_DATA: %w", err))
 	}
 
 	_ = d.Set("cluster_data", clusterDataSet)
@@ -166,35 +165,19 @@ func resourcePulsarClusterUpdate(d *schema.ResourceData, meta interface{}) error
 	return nil
 }
 
-func resourcePulsarClusterDelete(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarClusterDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Clusters()
 
 	Cluster := d.Get("cluster").(string)
 
 	if err := client.Delete(Cluster); err != nil {
-		return fmt.Errorf("ERROR_DELETE_CLUSTER: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_DELETE_CLUSTER: %w", err))
 	}
 
 	_ = d.Set("cluster", "")
 	_ = d.Set("cluster_data", nil)
 
 	return nil
-}
-
-func resourcePulsarClusterExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := getClientFromMeta(meta).Clusters()
-
-	cluster := d.Get("cluster").(string)
-
-	if _, err := client.Get(cluster); err != nil {
-		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
-			return false, nil
-		}
-
-		return false, err
-	}
-
-	return true, nil
 }
 
 func clusterDataToHash(v interface{}) int {

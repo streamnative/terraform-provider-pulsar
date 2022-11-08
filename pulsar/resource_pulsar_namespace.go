@@ -19,29 +19,30 @@ package pulsar
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/hashicorp/go-multierror"
-
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+
 	"github.com/streamnative/terraform-provider-pulsar/types"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
 
 func resourcePulsarNamespace() *schema.Resource {
-
 	return &schema.Resource{
-		Create: resourcePulsarNamespaceCreate,
-		Read:   resourcePulsarNamespaceRead,
-		Update: resourcePulsarNamespaceUpdate,
-		Delete: resourcePulsarNamespaceDelete,
-		Exists: resourcePulsarNamespaceExists,
+		CreateContext: resourcePulsarNamespaceCreate,
+		ReadContext:   resourcePulsarNamespaceRead,
+		UpdateContext: resourcePulsarNamespaceUpdate,
+		DeleteContext: resourcePulsarNamespaceDelete,
 		Importer: &schema.ResourceImporter{
-			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				ns, err := utils.GetNamespaceName(d.Id())
 				if err != nil {
 					return nil, fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
@@ -50,8 +51,11 @@ func resourcePulsarNamespace() *schema.Resource {
 				_ = d.Set("tenant", nsParts[0])
 				_ = d.Set("namespace", nsParts[1])
 
-				err = resourcePulsarNamespaceRead(d, meta)
-				return []*schema.ResourceData{d}, err
+				diags := resourcePulsarNamespaceRead(ctx, d, meta)
+				if diags.HasError() {
+					return nil, fmt.Errorf("import %q: %s", d.Id(), diags[0].Summary)
+				}
+				return []*schema.ResourceData{d}, nil
 			},
 		},
 		Schema: map[string]*schema.Schema{
@@ -232,38 +236,29 @@ func resourcePulsarNamespace() *schema.Resource {
 	}
 }
 
-func resourcePulsarNamespaceCreate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarNamespaceCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
-
-	ok, err := resourcePulsarNamespaceExists(d, meta)
-	if err != nil {
-		return err
-	}
-
-	if ok {
-		return resourcePulsarNamespaceRead(d, meta)
-	}
 
 	namespace := d.Get("namespace").(string)
 	tenant := d.Get("tenant").(string)
 
 	ns, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
-		return fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 	}
 
 	if err := client.CreateNamespace(ns.String()); err != nil {
-		return fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err))
 	}
 
-	if err := resourcePulsarNamespaceUpdate(d, meta); err != nil {
-		return fmt.Errorf("ERROR_CREATE_NAMESPACE_CONFIG: %w", err)
+	if err := resourcePulsarNamespaceUpdate(ctx, d, meta); err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_NAMESPACE_CONFIG: %w", err))
 	}
 
 	return nil
 }
 
-func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
 	tenant := d.Get("tenant").(string)
@@ -271,7 +266,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 
 	ns, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
-		return fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 	}
 
 	d.SetId(ns.String())
@@ -282,42 +277,42 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 	if namespaceConfig, ok := d.GetOk("namespace_config"); ok && namespaceConfig.(*schema.Set).Len() > 0 {
 		afgrp, err := client.GetNamespaceAntiAffinityGroup(ns.String())
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceAntiAffinityGroup: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceAntiAffinityGroup: %w", err))
 		}
 
 		maxConsPerSub, err := client.GetMaxConsumersPerSubscription(*ns)
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerSubscription: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerSubscription: %w", err))
 		}
 
 		maxConsPerTopic, err := client.GetMaxConsumersPerTopic(*ns)
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerTopic: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerTopic: %w", err))
 		}
 
 		maxProdPerTopic, err := client.GetMaxProducersPerTopic(*ns)
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err))
 		}
 
 		messageTTL, err := client.GetNamespaceMessageTTL(ns.String())
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceMessageTTL: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceMessageTTL: %w", err))
 		}
 
 		schemaValidationEnforce, err := client.GetSchemaValidationEnforced(*ns)
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaValidationEnforced: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaValidationEnforced: %w", err))
 		}
 
 		schemaCompatibilityStrategy, err := client.GetSchemaAutoUpdateCompatibilityStrategy(*ns)
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaAutoUpdateCompatibilityStrategy: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaAutoUpdateCompatibilityStrategy: %w", err))
 		}
 
 		replClustersRaw, err := client.GetNamespaceReplicationClusters(ns.String())
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err))
 		}
 
 		replClusters := make([]interface{}, len(replClustersRaw))
@@ -327,7 +322,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 
 		isAllowAutoUpdateSchema, err := client.GetIsAllowAutoUpdateSchema(*ns)
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetIsAllowAutoUpdateSchema: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetIsAllowAutoUpdateSchema: %w", err))
 		}
 
 		_ = d.Set("namespace_config", schema.NewSet(namespaceConfigToHash, []interface{}{
@@ -348,7 +343,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 	if persPoliciesCfg, ok := d.GetOk("persistence_policies"); ok && persPoliciesCfg.(*schema.Set).Len() > 0 {
 		persistence, err := client.GetPersistence(ns.String())
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetPersistence: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetPersistence: %w", err))
 		}
 
 		_ = d.Set("persistence_policies", schema.NewSet(persistencePoliciesToHash, []interface{}{
@@ -364,7 +359,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 	if retPoliciesCfg, ok := d.GetOk("retention_policies"); ok && retPoliciesCfg.(*schema.Set).Len() > 0 {
 		ret, err := client.GetRetention(ns.String())
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetRetention: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetRetention: %w", err))
 		}
 
 		_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
@@ -378,7 +373,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 	if backlogQuotaCfg, ok := d.GetOk("backlog_quota"); ok && backlogQuotaCfg.(*schema.Set).Len() > 0 {
 		qt, err := client.GetBacklogQuotaMap(ns.String())
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetBacklogQuotaMap: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetBacklogQuotaMap: %w", err))
 		}
 
 		var backlogQuotas []interface{}
@@ -397,7 +392,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
 		dr, err := client.GetDispatchRate(*ns)
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetDispatchRate: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetDispatchRate: %w", err))
 		}
 
 		_ = d.Set("dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
@@ -412,7 +407,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.(*schema.Set).List()) > 0 {
 		grants, err := client.GetNamespacePermissions(*ns)
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err))
 		}
 
 		setPermissionGrant(d, grants)
@@ -421,7 +416,7 @@ func resourcePulsarNamespaceRead(d *schema.ResourceData, meta interface{}) error
 	return nil
 }
 
-func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
@@ -436,7 +431,7 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 
 	nsName, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
-		return fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 	}
 
 	var errs error
@@ -570,14 +565,14 @@ func resourcePulsarNamespaceUpdate(d *schema.ResourceData, meta interface{}) err
 	}
 
 	if errs != nil {
-		return fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: %w", errs)
+		return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: %w", errs))
 	}
 
 	d.SetId(nsName.String())
-	return resourcePulsarNamespaceRead(d, meta)
+	return resourcePulsarNamespaceRead(ctx, d, meta)
 }
 
-func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
@@ -586,7 +581,7 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 	ns := fmt.Sprintf("%s/%s", tenant, namespace)
 
 	if err := client.DeleteNamespace(ns); err != nil {
-		return fmt.Errorf("ERROR_DELETE_NAMESPACE: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_DELETE_NAMESPACE: %w", err))
 	}
 
 	_ = d.Set("namespace", "")
@@ -600,28 +595,6 @@ func resourcePulsarNamespaceDelete(d *schema.ResourceData, meta interface{}) err
 	_ = d.Set("permission_grant", nil)
 
 	return nil
-}
-
-func resourcePulsarNamespaceExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := getClientFromMeta(meta).Namespaces()
-
-	tenant := d.Get("tenant").(string)
-	namespace := d.Get("namespace").(string)
-
-	namespaceFullPath := fmt.Sprintf("%s/%s", tenant, namespace)
-
-	nsList, err := client.GetNamespaces(tenant)
-	if err != nil {
-		return false, fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
-	}
-
-	for _, ns := range nsList {
-		if ns == namespaceFullPath {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 func dispatchRateToHash(v interface{}) int {

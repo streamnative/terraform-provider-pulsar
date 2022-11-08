@@ -18,9 +18,11 @@
 package pulsar
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
 	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
@@ -28,13 +30,12 @@ import (
 
 func resourcePulsarTopic() *schema.Resource {
 	return &schema.Resource{
-		Create: resourcePulsarTopicCreate,
-		Read:   resourcePulsarTopicRead,
-		Update: resourcePulsarTopicUpdate,
-		Delete: resourcePulsarTopicDelete,
-		Exists: resourcePulsarTopicExists,
+		CreateContext: resourcePulsarTopicCreate,
+		ReadContext:   resourcePulsarTopicRead,
+		UpdateContext: resourcePulsarTopicUpdate,
+		DeleteContext: resourcePulsarTopicDelete,
 		Importer: &schema.ResourceImporter{
-			State: resourcePulsarTopicImport,
+			StateContext: resourcePulsarTopicImport,
 		},
 		Schema: map[string]*schema.Schema{
 			"tenant": {
@@ -107,7 +108,7 @@ func resourcePulsarTopic() *schema.Resource {
 	}
 }
 
-func resourcePulsarTopicImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	topic, err := utils.GetTopicName(d.Id())
 	if err != nil {
 		return nil, fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err)
@@ -118,48 +119,42 @@ func resourcePulsarTopicImport(d *schema.ResourceData, meta interface{}) ([]*sch
 	_ = d.Set("topic_type", topic.GetDomain())
 	_ = d.Set("topic_name", topic.GetLocalName())
 
-	err = resourcePulsarTopicRead(d, meta)
-	return []*schema.ResourceData{d}, err
+	diags := resourcePulsarTopicRead(ctx, d, meta)
+	if diags.HasError() {
+		return nil, fmt.Errorf("import %q: %s", d.Id(), diags[0].Summary)
+	}
+	return []*schema.ResourceData{d}, nil
 }
 
-func resourcePulsarTopicCreate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Topics()
-
-	ok, err := resourcePulsarTopicExists(d, meta)
-	if err != nil {
-		return err
-	}
-
-	if ok {
-		return resourcePulsarTopicRead(d, meta)
-	}
 
 	topicName, partitions, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	err = client.Create(*topicName, partitions)
 	if err != nil {
-		return fmt.Errorf("ERROR_CREATE_TOPIC: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC: %w", err))
 	}
 
 	err = updatePermissionGrant(d, meta, topicName)
 	if err != nil {
-		return fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err))
 	}
 
 	err = retry(func() error {
 		return updateRetentionPolicies(d, meta, topicName)
 	})
 	if err != nil {
-		return fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err))
 	}
 
-	return resourcePulsarTopicRead(d, meta)
+	return resourcePulsarTopicRead(ctx, d, meta)
 }
 
-func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Topics()
 
 	topicName, found, err := getTopic(d, meta)
@@ -171,7 +166,7 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 
 	tm, err := client.GetMetadata(*topicName)
 	if err != nil {
-		return fmt.Errorf("ERROR_READ_TOPIC: GetMetadata: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMetadata: %w", err))
 	}
 
 	_ = d.Set("tenant", topicName.GetTenant())
@@ -183,7 +178,7 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && permissionGrantCfg.(*schema.Set).Len() > 0 {
 		grants, err := client.GetPermissions(*topicName)
 		if err != nil {
-			return fmt.Errorf("ERROR_READ_TOPIC: GetPermissions: %w", err)
+			return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPermissions: %w", err))
 		}
 
 		setPermissionGrant(d, grants)
@@ -194,7 +189,7 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 
 			ret, err := client.GetRetention(*topicName, true)
 			if err != nil {
-				return fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err)
+				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err))
 			}
 
 			_ = d.Set("retention_policies", []interface{}{
@@ -204,66 +199,57 @@ func resourcePulsarTopicRead(d *schema.ResourceData, meta interface{}) error {
 				},
 			})
 		} else {
-			return errors.New("ERROR_READ_TOPIC: unsupported get retention policies for non-persistent topic")
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get retention policies for non-persistent topic"))
 		}
 	}
 
 	return nil
 }
 
-func resourcePulsarTopicUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarTopicUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	topicName, partitions, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	if d.HasChange("partitions") {
 		err := updatePartitions(d, meta, topicName, partitions)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	if d.HasChange("permission_grant") {
 		err := updatePermissionGrant(d, meta, topicName)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	if d.HasChange("retention_policies") {
 		err := updateRetentionPolicies(d, meta, topicName)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
-	return resourcePulsarTopicRead(d, meta)
+	return resourcePulsarTopicRead(ctx, d, meta)
 }
 
-func resourcePulsarTopicDelete(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarTopicDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Topics()
 
 	topicName, partitions, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	err = client.Delete(*topicName, true, partitions == 0)
 	if err != nil {
-		return fmt.Errorf("ERROR_DELETE_TOPIC: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_DELETE_TOPIC: %w", err))
 	}
 
 	return nil
-}
-
-func resourcePulsarTopicExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	_, found, err := getTopic(d, meta)
-	if err != nil {
-		return false, fmt.Errorf("ERROR_READ_TOPIC: %w", err)
-	}
-
-	return found, nil
 }
 
 func getTopic(d *schema.ResourceData, meta interface{}) (*utils.TopicName, bool, error) {
