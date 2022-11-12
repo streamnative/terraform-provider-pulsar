@@ -252,7 +252,7 @@ func resourcePulsarNamespaceCreate(ctx context.Context, d *schema.ResourceData, 
 	}
 
 	if err := resourcePulsarNamespaceUpdate(ctx, d, meta); err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_NAMESPACE_CONFIG: %w", err))
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_NAMESPACE_CONFIG: %v", err))
 	}
 
 	return nil

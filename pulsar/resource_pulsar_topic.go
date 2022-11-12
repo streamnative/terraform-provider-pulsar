@@ -108,7 +108,8 @@ func resourcePulsarTopic() *schema.Resource {
 	}
 }
 
-func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
+	meta interface{}) ([]*schema.ResourceData, error) {
 	topic, err := utils.GetTopicName(d.Id())
 	if err != nil {
 		return nil, fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err)
