@@ -55,6 +55,8 @@ A [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar Ent
 | Linux(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/linux_amd64/          |
 | MacOS(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/darwin_amd64/         |
 
+  - Run `make build-dev`, it will build the binary and copy it to the plugin directory automatically.
+
 # Using the Provider 
 
 ## Configurations
