@@ -129,6 +129,7 @@ func Provider() *schema.Provider {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: descriptions["key_file_path"],
+				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PULSAR_KEY_FILE", "PULSAR_KEY_FILE_PATH"}, ""),
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
