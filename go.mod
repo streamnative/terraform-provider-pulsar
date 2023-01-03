@@ -6,6 +6,7 @@ require (
 	github.com/apache/pulsar-client-go/oauth2 v0.0.0-20211108044248-fe3b7c4e445b
 	github.com/cenkalti/backoff/v4 v4.1.2
 	github.com/hashicorp/go-multierror v1.1.1
+	github.com/hashicorp/terraform-plugin-log v0.4.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.16.0
 	github.com/pkg/errors v0.9.1
 	github.com/streamnative/pulsarctl v0.4.3-0.20220914035517-f17661719284
@@ -41,7 +42,6 @@ require (
 	github.com/hashicorp/terraform-exec v0.16.1 // indirect
 	github.com/hashicorp/terraform-json v0.13.0 // indirect
 	github.com/hashicorp/terraform-plugin-go v0.9.0 // indirect
-	github.com/hashicorp/terraform-plugin-log v0.4.0 // indirect
 	github.com/hashicorp/terraform-registry-address v0.0.0-20210412075316-9b2996cce896 // indirect
 	github.com/hashicorp/terraform-svchost v0.0.0-20200729002733-f050f53b9734 // indirect
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d // indirect

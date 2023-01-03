@@ -19,15 +19,15 @@ package pulsar
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
+	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
 
 func init() {
@@ -35,7 +35,6 @@ func init() {
 }
 
 func TestCluster(t *testing.T) {
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
@@ -48,7 +47,6 @@ func TestCluster(t *testing.T) {
 			},
 		},
 	})
-
 }
 
 func TestHandleExistingCluster(t *testing.T) {
@@ -63,8 +61,8 @@ func TestHandleExistingCluster(t *testing.T) {
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarExistingCluster(testWebServiceURL, cName),
-				Check:  resource.ComposeTestCheckFunc(testPulsarClusterExists("pulsar_cluster.test")),
+				Config:      testPulsarExistingCluster(testWebServiceURL, cName),
+				ExpectError: regexp.MustCompile("Cluster already exists"),
 			},
 		},
 	})
@@ -105,6 +103,7 @@ func createCluster(t *testing.T, cname string) {
 		BrokerServiceURL: "http://localhost:6050",
 		PeerClusterNames: []string{"standalone"},
 	}); err != nil {
+		t.Log("createCluster", err)
 		if strings.Contains(err.Error(), "already exists") {
 			return
 		}

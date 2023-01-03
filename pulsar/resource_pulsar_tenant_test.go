@@ -19,14 +19,14 @@ package pulsar
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/streamnative/pulsarctl/pkg/pulsar"
+	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
 )
 
 func init() {
@@ -62,9 +62,8 @@ func TestHandleExistingTenant(t *testing.T) {
 		CheckDestroy:              testPulsarTenantDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config:             testPulsarExistingTenantConfig(testWebServiceURL, tName),
-				Check:              resource.ComposeTestCheckFunc(testPulsarTenantExists("pulsar_tenant.test")),
-				ExpectNonEmptyPlan: true,
+				Config:      testPulsarExistingTenantConfig(testWebServiceURL, tName),
+				ExpectError: regexp.MustCompile("Tenant already exist"),
 			},
 		},
 	})
@@ -186,7 +185,7 @@ provider "pulsar" {
 
 resource "pulsar_tenant" "test" {
 	tenant = "%s"
-	allowed_clusters = ["something"]
+	allowed_clusters = ["standalone"]
 }
 `, url, tname)
 }

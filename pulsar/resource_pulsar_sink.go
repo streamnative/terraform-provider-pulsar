@@ -18,10 +18,12 @@
 package pulsar
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
 	"github.com/streamnative/pulsarctl/pkg/cli"
@@ -107,13 +109,12 @@ func init() {
 
 func resourcePulsarSink() *schema.Resource {
 	return &schema.Resource{
-		Create: resourcePulsarSinkCreate,
-		Read:   resourcePulsarSinkRead,
-		Update: resourcePulsarSinkUpdate,
-		Delete: resourcePulsarSinkDelete,
-		Exists: resourcePulsarSinkExists,
+		CreateContext: resourcePulsarSinkCreate,
+		ReadContext:   resourcePulsarSinkRead,
+		UpdateContext: resourcePulsarSinkUpdate,
+		DeleteContext: resourcePulsarSinkDelete,
 		Importer: &schema.ResourceImporter{
-			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				id := d.Id()
 
 				parts := strings.Split(id, "/")
@@ -125,8 +126,11 @@ func resourcePulsarSink() *schema.Resource {
 				_ = d.Set(resourceSinkNamespaceKey, parts[1])
 				_ = d.Set(resourceSinkNameKey, parts[2])
 
-				err := resourcePulsarSinkRead(d, meta)
-				return []*schema.ResourceData{d}, err
+				diags := resourcePulsarSinkRead(ctx, d, meta)
+				if diags.HasError() {
+					return nil, fmt.Errorf("import %q: %s", d.Id(), diags[0].Summary)
+				}
+				return []*schema.ResourceData{d}, nil
 			},
 		},
 		Schema: map[string]*schema.Schema{
@@ -296,58 +300,27 @@ func resourcePulsarSink() *schema.Resource {
 	}
 }
 
-func resourcePulsarSinkExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	client := meta.(pulsar.Client).Sinks()
-
-	tenant := d.Get(resourceSinkTenantKey).(string)
-	namespace := d.Get(resourceSinkNamespaceKey).(string)
-	name := d.Get(resourceSinkNameKey).(string)
-
-	_, err := client.GetSink(tenant, namespace, name)
-	if err != nil {
-		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
-			// sink doesn't exist.
-			return false, nil
-		}
-
-		return false, errors.Wrapf(err, "failed to get sink")
-	}
-
-	return true, nil
-}
-
-func resourcePulsarSinkDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(pulsar.Client).Sinks()
-
-	tenant := d.Get(resourceSinkTenantKey).(string)
-	namespace := d.Get(resourceSinkNamespaceKey).(string)
-	name := d.Get(resourceSinkNameKey).(string)
-
-	return client.DeleteSink(tenant, namespace, name)
-}
-
-func resourcePulsarSinkUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarSinkCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(pulsar.Client).Sinks()
 
 	sinkConfig, err := marshalSinkConfig(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
-	updateOptions := utils.NewUpdateOptions()
 	if isLocalArchive(sinkConfig.Archive) {
-		err = client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
+		err = client.CreateSink(sinkConfig, sinkConfig.Archive)
 	} else {
-		err = client.UpdateSinkWithURL(sinkConfig, sinkConfig.Archive, updateOptions)
+		err = client.CreateSinkWithURL(sinkConfig, sinkConfig.Archive)
 	}
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
-	return resourcePulsarSinkRead(d, meta)
+	return resourcePulsarSinkRead(ctx, d, meta)
 }
 
-func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// NOTE: Pulsar cannot returns the fields correctly, so ignore these:
 	// - resourceSinkSubscriptionPositionKey
 	// - resourceSinkProcessingGuaranteesKey
@@ -363,7 +336,10 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 
 	sinkConfig, err := client.GetSink(tenant, namespace, name)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %s sink from %s/%s", name, tenant, namespace)
+		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+			return diag.Errorf("ERROR_SINK_NOT_FOUND")
+		}
+		return diag.FromErr(errors.Wrapf(err, "failed to get %s sink from %s/%s", name, tenant, namespace))
 	}
 
 	inputs := make([]string, len(sinkConfig.Inputs))
@@ -371,26 +347,26 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 
 	err = d.Set(resourceSinkInputsKey, inputs)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	if sinkConfig.TopicsPattern != nil {
 		err = d.Set(resourceSinkTopicsPatternKey, sinkConfig.TopicsPattern)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	if len(sinkConfig.SourceSubscriptionName) != 0 {
 		err = d.Set(resourceSinkSubscriptionNameKey, sinkConfig.SourceSubscriptionName)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	err = d.Set(resourceSinkCleanupSubscriptionKey, sinkConfig.CleanupSubscription)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	if len(sinkConfig.TopicToSerdeClassName) != 0 {
@@ -400,7 +376,7 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 		}
 		err = d.Set(resourceSinkCustomSerdeInputsKey, customSerdeInputs)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
@@ -412,7 +388,7 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 
 		err = d.Set(resourceSinkCustomSchemaInputsKey, customSchemaInputs)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
@@ -429,97 +405,108 @@ func resourcePulsarSinkRead(d *schema.ResourceData, meta interface{}) error {
 		}
 		err = d.Set(resourceSinkInputSpecsKey, inputSpecs)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	err = d.Set(resourceSinkParallelismKey, sinkConfig.Parallelism)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	// When the archive is built-in resource, it is not empty, otherwise it is empty.
 	if sinkConfig.Archive != "" {
 		err = d.Set(resourceSinkArchiveKey, sinkConfig.Archive)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	err = d.Set(resourceSinkClassnameKey, sinkConfig.ClassName)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	if sinkConfig.Resources != nil {
 		err = d.Set(resourceSinkCPUKey, sinkConfig.Resources.CPU)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 
 		err = d.Set(resourceSinkRAMKey, bytesize.FormBytes(uint64(sinkConfig.Resources.RAM)).ToMegaBytes())
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 
 		err = d.Set(resourceSinkDiskKey, bytesize.FormBytes(uint64(sinkConfig.Resources.Disk)).ToMegaBytes())
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	if len(sinkConfig.Configs) != 0 {
 		b, err := json.Marshal(sinkConfig.Configs)
 		if err != nil {
-			return errors.Wrap(err, "cannot marshal configs from sinkConfig")
+			return diag.FromErr(errors.Wrap(err, "cannot marshal configs from sinkConfig"))
 		}
 
 		err = d.Set(resourceSinkConfigsKey, string(b))
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	err = d.Set(resourceSinkAutoACKKey, sinkConfig.AutoAck)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	if sinkConfig.TimeoutMs != nil {
 		err = d.Set(resourceSinkTimeoutKey, int(*sinkConfig.TimeoutMs))
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	if len(sinkConfig.CustomRuntimeOptions) != 0 {
 		err = d.Set(resourceSinkCustomRuntimeOptionsKey, sinkConfig.CustomRuntimeOptions)
 		if err != nil {
-			return err
+			return diag.FromErr(err)
 		}
 	}
 
 	return nil
 }
 
-func resourcePulsarSinkCreate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(pulsar.Client).Sinks()
 
 	sinkConfig, err := marshalSinkConfig(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
+	updateOptions := utils.NewUpdateOptions()
 	if isLocalArchive(sinkConfig.Archive) {
-		err = client.CreateSink(sinkConfig, sinkConfig.Archive)
+		err = client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
 	} else {
-		err = client.CreateSinkWithURL(sinkConfig, sinkConfig.Archive)
+		err = client.UpdateSinkWithURL(sinkConfig, sinkConfig.Archive, updateOptions)
 	}
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
-	return resourcePulsarSinkRead(d, meta)
+	return resourcePulsarSinkRead(ctx, d, meta)
+}
+
+func resourcePulsarSinkDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(pulsar.Client).Sinks()
+
+	tenant := d.Get(resourceSinkTenantKey).(string)
+	namespace := d.Get(resourceSinkNamespaceKey).(string)
+	name := d.Get(resourceSinkNameKey).(string)
+
+	return diag.FromErr(client.DeleteSink(tenant, namespace, name))
 }
 
 func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {

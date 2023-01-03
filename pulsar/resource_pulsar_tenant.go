@@ -18,10 +18,11 @@
 package pulsar
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/streamnative/pulsarctl/pkg/cli"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -30,16 +31,18 @@ import (
 
 func resourcePulsarTenant() *schema.Resource {
 	return &schema.Resource{
-		Create: resourcePulsarTenantCreate,
-		Read:   resourcePulsarTenantRead,
-		Update: resourcePulsarTenantUpdate,
-		Delete: resourcePulsarTenantDelete,
-		Exists: resourcePulsarTenantExists,
+		CreateContext: resourcePulsarTenantCreate,
+		ReadContext:   resourcePulsarTenantRead,
+		UpdateContext: resourcePulsarTenantUpdate,
+		DeleteContext: resourcePulsarTenantDelete,
 		Importer: &schema.ResourceImporter{
-			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				_ = d.Set("tenant", d.Id())
-				err := resourcePulsarTenantRead(d, meta)
-				return []*schema.ResourceData{d}, err
+				err := resourcePulsarTenantRead(ctx, d, meta)
+				if err.HasError() {
+					return nil, fmt.Errorf("import %q: %s", d.Id(), err[0].Summary)
+				}
+				return []*schema.ResourceData{d}, nil
 			},
 		},
 		Schema: map[string]*schema.Schema{
@@ -64,35 +67,8 @@ func resourcePulsarTenant() *schema.Resource {
 	}
 }
 
-func resourcePulsarTenantExists(d *schema.ResourceData, meta interface{}) (bool, error) {
+func resourcePulsarTenantCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Tenants()
-
-	tenant := d.Get("tenant").(string)
-
-	if _, err := client.Get(tenant); err != nil {
-		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
-			log.Printf("resourcePulsarTenantExists: %v, %#v", false, err)
-			return false, nil
-		}
-		log.Printf("resourcePulsarTenantExists: %v, %#v", false, err)
-		return false, fmt.Errorf("ERROR_READ_TENANT: %w", err)
-	}
-
-	log.Printf("resourcePulsarTenantExists: %v, %#v", true, nil)
-	return true, nil
-}
-
-func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error {
-	client := getClientFromMeta(meta).Tenants()
-
-	ok, err := resourcePulsarTenantExists(d, meta)
-	if err != nil {
-		return err
-	}
-
-	if ok {
-		return resourcePulsarTenantRead(d, meta)
-	}
 
 	tenant := d.Get("tenant").(string)
 	adminRoles := handleHCLArray(d, "admin_roles")
@@ -105,20 +81,23 @@ func resourcePulsarTenantCreate(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Create(input); err != nil {
-		return fmt.Errorf("ERROR_CREATE_TENANT: %w\n request_input: %#v", err, input)
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TENANT: %w\n request_input: %#v", err, input))
 	}
 
-	return resourcePulsarTenantRead(d, meta)
+	return resourcePulsarTenantRead(ctx, d, meta)
 }
 
-func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarTenantRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
 	td, err := client.Get(tenant)
 	if err != nil {
-		return fmt.Errorf("ERROR_READ_TENANT: %w", err)
+		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+			return diag.Errorf("ERROR_TENANT_NOT_FOUND")
+		}
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TENANT: %w", err))
 	}
 
 	_ = d.Set("tenant", tenant)
@@ -129,7 +108,7 @@ func resourcePulsarTenantRead(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarTenantUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
@@ -143,7 +122,7 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 	}
 
 	if err := client.Update(input); err != nil {
-		return fmt.Errorf("ERROR_UPDATE_TENANT: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_UPDATE_TENANT: %w", err))
 	}
 
 	d.SetId(tenant)
@@ -151,17 +130,17 @@ func resourcePulsarTenantUpdate(d *schema.ResourceData, meta interface{}) error 
 	return nil
 }
 
-func resourcePulsarTenantDelete(d *schema.ResourceData, meta interface{}) error {
+func resourcePulsarTenantDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
 
 	if err := deleteExistingNamespacesForTenant(tenant, meta); err != nil {
-		return fmt.Errorf("ERROR_DELETING_EXISTING_NAMESPACES_FOR_TENANT: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_DELETING_EXISTING_NAMESPACES_FOR_TENANT: %w", err))
 	}
 
 	if err := client.Delete(tenant); err != nil {
-		return fmt.Errorf("ERROR_DELETE_TENANT: %w", err)
+		return diag.FromErr(fmt.Errorf("ERROR_DELETE_TENANT: %w", err))
 	}
 
 	_ = d.Set("tenant", "")
