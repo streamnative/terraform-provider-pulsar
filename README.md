@@ -21,7 +21,7 @@ under the License.
 
 A [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar Entities](https://pulsar.apache.org).
 
-# Prerequisites 
+# Prerequisites
 
 - [Terraform](https://www.terraform.io/downloads.html) 0.12.0 or later
 - [Go](https://golang.org/doc/install) 1.16 or later (to build the provider plugin)
@@ -49,17 +49,18 @@ A [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar Ent
   - Run `make build`, it will generate a binary file named `terraform-provider-pulsar`
   - Copy this `terraform-provider-pulsar` binary file to your terraform plugin directory based on your OS:
 
-| Operating System | User plugins directory                                                                       |
-|------------------|----------------------------------------------------------------------------------------------|
-| Windows(amd64)   | %APPDATA%\terraform.d\plugins\registry.terraform.io\streamnative\pulsar\0.1.0\windows_amd64\ |
-| Linux(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/linux_amd64/          |
-| MacOS(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/darwin_amd64/         |
+| Operating System | User plugins directory                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| Windows(amd64)   | %APPDATA%\terraform.d\plugins\registry.terraform.io\streamnative\pulsar\0.1.0\windows_amd64\  |
+| Linux(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/linux_amd64/           |
+| MacOS(amd64)     | ~/.terraform.d/plugins/registry.terraform.io/streamnative/pulsar/0.1.0/darwin_amd64/          |
 
-  - Run `make build-dev`, it will build the binary and copy it to the plugin directory automatically.
+- Run `make build-dev`, it will build the binary and copy it to the plugin directory automatically.
 
-# Using the Provider 
+# Using the Provider
 
 ## Configurations
+
 ### Example
 
 Example provider with apache pulsar cluster, running locally with authentication disabled.
@@ -70,19 +71,28 @@ provider "pulsar" {
   token           = "my_auth_token"
 }
 ```
+
+```hcl
+provider "pulsar" {
+  web_service_url           = "https://localhost:8443"
+  tls_trust_certs_file_path = "./ca.pem"
+  tls_key_file_path         = "./key.pem"
+  tls_cert_file_path        = "./cert.pem"
 }
 ```
 
 ### Properties
 
 | Property                        | Description                                                                                                            | Required |
-|---------------------------------|------------------------------------------------------------------------------------------------------------------------|----------|
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------- |
 | `web_service_url`               | URL of your Apache Pulsar Cluster                                                                                      | Yes      |
 | `token`                         | Authentication Token for your Apache Pulsar Cluster, which is required only if your cluster has authentication enabled | No       |
 | `tls_trust_certs_file_path`     | Path to a custom trusted TLS certificate file                                                                          | No       |
+| `tls_key_file_path`             | Path to the key to use when using TLS client authentication                                                            | No       |
+| `tls_cert_file_path`            | Path to the cert to use when using TLS client authentication                                                           | No       |
 | `tls_allow_insecure_connection` | Boolean flag to accept untrusted TLS certificates                                                                      | No       |
-| `api_version`                   | Used to request Apache Pulsar API service, default by 0, which represents use default version                          | No       |      
-| `audience`                      | The OAuth 2.0 resource server identifier for the Pulsar cluster                                                        | No       |  
+| `api_version`                   | Used to request Apache Pulsar API service, default by 0, which represents use default version                          | No       |
+| `audience`                      | The OAuth 2.0 resource server identifier for the Pulsar cluster                                                        | No       |
 | `client_id`                     | The OAuth 2.0 client identifier                                                                                        | No       |
 | `issuer_url`                    | The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token              | No       |
 | `scope`                         | The OAuth 2.0 scope to request                                                                                         | No       |
@@ -115,7 +125,7 @@ resource "pulsar_cluster" "my_cluster" {
 #### Properties
 
 | Property                 | Description                                                   | Required |
-|--------------------------|---------------------------------------------------------------|----------|
+| ------------------------ | ------------------------------------------------------------- | -------- |
 | `cluster`                | Name of the Cluster that you want to create                   | Yes      |
 | `cluster_data`           | A Map of required fields for the cluster                      | Yes      |
 | `web_service_url`        | Required in cluster data, pointing to your broker web service | Yes      |
@@ -123,7 +133,6 @@ resource "pulsar_cluster" "my_cluster" {
 | `broker_service_url`     | Required in cluster data for broker discovery                 | Yes      |
 | `broker_service_url_tls` | Required in cluster data for broker discovery via tls         | No       |
 | `peer_clusters`          | Required in cluster data for adding peer clusters             | Yes      |
-
 
 ### `pulsar_tenant`
 
@@ -146,7 +155,7 @@ resource "pulsar_tenant" "my_tenant" {
 #### Properties
 
 | Property           | Description                                     | Required |
-|--------------------|-------------------------------------------------|----------|
+| ------------------ | ----------------------------------------------- | -------- |
 | `tenant`           | Name of the Tenant that you want to create      | Yes      |
 | `allowed_clusters` | An Array of clusters, accessible by this tenant | No       |
 | `admin_roles`      | Admin Roles to be assumed by this Tenant        | No       |
@@ -228,33 +237,31 @@ resource "pulsar_namespace" "test" {
 
 #### Properties
 
-| Property                        | Description                                                                                                                                               | Required |
-|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
-| `tenant`                        | Name of the Tenant managing this namespace                                                                                                                | Yes      |
-| `namespace`                     | name of the namespace                                                                                                                                     | Yes      |
-| `enable_deduplication`          | Message deduplication state on a namespace                                                                                                                | No       |
-| `namespace_config`              | Configuration for your namespaces like max allowed producers to produce messages                                                                          | No       |
-| `dispatch_rate`                 | Apache Pulsar throttling config                                                                                                                           | No       |
-| `retention_policies`            | Data retention policies                                                                                                                                   | No       |
-| `backlog_quota`                 | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics                                        | No       |
-| `persistence_policies`          | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace           | No       |
-| `permission_grant`              | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No       |
-
+| Property               | Description                                                                                                                                               | Required |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `tenant`               | Name of the Tenant managing this namespace                                                                                                                | Yes      |
+| `namespace`            | name of the namespace                                                                                                                                     | Yes      |
+| `enable_deduplication` | Message deduplication state on a namespace                                                                                                                | No       |
+| `namespace_config`     | Configuration for your namespaces like max allowed producers to produce messages                                                                          | No       |
+| `dispatch_rate`        | Apache Pulsar throttling config                                                                                                                           | No       |
+| `retention_policies`   | Data retention policies                                                                                                                                   | No       |
+| `backlog_quota`        | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics                                        | No       |
+| `persistence_policies` | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace           | No       |
+| `permission_grant`     | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No       |
 
 namespace_config nested schema
 
-| Property                         | Description                                                       | Required |
-|----------------------------------|-------------------------------------------------------------------|----------|
-| `anti_affinity`                  | Anti-affinity group name                                          | No       |
-| `is_allow_auto_update_schema`    | Is schema auto-update allowed                                     | No       |
-| `max_consumers_per_subscription` | Sets the max consumers per subscription                           | No       |
-| `max_consumers_per_topic`        | Sets the max consumers per topic                                  | No       |
-| `max_producers_per_topic`        | Sets the max producers per topic                                  | No       |
-| `message_ttl_seconds`            | Sets the message TTL in seconds                                   | No       |
-| `replication_clusters`           | List of replication clusters for the namespace                    | No       |
-| `schema_compatibility_strategy`  | Set schema compatibility strategy                                 | No       |
-| `schema_validation_enforce`      | Enable or disable schema validation                               | No       |
-
+| Property                         | Description                                    | Required |
+| -------------------------------- | ---------------------------------------------- | -------- |
+| `anti_affinity`                  | Anti-affinity group name                       | No       |
+| `is_allow_auto_update_schema`    | Is schema auto-update allowed                  | No       |
+| `max_consumers_per_subscription` | Sets the max consumers per subscription        | No       |
+| `max_consumers_per_topic`        | Sets the max consumers per topic               | No       |
+| `max_producers_per_topic`        | Sets the max producers per topic               | No       |
+| `message_ttl_seconds`            | Sets the message TTL in seconds                | No       |
+| `replication_clusters`           | List of replication clusters for the namespace | No       |
+| `schema_compatibility_strategy`  | Set schema compatibility strategy              | No       |
+| `schema_validation_enforce`      | Enable or disable schema validation            | No       |
 
 The `schema_compatibility_strategy` can take the following values:
 
@@ -318,7 +325,7 @@ resource "pulsar_topic" "sample-topic-2" {
 #### Properties
 
 | Property             | Description                                                                                                                                                                                                             | Required |
-|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `tenant`             | Name of the Tenant managing this topic                                                                                                                                                                                  | Yes      |
 | `namespace`          | Name of the Namespace for this topic                                                                                                                                                                                    | Yes      |
 | `topic_type`         | Topic persistence (`persistent`, `non-persistent`)                                                                                                                                                                      | Yes      |
@@ -362,18 +369,18 @@ resource "pulsar_source" "source-1" {
 
 #### Properties
 
-| Property                    | Description                                                                                                                                                                                        | Required |  
-|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| Property                    | Description                                                                                                                                                                                        | Required |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `name`                      | The source's name                                                                                                                                                                                  | True     |
-| `tenant`                    | The source's tenant                                                                                                                                                                                | True     |  
+| `tenant`                    | The source's tenant                                                                                                                                                                                | True     |
 | `namespace`                 | The source's namespace                                                                                                                                                                             | True     |
 | `destination_topic_name`    | The Pulsar topic to which data is sent                                                                                                                                                             | True     |
-| `archive`                   | The path to the NAR archive for the Source. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package | True     |  
+| `archive`                   | The path to the NAR archive for the Source. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package | True     |
 | `classname`                 | The source's class name if archive is file-url-path (file://)                                                                                                                                      | False    |
 | `configs`                   | User defined configs key/values (JSON string)                                                                                                                                                      | False    |
-| `deserialization_classname` | The SerDe classname for the source                                                                                                                                                                 | False    |  
-| `processing_guarantees`     | Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)                                                                                       | False    |  
-| `parallelism`               | The source's parallelism factor                                                                                                                                                                    | False    |  
+| `deserialization_classname` | The SerDe classname for the source                                                                                                                                                                 | False    |
+| `processing_guarantees`     | Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)                                                                                       | False    |
+| `parallelism`               | The source's parallelism factor                                                                                                                                                                    | False    |
 | `cpu`                       | The CPU that needs to be allocated per source instance (applicable only to Docker runtime)                                                                                                         | False    |
 | `ram_mb`                    | The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes)                                                                                         | False    |
 | `disk_mb`                   | The disk that need to be allocated per source instance (applicable only to Docker runtime)                                                                                                         | False    |
@@ -382,7 +389,6 @@ resource "pulsar_source" "source-1" {
 ### `pulsar_sink`
 
 A resource for creating and managing Apache Pulsar Sinks.
-
 
 #### Example
 
@@ -411,11 +417,10 @@ resource "pulsar_sink" "sample-sink-1" {
 }
 ```
 
-
 #### Properties
 
 | Property                 | Description                                                                                                                                                                                   | Required |
-|--------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `tenant`                 | The sink's tenant                                                                                                                                                                             | True     |
 | `namespace`              | The sink's namespace                                                                                                                                                                          | True     |
 | `name`                   | The sink's name                                                                                                                                                                               | True     |

@@ -19,7 +19,9 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -42,6 +44,8 @@ func init() {
 to modify Apace Pulsar Entities`,
 		"api_version":                   "Api Version to be used for the pulsar admin interaction",
 		"tls_trust_certs_file_path":     "Path to a custom trusted TLS certificate file",
+		"tls_key_file_path":             "Path to the key to use when using TLS client authentication",
+		"tls_cert_file_path":            "Path to the cert to use when using TLS client authentication",
 		"tls_allow_insecure_connection": "Boolean flag to accept untrusted TLS certificates",
 		"admin_roles":                   "Admin roles to be attached to tenant",
 		"allowed_clusters":              "Tenant will be able to interact with these clusters",
@@ -98,12 +102,24 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.MultiEnvDefaultFunc(
 					[]string{"PULSAR_TLS_TRUST_CERTS_FILE_PATH", "TLS_TRUST_CERTS_FILE_PATH"}, ""),
 			},
+			"tls_cert_file_path": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: descriptions["tls_cert_file_path"],
+				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PULSAR_TLS_CERT_FILE", "PULSAR_TLS_CERT_FILE_PATH"}, ""),
+			},
+			"tls_key_file_path": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: descriptions["tls_key_file_path"],
+				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PULSAR_TLS_KEY_FILE", "PULSAR_TLS_KEY_FILE_PATH"}, ""),
+			},
 			"tls_allow_insecure_connection": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Description: descriptions["tls_allow_insecure_connection"],
 				DefaultFunc: schema.MultiEnvDefaultFunc(
-					[]string{"PULSAR_TLS_TRUST_CERTS_FILE_PATH", "TLS_ALLOW_INSECURE_CONNECTION"}, false),
+					[]string{"PULSAR_TLS_ALLOW_INSECURE_CONNECTION", "TLS_ALLOW_INSECURE_CONNECTION"}, false),
 			},
 			"issuer_url": {
 				Type:        schema.TypeString,
@@ -162,6 +178,8 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 	audience := d.Get("audience").(string)
 	scope := d.Get("scope").(string)
 	keyFilePath := d.Get("key_file_path").(string)
+	TLSCertFilePath := d.Get("tls_cert_file_path").(string)
+	TLSKeyFilePath := d.Get("tls_key_file_path").(string)
 
 	if clusterURL == "" {
 		clusterURL = "http://localhost:8080"
@@ -176,6 +194,18 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 		return nil, diag.FromErr(errors.Wrap(err, "invalid api_version"))
 	}
 
+	if TLSCertFilePath != "" && !FileExists(TLSCertFilePath) {
+		return nil, diag.FromErr(fmt.Errorf("ERROR_PULSAR_CONFIG_CERT_FILE_NOTEXIST: %q", TLSCertFilePath))
+	}
+
+	if TLSKeyFilePath != "" && !FileExists(TLSKeyFilePath) {
+		return nil, diag.FromErr(fmt.Errorf("ERROR_PULSAR_CONFIG_KEY_FILE_NOTEXIST: %q", TLSKeyFilePath))
+	}
+
+	if TLSTrustCertsFilePath != "" && !FileExists(TLSTrustCertsFilePath) {
+		return nil, diag.FromErr(fmt.Errorf("ERROR_PULSAR_CONFIG_tls_TRUST_FILE_NOTEXIST: %q", TLSTrustCertsFilePath))
+	}
+
 	config := &common.Config{
 		WebServiceURL:              clusterURL,
 		Token:                      token,
@@ -187,6 +217,8 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 		Audience:                   audience,
 		Scope:                      scope,
 		KeyFile:                    keyFilePath,
+		TLSKeyFile:                 TLSKeyFilePath,
+		TLSCertFile:                TLSCertFilePath,
 	}
 
 	client, err := admin.NewPulsarAdminClient(&admin.PulsarAdminConfig{
@@ -197,4 +229,14 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 	}
 
 	return client, nil
+}
+
+// Exists reports whether the named file or directory exists.
+func FileExists(name string) bool {
+	if _, err := os.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+	}
+	return true
 }
