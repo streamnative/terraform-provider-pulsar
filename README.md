@@ -67,7 +67,9 @@ Example provider with apache pulsar cluster, running locally with authentication
 ```hcl
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
-  token = "my_auth_token"
+  token           = "my_auth_token"
+}
+```
 }
 ```
 
