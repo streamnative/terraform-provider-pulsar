@@ -106,13 +106,13 @@ func Provider() *schema.Provider {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: descriptions["tls_cert_file_path"],
-				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PULSAR_TLS_CERT_FILE", "PULSAR_TLS_CERT_FILE_PATH"}, ""),
+				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PULSAR_TLS_CERT_FILE_PATH"}, ""),
 			},
 			"tls_key_file_path": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: descriptions["tls_key_file_path"],
-				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PULSAR_TLS_KEY_FILE", "PULSAR_TLS_KEY_FILE_PATH"}, ""),
+				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PULSAR_TLS_KEY_FILE_PATH"}, ""),
 			},
 			"tls_allow_insecure_connection": {
 				Type:        schema.TypeBool,
