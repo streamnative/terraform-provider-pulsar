@@ -18,10 +18,10 @@
 TEST?=./...
 GOFMT_FILES?=$$(find . -name '*.go' |grep -v vendor)
 HOSTNAME=registry.terraform.io
-NAMESPACE=streamnative
+NAMESPACE?=streamnative
 PKG_NAME=pulsar
 BINARY=terraform-provider-${PKG_NAME}
-VERSION=0.1.0
+VERSION?=0.1.0
 OS := $(if $(GOOS),$(GOOS),$(shell go env GOOS))
 ARCH := $(if $(GOARCH),$(GOARCH),$(shell go env GOARCH))
 OS_ARCH := ${OS}_${ARCH}

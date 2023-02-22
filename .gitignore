@@ -65,3 +65,6 @@ gen
 
 # generated binary
 /terraform-provider-pulsar
+
+# Mac hidden files
+.DS_Store
