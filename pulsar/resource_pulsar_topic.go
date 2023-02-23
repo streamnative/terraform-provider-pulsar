@@ -159,10 +159,13 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	client := getClientFromMeta(meta).Topics()
 
 	topicName, found, err := getTopic(d, meta)
-	if !found || err != nil {
-		d.SetId("")
-		return nil
+	if err != nil {
+		return diag.Errorf("%v", err)
 	}
+	if !found {
+		return diag.Errorf("topic not found")
+	}
+
 	d.SetId(topicName.String())
 
 	tm, err := client.GetMetadata(*topicName)
