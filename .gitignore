@@ -68,3 +68,5 @@ gen
 
 # Mac hidden files
 .DS_Store
+
+.vscode/
