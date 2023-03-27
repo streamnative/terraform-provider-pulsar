@@ -23,10 +23,9 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/streamnative/pulsarctl/pkg/cli"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/rest"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 func resourcePulsarTenant() *schema.Resource {
@@ -94,7 +93,7 @@ func resourcePulsarTenantRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	td, err := client.Get(tenant)
 	if err != nil {
-		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
 			return diag.Errorf("ERROR_TENANT_NOT_FOUND")
 		}
 		return diag.FromErr(fmt.Errorf("ERROR_READ_TENANT: %w", err))

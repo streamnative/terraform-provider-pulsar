@@ -18,8 +18,8 @@
 package pulsar
 
 import (
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin"
+	common "github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 )
 
 func sharedClient(url string) (interface{}, error) {
@@ -28,14 +28,14 @@ func sharedClient(url string) (interface{}, error) {
 		PulsarAPIVersion: common.V2,
 	}
 
-	return pulsar.New(config)
+	return admin.New(config)
 }
 
-func sharedClientWithVersion(url string, version common.APIVersion) (pulsar.Client, error) {
+func sharedClientWithVersion(url string, version common.APIVersion) (admin.Client, error) {
 	config := &common.Config{
 		WebServiceURL:    url,
 		PulsarAPIVersion: version,
 	}
 
-	return pulsar.New(config)
+	return admin.New(config)
 }

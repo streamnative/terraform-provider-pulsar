@@ -25,8 +25,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 func init() {
@@ -97,7 +97,7 @@ func createTenant(t *testing.T, tname string) {
 		t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
 	}
 
-	conn := client.(pulsar.Client)
+	conn := client.(admin.Client)
 	if err = conn.Tenants().Create(utils.TenantData{
 		Name:            tname,
 		AllowedClusters: []string{"standalone"},

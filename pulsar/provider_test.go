@@ -26,7 +26,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 )
 
 var (
@@ -59,7 +59,7 @@ func testAccPreCheck(t *testing.T) {
 	testAccPreCheckWithAPIVersion(t, 0)
 }
 
-func testAccPreCheckWithAPIVersion(t *testing.T, apiVersion common.APIVersion) {
+func testAccPreCheckWithAPIVersion(t *testing.T, apiVersion config.APIVersion) {
 	webServiceURL := os.Getenv("WEB_SERVICE_URL")
 
 	_, err := url.Parse(webServiceURL)

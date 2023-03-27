@@ -17,7 +17,9 @@
 
 package types
 
-import "github.com/streamnative/pulsarctl/pkg/pulsar/common"
+import (
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
+)
 
 type (
 	// configurable features of the Pulsar Namespace Entity via Terraform
@@ -40,6 +42,6 @@ type (
 
 	PermissionGrant struct {
 		Role    string
-		Actions []common.AuthAction
+		Actions []utils.AuthAction
 	}
 )

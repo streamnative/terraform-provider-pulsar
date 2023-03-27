@@ -27,8 +27,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
-
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 
 	"github.com/streamnative/terraform-provider-pulsar/pkg/admin"
 )
@@ -206,10 +205,10 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 		return nil, diag.FromErr(fmt.Errorf("ERROR_PULSAR_CONFIG_tls_TRUST_FILE_NOTEXIST: %q", TLSTrustCertsFilePath))
 	}
 
-	config := &common.Config{
+	config := &config.Config{
 		WebServiceURL:              clusterURL,
 		Token:                      token,
-		PulsarAPIVersion:           common.APIVersion(apiVersion),
+		PulsarAPIVersion:           config.APIVersion(apiVersion),
 		TLSTrustCertsFilePath:      TLSTrustCertsFilePath,
 		TLSAllowInsecureConnection: TLSAllowInsecureConnection,
 		IssuerEndpoint:             issuerEndpoint,

@@ -26,13 +26,11 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
-
-	"github.com/streamnative/terraform-provider-pulsar/types"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
+	"github.com/streamnative/terraform-provider-pulsar/types"
 )
 
 func resourcePulsarNamespace() *schema.Resource {

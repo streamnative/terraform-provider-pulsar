@@ -20,14 +20,13 @@ package admin
 import (
 	"github.com/apache/pulsar-client-go/oauth2"
 	"github.com/pkg/errors"
-
-	"github.com/streamnative/pulsarctl/pkg/auth"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/auth"
 
 	"github.com/streamnative/terraform-provider-pulsar/pkg/authentication"
 )
 
-func NewPulsarAdminClient(c *PulsarAdminConfig) (pulsar.Client, error) {
+func NewPulsarAdminClient(c *PulsarAdminConfig) (admin.Client, error) {
 	if c.AuthenticationType() == authentication.AuthenticationOauth2 {
 		oauth2Provider, err := auth.NewAuthenticationOAuth2WithDefaultFlow(oauth2.Issuer{
 			IssuerEndpoint: c.Config.IssuerEndpoint,
@@ -38,7 +37,7 @@ func NewPulsarAdminClient(c *PulsarAdminConfig) (pulsar.Client, error) {
 			return nil, errors.Wrapf(err, "failed to create pulsar oauth2 provider")
 		}
 
-		client, err := pulsar.NewPulsarClientWithAuthProvider(c.Config, oauth2Provider)
+		client, err := admin.NewPulsarClientWithAuthProvider(c.Config, oauth2Provider)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to create pulsar oauth2 client")
 		}
@@ -46,7 +45,7 @@ func NewPulsarAdminClient(c *PulsarAdminConfig) (pulsar.Client, error) {
 		return client, nil
 	}
 
-	client, err := pulsar.New(c.Config)
+	client, err := admin.New(c.Config)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pulsar client")
 	}

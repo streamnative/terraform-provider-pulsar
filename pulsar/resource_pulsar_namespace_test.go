@@ -25,7 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin"
 )
 
 func init() {
@@ -48,7 +48,7 @@ func testSweepNS(url string) error {
 		return fmt.Errorf("ERROR_GETTING_PULSAR_CLIENT: %w", err)
 	}
 
-	conn := client.(pulsar.Client)
+	conn := client.(admin.Client)
 
 	tenants, err := conn.Tenants().List()
 	if err != nil {
@@ -276,7 +276,7 @@ func createNamespace(t *testing.T, id string) {
 		t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
 	}
 
-	conn := client.(pulsar.Client)
+	conn := client.(admin.Client)
 	if err = conn.Namespaces().CreateNamespace(id); err != nil {
 		t.Fatalf("ERROR_CREATING_TEST_NS: %v", err)
 	}
