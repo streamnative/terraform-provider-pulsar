@@ -28,9 +28,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/pkg/errors"
-	"github.com/streamnative/pulsarctl/pkg/cli"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
+	"github.com/streamnative/pulsar-admin-go/pkg/rest"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/terraform-provider-pulsar/bytesize"
@@ -50,7 +50,7 @@ func TestSource(t *testing.T) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, common.V3) },
+		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSourceDestroy,
@@ -123,7 +123,7 @@ func getPulsarSourceByResourceID(id string) (*utils.SourceConfig, error) {
 
 	resp, err := client.GetSource(parts[0], parts[1], parts[2])
 	if err != nil {
-		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
 			return nil, nil
 		}
 	}
@@ -169,7 +169,7 @@ func testSourceImported() resource.ImportStateCheckFunc {
 }
 
 func createSampleSource(name string) error {
-	client, err := sharedClientWithVersion(testWebServiceURL, common.V3)
+	client, err := sharedClientWithVersion(testWebServiceURL, config.V3)
 	if err != nil {
 		return err
 	}

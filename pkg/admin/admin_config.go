@@ -18,13 +18,13 @@
 package admin
 
 import (
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 
 	"github.com/streamnative/terraform-provider-pulsar/pkg/authentication"
 )
 
 type PulsarAdminConfig struct {
-	Config *common.Config
+	Config *config.Config
 }
 
 func (p *PulsarAdminConfig) AuthenticationType() authentication.AuthenticationType {

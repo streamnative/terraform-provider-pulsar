@@ -22,7 +22,8 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
+
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 	"github.com/streamnative/terraform-provider-pulsar/types"
 )
@@ -46,9 +47,9 @@ func unmarshalPermissionGrants(v *schema.Set) ([]*types.PermissionGrant, error) 
 		var permissionGrant types.PermissionGrant
 		permissionGrant.Role = data["role"].(string)
 
-		var actions []common.AuthAction
+		var actions []utils.AuthAction
 		for _, action := range data["actions"].(*schema.Set).List() {
-			authAction, err := common.ParseAuthAction(action.(string))
+			authAction, err := utils.ParseAuthAction(action.(string))
 			if err != nil {
 				return nil, fmt.Errorf("ERROR_INVALID_AUTH_ACTION: %w", err)
 			}
@@ -62,7 +63,7 @@ func unmarshalPermissionGrants(v *schema.Set) ([]*types.PermissionGrant, error) 
 	return permissionGrants, nil
 }
 
-func setPermissionGrant(d *schema.ResourceData, grants map[string][]common.AuthAction) {
+func setPermissionGrant(d *schema.ResourceData, grants map[string][]utils.AuthAction) {
 	permissionGrants := []interface{}{}
 	for role, roleActions := range grants {
 		actions := []string{}

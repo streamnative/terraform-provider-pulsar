@@ -26,8 +26,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 func init() {
@@ -250,7 +250,7 @@ func createTopic(t *testing.T, fullID string, pnum int) {
 		t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
 	}
 
-	conn := client.(pulsar.Client)
+	conn := client.(admin.Client)
 	tname, _ := utils.GetTopicName(fullID)
 
 	if err = conn.Topics().Create(*tname, pnum); err != nil {

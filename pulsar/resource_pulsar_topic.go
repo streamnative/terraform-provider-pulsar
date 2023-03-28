@@ -25,7 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 func resourcePulsarTopic() *schema.Resource {
@@ -386,7 +386,7 @@ func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils
 	client := getClientFromMeta(meta).Topics()
 
 	// Note: only partition number in partitioned-topic can apply update
-	// For more info: https://github.com/streamnative/pulsarctl/blob/master/pkg/pulsar/topic.go#L36-L39
+	// For more info: https://github.com/streamnative/pulsar-admin-go/blob/master/pkg/admin/topic.go#L33-L36
 	if partitions == 0 {
 		return errors.New("ERROR_UPDATE_TOPIC_PARTITIONS: only partition topic can apply update")
 	}

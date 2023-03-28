@@ -24,8 +24,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/streamnative/pulsarctl/pkg/cli"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/rest"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
@@ -121,7 +121,7 @@ func resourcePulsarClusterRead(ctx context.Context, d *schema.ResourceData, meta
 
 	clusterData, err := client.Get(cluster)
 	if err != nil {
-		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
 			return diag.Errorf("ERROR_CLUSTER_NOT_FOUND")
 		}
 		return diag.FromErr(fmt.Errorf("ERROR_READ_CLUSTER_DATA: %w", err))

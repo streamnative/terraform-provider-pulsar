@@ -25,16 +25,13 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-
-	"github.com/streamnative/terraform-provider-pulsar/bytesize"
-
-	"github.com/streamnative/pulsarctl/pkg/cli"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
-	ctlutil "github.com/streamnative/pulsarctl/pkg/ctl/utils"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin"
+	"github.com/streamnative/pulsar-admin-go/pkg/rest"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
+
+	"github.com/streamnative/terraform-provider-pulsar/bytesize"
 )
 
 const (
@@ -217,7 +214,7 @@ func resourcePulsarSource() *schema.Resource {
 }
 
 func resourcePulsarSourceCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(pulsar.Client).Sources()
+	client := meta.(admin.Client).Sources()
 
 	sourceConfig, err := marshalSourceConfig(d)
 	if err != nil {
@@ -239,7 +236,7 @@ func resourcePulsarSourceCreate(ctx context.Context, d *schema.ResourceData, met
 }
 
 func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(pulsar.Client).Sources()
+	client := meta.(admin.Client).Sources()
 
 	tenant := d.Get(resourceSourceTenantKey).(string)
 	namespace := d.Get(resourceSourceNamespaceKey).(string)
@@ -249,7 +246,7 @@ func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	sourceConfig, err := client.GetSource(tenant, namespace, name)
 	if err != nil {
-		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
 			return diag.Errorf("ERROR_SOURCE_NOT_FOUND")
 		}
 		return diag.FromErr(errors.Wrapf(err, "failed to get %s source from %s/%s", name, tenant, namespace))
@@ -330,7 +327,7 @@ func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta 
 }
 
 func resourcePulsarSourceUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(pulsar.Client).Sources()
+	client := meta.(admin.Client).Sources()
 
 	sourceConfig, err := marshalSourceConfig(d)
 	if err != nil {
@@ -351,7 +348,7 @@ func resourcePulsarSourceUpdate(ctx context.Context, d *schema.ResourceData, met
 }
 
 func resourcePulsarSourceDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(pulsar.Client).Sources()
+	client := meta.(admin.Client).Sources()
 
 	tenant := d.Get(resourceSourceTenantKey).(string)
 	namespace := d.Get(resourceSourceNamespaceKey).(string)
@@ -439,6 +436,11 @@ func marshalSourceConfig(d *schema.ResourceData) (*utils.SourceConfig, error) {
 }
 
 func isLocalArchive(archive string) bool {
-	return !ctlutil.IsPackageURLSupported(archive) &&
-		!strings.HasPrefix(archive, ctlutil.BUILTIN)
+	return !IsPackageURLSupported(archive) &&
+		!strings.HasPrefix(archive, "builtin")
+}
+
+func IsPackageURLSupported(functionPkgURL string) bool {
+	return functionPkgURL != "" && strings.HasPrefix(functionPkgURL, "http") ||
+		strings.HasPrefix(functionPkgURL, "file")
 }

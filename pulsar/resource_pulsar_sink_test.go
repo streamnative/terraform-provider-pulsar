@@ -28,10 +28,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/pkg/errors"
-	"github.com/streamnative/pulsarctl/pkg/cli"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
+	"github.com/streamnative/pulsar-admin-go/pkg/rest"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 
 	"github.com/streamnative/terraform-provider-pulsar/bytesize"
 )
@@ -50,7 +50,7 @@ func TestSink(t *testing.T) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, common.V3) },
+		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSinkDestroy,
@@ -84,7 +84,7 @@ func TestSink(t *testing.T) {
 }
 
 func testPulsarSinkDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(pulsar.Client).Sinks()
+	client := testAccProvider.Meta().(admin.Client).Sinks()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_sink" {
@@ -99,7 +99,7 @@ func testPulsarSinkDestroy(s *terraform.State) error {
 
 		resp, err := client.GetSink(parts[0], parts[1], parts[2])
 		if err != nil {
-			if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+			if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
 				return nil
 			}
 
@@ -151,7 +151,7 @@ func testSinkImported() resource.ImportStateCheckFunc {
 }
 
 func createSampleSink(name string) error {
-	client, err := sharedClientWithVersion(testWebServiceURL, common.V3)
+	client, err := sharedClientWithVersion(testWebServiceURL, config.V3)
 	if err != nil {
 		return err
 	}

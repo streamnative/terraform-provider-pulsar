@@ -26,9 +26,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
-	"github.com/streamnative/pulsarctl/pkg/cli"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin"
+	"github.com/streamnative/pulsar-admin-go/pkg/rest"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 
 	"github.com/streamnative/terraform-provider-pulsar/bytesize"
 )
@@ -301,7 +301,7 @@ func resourcePulsarSink() *schema.Resource {
 }
 
 func resourcePulsarSinkCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(pulsar.Client).Sinks()
+	client := meta.(admin.Client).Sinks()
 
 	sinkConfig, err := marshalSinkConfig(d)
 	if err != nil {
@@ -326,7 +326,7 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 	// - resourceSinkProcessingGuaranteesKey
 	// - resourceSinkRetainOrderingKey
 
-	client := meta.(pulsar.Client).Sinks()
+	client := meta.(admin.Client).Sinks()
 
 	tenant := d.Get(resourceSinkTenantKey).(string)
 	namespace := d.Get(resourceSinkNamespaceKey).(string)
@@ -336,7 +336,7 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 
 	sinkConfig, err := client.GetSink(tenant, namespace, name)
 	if err != nil {
-		if cliErr, ok := err.(cli.Error); ok && cliErr.Code == 404 {
+		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
 			return diag.Errorf("ERROR_SINK_NOT_FOUND")
 		}
 		return diag.FromErr(errors.Wrapf(err, "failed to get %s sink from %s/%s", name, tenant, namespace))
@@ -479,7 +479,7 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 }
 
 func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(pulsar.Client).Sinks()
+	client := meta.(admin.Client).Sinks()
 
 	sinkConfig, err := marshalSinkConfig(d)
 	if err != nil {
@@ -500,7 +500,7 @@ func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta 
 }
 
 func resourcePulsarSinkDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(pulsar.Client).Sinks()
+	client := meta.(admin.Client).Sinks()
 
 	tenant := d.Get(resourceSinkTenantKey).(string)
 	namespace := d.Get(resourceSinkNamespaceKey).(string)

@@ -5,8 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 func validateNotBlank(val interface{}, key string) (warns []string, errs []error) {
@@ -45,7 +44,7 @@ func validateTopicType(val interface{}, key string) (warns []string, errs []erro
 
 func validateAuthAction(val interface{}, key string) (warns []string, errs []error) {
 	v := val.(string)
-	_, err := common.ParseAuthAction(v)
+	_, err := utils.ParseAuthAction(v)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("%q must be a valid auth action (got: %s): %w", key, v, err))
 	}
