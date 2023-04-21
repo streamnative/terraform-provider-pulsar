@@ -36,7 +36,7 @@ A [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar Ent
   terraform {
     required_providers {
       pulsar = {
-        version = "0.1.0"
+        version = "0.1.3"
         source = "registry.terraform.io/streamnative/pulsar"
       }
     }
