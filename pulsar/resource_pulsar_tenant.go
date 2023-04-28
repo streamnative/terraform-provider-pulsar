@@ -134,6 +134,18 @@ func resourcePulsarTenantDelete(ctx context.Context, d *schema.ResourceData, met
 
 	tenant := d.Get("tenant").(string)
 
+	allowedClusters := handleHCLArrayV2(d.Get("allowed_clusters").(*schema.Set).List())
+
+	if len(allowedClusters) > 0 {
+		input := utils.TenantData{
+			Name:            tenant,
+			AllowedClusters: nil,
+		}
+		if err := client.Update(input); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_CLEANUP_ALLOWEDCLUSTERS: %w", err))
+		}
+	}
+
 	if err := deleteExistingNamespacesForTenant(tenant, meta); err != nil {
 		return diag.FromErr(fmt.Errorf("ERROR_DELETING_EXISTING_NAMESPACES_FOR_TENANT: %w", err))
 	}

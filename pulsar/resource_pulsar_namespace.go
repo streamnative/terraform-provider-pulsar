@@ -582,6 +582,16 @@ func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(fmt.Errorf("ERROR_DELETE_NAMESPACE: %w", err))
 	}
 
+	namespaceConfig := d.Get("namespace_config").(*schema.Set)
+
+	if namespaceConfig.Len() > 0 {
+		nsCfg := unmarshalNamespaceConfig(namespaceConfig)
+
+		if len(nsCfg.ReplicationClusters) > 0 {
+			_ = d.Set("replication_clusters", nil)
+		}
+	}
+
 	_ = d.Set("namespace", "")
 	_ = d.Set("tenant", "")
 	_ = d.Set("enable_deduplication", nil)
