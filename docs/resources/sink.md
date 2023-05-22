@@ -40,7 +40,7 @@ description: |-
 - `ram_mb` (Number) The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes)
 - `retain_ordering` (Boolean) Sink consumes and sinks messages in order
 - `subscription_name` (String) Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer
-- `subscription_position` (String) Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest)
+- `subscription_position` (String) Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest). Default to Earliest.
 - `timeout_ms` (Number) The message timeout in milliseconds
 - `topics_pattern` (String) TopicsPattern to consume from list of topics under a namespace that match the pattern
 
