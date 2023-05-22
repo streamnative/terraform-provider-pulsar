@@ -19,8 +19,7 @@ description: |-
 
 - `namespace` (String) Pulsar namespaces are logical groupings of topics
 - `partitions` (Number)
-- `tenant` (String) An administrative unit for allocating capacity and enforcing an 
-authentication/authorization scheme
+- `tenant` (String) An administrative unit for allocating capacity and enforcing an authentication/authorization scheme
 - `topic_name` (String)
 - `topic_type` (String)
 

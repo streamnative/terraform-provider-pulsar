@@ -50,11 +50,11 @@ func resourcePulsarCluster() *schema.Resource {
 			"cluster": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: descriptions["cluster"],
+				Description: "Name of the cluster",
 			},
 			"cluster_data": {
 				Type:        schema.TypeSet,
-				Description: descriptions["cluster_data"],
+				Description: "Specific configs of this cluster",
 				Required:    true,
 				MinItems:    1,
 				MaxItems:    1,

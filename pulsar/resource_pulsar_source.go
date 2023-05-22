@@ -58,27 +58,23 @@ const (
 var resourceSourceDescriptions = make(map[string]string)
 
 func init() {
-	resourceSourceDescriptions[resourceSourceTenantKey] = "The source's tenant"
-	resourceSourceDescriptions[resourceSourceNamespaceKey] = "The source's namespace"
-	resourceSourceDescriptions[resourceSourceNameKey] = "The source's name"
-	resourceSourceDescriptions[resourceSourceArchiveKey] = "The path to the NAR archive for the Source. " +
-		"It also supports url-path [http/https/file (file protocol assumes that file already exists " +
-		"on worker host)] from which worker can download the package"
-	resourceSourceDescriptions[resourceSourceProcessingGuaranteesKey] =
-		"Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)"
-	resourceSourceDescriptions[resourceSourceDestinationTopicNamesKey] = "The Pulsar topic to which data is sent"
-	resourceSourceDescriptions[resourceSourceDeserializationClassnameKey] = "The SerDe classname for the source"
-	resourceSourceDescriptions[resourceSourceParallelismKey] = "The source's parallelism factor"
-	resourceSourceDescriptions[resourceSourceClassnameKey] =
-		"The source's class name if archive is file-url-path (file://)"
-	resourceSourceDescriptions[resourceSourceCPUKey] =
-		"The CPU that needs to be allocated per source instance (applicable only to Docker runtime)"
-	resourceSourceDescriptions[resourceSourceRAMKey] =
-		"The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes)"
-	resourceSourceDescriptions[resourceSourceDiskKey] =
-		"The disk that need to be allocated per source instance (applicable only to Docker runtime)"
-	resourceSourceDescriptions[resourceSourceConfigsKey] = "User defined configs key/values (JSON string)"
-	resourceSourceDescriptions[resourceSourceRuntimeFlagsKey] = "User defined configs key/values (JSON string)"
+	//nolint:lll
+	resourceSourceDescriptions = map[string]string{
+		resourceSourceTenantKey:                   "The source's tenant",
+		resourceSourceNamespaceKey:                "The source's namespace",
+		resourceSourceNameKey:                     "The source's name",
+		resourceSourceArchiveKey:                  "The path to the NAR archive for the Source. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package",
+		resourceSourceProcessingGuaranteesKey:     "Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)",
+		resourceSourceDestinationTopicNamesKey:    "The Pulsar topic to which data is sent",
+		resourceSourceDeserializationClassnameKey: "The SerDe classname for the source",
+		resourceSourceParallelismKey:              "The source's parallelism factor",
+		resourceSourceClassnameKey:                "The source's class name if archive is file-url-path (file://)",
+		resourceSourceCPUKey:                      "The CPU that needs to be allocated per source instance (applicable only to Docker runtime)",
+		resourceSourceRAMKey:                      "The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes)",
+		resourceSourceDiskKey:                     "The disk that need to be allocated per source instance (applicable only to Docker runtime)",
+		resourceSourceConfigsKey:                  "User defined configs key/values (JSON string)",
+		resourceSourceRuntimeFlagsKey:             "User defined configs key/values (JSON string)",
+	}
 }
 
 func resourcePulsarSource() *schema.Resource {

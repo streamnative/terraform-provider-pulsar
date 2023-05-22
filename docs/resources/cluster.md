@@ -17,8 +17,8 @@ description: |-
 
 ### Required
 
-- `cluster` (String)
-- `cluster_data` (Block Set, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--cluster_data))
+- `cluster` (String) Name of the cluster
+- `cluster_data` (Block Set, Min: 1, Max: 1) Specific configs of this cluster (see [below for nested schema](#nestedblock--cluster_data))
 
 ### Read-Only
 

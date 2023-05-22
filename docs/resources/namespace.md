@@ -18,8 +18,7 @@ description: |-
 ### Required
 
 - `namespace` (String) Pulsar namespaces are logical groupings of topics
-- `tenant` (String) An administrative unit for allocating capacity and enforcing an 
-authentication/authorization scheme
+- `tenant` (String) An administrative unit for allocating capacity and enforcing an authentication/authorization scheme
 
 ### Optional
 
