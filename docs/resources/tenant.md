@@ -17,8 +17,7 @@ description: |-
 
 ### Required
 
-- `tenant` (String) An administrative unit for allocating capacity and enforcing an 
-authentication/authorization scheme
+- `tenant` (String) An administrative unit for allocating capacity and enforcing an authentication/authorization scheme
 
 ### Optional
 

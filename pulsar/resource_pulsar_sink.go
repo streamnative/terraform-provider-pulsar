@@ -67,44 +67,32 @@ const (
 var resourceSinkDescriptions = make(map[string]string)
 
 func init() {
-	resourceSinkDescriptions[resourceSinkTenantKey] = "The sink's tenant"
-	resourceSinkDescriptions[resourceSinkNamespaceKey] = "The sink's namespace"
-	resourceSinkDescriptions[resourceSinkNameKey] = "The sink's name"
-	resourceSinkDescriptions[resourceSinkInputsKey] = "The sink's input topics"
-	resourceSinkDescriptions[resourceSinkTopicsPatternKey] =
-		"TopicsPattern to consume from list of topics under a namespace that match the pattern"
-	resourceSinkDescriptions[resourceSinkSubscriptionNameKey] =
-		"Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer"
-	resourceSinkDescriptions[resourceSinkCleanupSubscriptionKey] =
-		"Whether the subscriptions the functions created/used should be deleted when the functions was deleted"
-	resourceSinkDescriptions[resourceSinkSubscriptionPositionKey] = "Pulsar source subscription position if user wants " +
-		"to consume messages from the specified location (Latest, Earliest). Default to Earliest."
-	resourceSinkDescriptions[resourceSinkCustomSerdeInputsKey] =
-		"The map of input topics to SerDe class names (as a JSON string)"
-	resourceSinkDescriptions[resourceSinkCustomSchemaInputsKey] =
-		"The map of input topics to Schema types or class names (as a JSON string)"
-	resourceSinkDescriptions[resourceSinkInputSpecsKey] = "The map of input topics specs"
-	resourceSinkDescriptions[resourceSinkProcessingGuaranteesKey] =
-		"Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)"
-	resourceSinkDescriptions[resourceSinkRetainOrderingKey] = "Sink consumes and sinks messages in order"
-	resourceSinkDescriptions[resourceSinkParallelismKey] = "The sink's parallelism factor"
-	resourceSinkDescriptions[resourceSinkArchiveKey] =
-		"Path to the archive file for the sink. " +
-			"It also supports url-path [http/https/file (file protocol assumes that " +
-			"file already exists on worker host)] from which worker can download the package"
-	resourceSinkDescriptions[resourceSinkClassnameKey] = "The sink's class name if archive is file-url-path (file://)"
-	resourceSinkDescriptions[resourceSinkCPUKey] =
-		"The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)"
-	resourceSinkDescriptions[resourceSinkRAMKey] =
-		"The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes)"
-	resourceSinkDescriptions[resourceSinkDiskKey] =
-		"The disk that need to be allocated per sink instance (applicable only to Docker runtime)"
-	resourceSinkDescriptions[resourceSinkConfigsKey] = "User defined configs key/values (JSON string)"
-	resourceSinkDescriptions[resourceSinkAutoACKKey] =
-		"Whether or not the framework will automatically acknowledge messages"
-	resourceSinkDescriptions[resourceSinkTimeoutKey] = "The message timeout in milliseconds"
-	resourceSinkDescriptions[resourceSinkCustomRuntimeOptionsKey] =
-		"A string that encodes options to customize the runtime"
+	//nolint:lll
+	resourceSinkDescriptions = map[string]string{
+		resourceSinkTenantKey:               "The sink's tenant",
+		resourceSinkNamespaceKey:            "The sink's namespace",
+		resourceSinkNameKey:                 "The sink's name",
+		resourceSinkInputsKey:               "The sink's input topics",
+		resourceSinkTopicsPatternKey:        "TopicsPattern to consume from list of topics under a namespace that match the pattern",
+		resourceSinkSubscriptionNameKey:     "Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer",
+		resourceSinkCleanupSubscriptionKey:  "Whether the subscriptions the functions created/used should be deleted when the functions was deleted",
+		resourceSinkSubscriptionPositionKey: "Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest). Default to Earliest.",
+		resourceSinkCustomSerdeInputsKey:    "The map of input topics to SerDe class names (as a JSON string)",
+		resourceSinkCustomSchemaInputsKey:   "The map of input topics to Schema types or class names (as a JSON string)",
+		resourceSinkInputSpecsKey:           "The map of input topics specs",
+		resourceSinkProcessingGuaranteesKey: "Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)",
+		resourceSinkRetainOrderingKey:       "Sink consumes and sinks messages in order",
+		resourceSinkParallelismKey:          "The sink's parallelism factor",
+		resourceSinkArchiveKey:              "Path to the archive file for the sink. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package",
+		resourceSinkClassnameKey:            "The sink's class name if archive is file-url-path (file://)",
+		resourceSinkCPUKey:                  "The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)",
+		resourceSinkRAMKey:                  "The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes)",
+		resourceSinkDiskKey:                 "The disk that need to be allocated per sink instance (applicable only to Docker runtime)",
+		resourceSinkConfigsKey:              "User defined configs key/values (JSON string)",
+		resourceSinkAutoACKKey:              "Whether or not the framework will automatically acknowledge messages",
+		resourceSinkTimeoutKey:              "The message timeout in milliseconds",
+		resourceSinkCustomRuntimeOptionsKey: "A string that encodes options to customize the runtime",
+	}
 }
 
 func resourcePulsarSink() *schema.Resource {
