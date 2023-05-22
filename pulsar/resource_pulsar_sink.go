@@ -77,8 +77,8 @@ func init() {
 		"Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer"
 	resourceSinkDescriptions[resourceSinkCleanupSubscriptionKey] =
 		"Whether the subscriptions the functions created/used should be deleted when the functions was deleted"
-	resourceSinkDescriptions[resourceSinkSubscriptionPositionKey] =
-		"Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest). Default to Earliest."
+	resourceSinkDescriptions[resourceSinkSubscriptionPositionKey] = "Pulsar source subscription position if user wants " +
+		"to consume messages from the specified location (Latest, Earliest). Default to Earliest."
 	resourceSinkDescriptions[resourceSinkCustomSerdeInputsKey] =
 		"The map of input topics to SerDe class names (as a JSON string)"
 	resourceSinkDescriptions[resourceSinkCustomSchemaInputsKey] =
