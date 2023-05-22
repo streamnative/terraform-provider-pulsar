@@ -1,5 +1,4 @@
-# Visit https://goreleaser.com for documentation on how to customize this
-# behavior.
+# Visit https://goreleaser.com for documentation on how to customize this behavior.
 project_name: terraform-provider-pulsar
 before:
   hooks:
@@ -57,5 +56,6 @@ release:
       name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
   # If you want to manually examine the release before its live, uncomment this line:
   # draft: true
+  prerelease: auto
 changelog:
   skip: true
