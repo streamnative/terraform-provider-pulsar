@@ -140,7 +140,9 @@ func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC: %w", err))
 	}
 
-	err = updatePermissionGrant(d, meta, topicName)
+	err = retry(func() error {
+		return updatePermissionGrant(d, meta, topicName)
+	})
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err))
 	}
