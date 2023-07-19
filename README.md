@@ -19,7 +19,8 @@ under the License.
 
 # Terraform Provider for Pulsar
 
-A [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar Entities](https://pulsar.apache.org).
+Authored by [StreamNative], this repository includes the source code and documentation for
+a [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar](https://pulsar.apache.org) entities such as clusters, tenants, namespaces, topics, sources, and sinks.
 
 # Prerequisites
 
@@ -464,9 +465,15 @@ terraform import pulsar_cluster.standalone standalone
 
 # Contributing
 
-Terraform is the work of thousands of contributors. We appreciate your help!
+Contributions are warmly welcomed and greatly appreciated! Please read the [contribution guidelines](.github/CONTRIBUTING.md) for more details.
 
-To contribute, please read the contribution guidelines: [Contributing to Terraform - Apache Pulsar Provider](.github/CONTRIBUTING.md)
+Issues on GitHub are intended to be related to bugs or feature requests with the provider codebase. For a list of community resources to ask questions about Terraform, see https://www.terraform.io/docs/extend/community/index.html.
 
-Issues on GitHub are intended to be related to bugs or feature requests with provider codebase.
-See https://www.terraform.io/docs/extend/community/index.html for a list of community resources to ask questions about Terraform.
+# Licence
+
+This library is licensed under the terms of the [Apache License 2.0](LICENSE) and may include packages written by third parties which carry their own copyright notices and license terms.
+
+# About StreamNative
+
+Founded in 2019 by the original creators of Apache Pulsar, [StreamNative](https://streamnative.io) is one of the leading contributors to the open-source Apache Pulsar project. We have helped engineering teams worldwide make the move to Pulsar with [StreamNative Cloud](https://streamnative.io/product), a fully managed service to help teams accelerate time-to-production.
+
