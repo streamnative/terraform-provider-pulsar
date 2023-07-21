@@ -217,10 +217,10 @@ func resourcePulsarSourceCreate(ctx context.Context, d *schema.ResourceData, met
 		return diag.FromErr(err)
 	}
 
-	if isLocalArchive(sourceConfig.Archive) {
-		err = client.CreateSource(sourceConfig, sourceConfig.Archive)
-	} else {
+	if isPackageURLSupported(sourceConfig.Archive) {
 		err = client.CreateSourceWithURL(sourceConfig, sourceConfig.Archive)
+	} else {
+		err = client.CreateSource(sourceConfig, sourceConfig.Archive)
 	}
 	if err != nil {
 		tflog.Debug(ctx, fmt.Sprintf("@@@Create source: %v", err))
@@ -331,10 +331,10 @@ func resourcePulsarSourceUpdate(ctx context.Context, d *schema.ResourceData, met
 	}
 
 	updateOptions := utils.NewUpdateOptions()
-	if isLocalArchive(sourceConfig.Archive) {
-		err = client.UpdateSource(sourceConfig, sourceConfig.Archive, updateOptions)
-	} else {
+	if isPackageURLSupported(sourceConfig.Archive) {
 		err = client.UpdateSourceWithURL(sourceConfig, sourceConfig.Archive, updateOptions)
+	} else {
+		err = client.UpdateSource(sourceConfig, sourceConfig.Archive, updateOptions)
 	}
 	if err != nil {
 		return diag.FromErr(err)
@@ -431,12 +431,11 @@ func marshalSourceConfig(d *schema.ResourceData) (*utils.SourceConfig, error) {
 	return sourceConfig, nil
 }
 
-func isLocalArchive(archive string) bool {
-	return !IsPackageURLSupported(archive) &&
-		!strings.HasPrefix(archive, "builtin")
-}
-
-func IsPackageURLSupported(functionPkgURL string) bool {
-	return functionPkgURL != "" && strings.HasPrefix(functionPkgURL, "http") ||
-		strings.HasPrefix(functionPkgURL, "file")
+func isPackageURLSupported(functionPkgURL string) bool {
+	return strings.HasPrefix(functionPkgURL, "http://") ||
+		strings.HasPrefix(functionPkgURL, "https://") ||
+		strings.HasPrefix(functionPkgURL, "file://") ||
+		strings.HasPrefix(functionPkgURL, "function://") ||
+		strings.HasPrefix(functionPkgURL, "sink://") ||
+		strings.HasPrefix(functionPkgURL, "source://")
 }

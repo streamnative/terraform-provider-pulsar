@@ -296,10 +296,10 @@ func resourcePulsarSinkCreate(ctx context.Context, d *schema.ResourceData, meta 
 		return diag.FromErr(err)
 	}
 
-	if isLocalArchive(sinkConfig.Archive) {
-		err = client.CreateSink(sinkConfig, sinkConfig.Archive)
-	} else {
+	if isPackageURLSupported(sinkConfig.Archive) {
 		err = client.CreateSinkWithURL(sinkConfig, sinkConfig.Archive)
+	} else {
+		err = client.CreateSink(sinkConfig, sinkConfig.Archive)
 	}
 	if err != nil {
 		return diag.FromErr(err)
@@ -387,7 +387,7 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 			item[resourceSinkInputSpecsSubsetTopicKey] = key
 			item[resourceSinkInputSpecsSubsetSchemaTypeKey] = config.SchemaType
 			item[resourceSinkInputSpecsSubsetSerdeClassNameKey] = config.SerdeClassName
-			item[resourceSinkInputSpecsSubsetIsRegexPatternKey] = config.IsRegexPattern
+			item[resourceSinkInputSpecsSubsetIsRegexPatternKey] = config.RegexPattern
 			item[resourceSinkInputSpecsSubsetReceiverQueueSizeKey] = config.ReceiverQueueSize
 			inputSpecs = append(inputSpecs, item)
 		}
@@ -475,10 +475,10 @@ func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	}
 
 	updateOptions := utils.NewUpdateOptions()
-	if isLocalArchive(sinkConfig.Archive) {
-		err = client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
-	} else {
+	if isPackageURLSupported(sinkConfig.Archive) {
 		err = client.UpdateSinkWithURL(sinkConfig, sinkConfig.Archive, updateOptions)
+	} else {
+		err = client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
 	}
 	if err != nil {
 		return diag.FromErr(err)
@@ -571,7 +571,7 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 				inputSpec := utils.ConsumerConfig{
 					SchemaType:        m[resourceSinkInputSpecsSubsetSchemaTypeKey].(string),
 					SerdeClassName:    m[resourceSinkInputSpecsSubsetSerdeClassNameKey].(string),
-					IsRegexPattern:    m[resourceSinkInputSpecsSubsetIsRegexPatternKey].(bool),
+					RegexPattern:      m[resourceSinkInputSpecsSubsetIsRegexPatternKey].(bool),
 					ReceiverQueueSize: m[resourceSinkInputSpecsSubsetReceiverQueueSizeKey].(int),
 				}
 				inputSpecs[m[resourceSinkInputSpecsSubsetTopicKey].(string)] = inputSpec

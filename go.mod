@@ -9,7 +9,7 @@ require (
 	github.com/hashicorp/terraform-plugin-log v0.4.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.16.0
 	github.com/pkg/errors v0.9.1
-	github.com/streamnative/pulsar-admin-go v0.1.0
+	github.com/streamnative/pulsar-admin-go v0.1.2-0.20230720220908-d28b89a11802
 	github.com/stretchr/testify v1.8.0
 )
 
