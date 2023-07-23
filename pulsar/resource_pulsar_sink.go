@@ -62,6 +62,12 @@ const (
 	resourceSinkAutoACKKey                           = "auto_ack"
 	resourceSinkTimeoutKey                           = "timeout_ms"
 	resourceSinkCustomRuntimeOptionsKey              = "custom_runtime_options"
+	resourceSinkDeadLetterTopicKey                   = "dead_letter_topic"
+	resourceSinkMaxRedeliverCountKey                 = "max_redeliver_count"
+	resourceSinkNegativeCountRedeliveryDelayKey      = "negative_ack_redelivery_delay_ms"
+	resourceSinkRetainKeyOrderingKey                 = "retain_key_ordering"
+	resourceSinkSinkTypeKey                          = "sink_type"
+	resourceSinkSecretsKey                           = "secrets"
 )
 
 var resourceSinkDescriptions = make(map[string]string)
@@ -69,29 +75,35 @@ var resourceSinkDescriptions = make(map[string]string)
 func init() {
 	//nolint:lll
 	resourceSinkDescriptions = map[string]string{
-		resourceSinkTenantKey:               "The sink's tenant",
-		resourceSinkNamespaceKey:            "The sink's namespace",
-		resourceSinkNameKey:                 "The sink's name",
-		resourceSinkInputsKey:               "The sink's input topics",
-		resourceSinkTopicsPatternKey:        "TopicsPattern to consume from list of topics under a namespace that match the pattern",
-		resourceSinkSubscriptionNameKey:     "Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer",
-		resourceSinkCleanupSubscriptionKey:  "Whether the subscriptions the functions created/used should be deleted when the functions was deleted",
-		resourceSinkSubscriptionPositionKey: "Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest). Default to Earliest.",
-		resourceSinkCustomSerdeInputsKey:    "The map of input topics to SerDe class names (as a JSON string)",
-		resourceSinkCustomSchemaInputsKey:   "The map of input topics to Schema types or class names (as a JSON string)",
-		resourceSinkInputSpecsKey:           "The map of input topics specs",
-		resourceSinkProcessingGuaranteesKey: "Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)",
-		resourceSinkRetainOrderingKey:       "Sink consumes and sinks messages in order",
-		resourceSinkParallelismKey:          "The sink's parallelism factor",
-		resourceSinkArchiveKey:              "Path to the archive file for the sink. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package",
-		resourceSinkClassnameKey:            "The sink's class name if archive is file-url-path (file://)",
-		resourceSinkCPUKey:                  "The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)",
-		resourceSinkRAMKey:                  "The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes)",
-		resourceSinkDiskKey:                 "The disk that need to be allocated per sink instance (applicable only to Docker runtime)",
-		resourceSinkConfigsKey:              "User defined configs key/values (JSON string)",
-		resourceSinkAutoACKKey:              "Whether or not the framework will automatically acknowledge messages",
-		resourceSinkTimeoutKey:              "The message timeout in milliseconds",
-		resourceSinkCustomRuntimeOptionsKey: "A string that encodes options to customize the runtime",
+		resourceSinkTenantKey:                       "The sink's tenant",
+		resourceSinkNamespaceKey:                    "The sink's namespace",
+		resourceSinkNameKey:                         "The sink's name",
+		resourceSinkInputsKey:                       "The sink's input topics",
+		resourceSinkTopicsPatternKey:                "TopicsPattern to consume from list of topics under a namespace that match the pattern",
+		resourceSinkSubscriptionNameKey:             "Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer",
+		resourceSinkCleanupSubscriptionKey:          "Whether the subscriptions the functions created/used should be deleted when the functions was deleted",
+		resourceSinkSubscriptionPositionKey:         "Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest). Default to Earliest.",
+		resourceSinkCustomSerdeInputsKey:            "The map of input topics to SerDe class names (as a JSON string)",
+		resourceSinkCustomSchemaInputsKey:           "The map of input topics to Schema types or class names (as a JSON string)",
+		resourceSinkInputSpecsKey:                   "The map of input topics specs",
+		resourceSinkProcessingGuaranteesKey:         "Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)",
+		resourceSinkRetainOrderingKey:               "Sink consumes and sinks messages in order",
+		resourceSinkParallelismKey:                  "The sink's parallelism factor",
+		resourceSinkArchiveKey:                      "Path to the archive file for the sink. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package",
+		resourceSinkClassnameKey:                    "The sink's class name if archive is file-url-path (file://)",
+		resourceSinkCPUKey:                          "The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)",
+		resourceSinkRAMKey:                          "The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes)",
+		resourceSinkDiskKey:                         "The disk that need to be allocated per sink instance (applicable only to Docker runtime)",
+		resourceSinkConfigsKey:                      "User defined configs key/values (JSON string)",
+		resourceSinkAutoACKKey:                      "Whether or not the framework will automatically acknowledge messages",
+		resourceSinkTimeoutKey:                      "The message timeout in milliseconds",
+		resourceSinkCustomRuntimeOptionsKey:         "A string that encodes options to customize the runtime",
+		resourceSinkDeadLetterTopicKey:              "Name of the dead topic where the failing messages will be sent",
+		resourceSinkMaxRedeliverCountKey:            "Maximum number of times that a message will be redelivered before being sent to the dead letter topic",
+		resourceSinkNegativeCountRedeliveryDelayKey: "The negative ack message redelivery delay in milliseconds",
+		resourceSinkRetainKeyOrderingKey:            "Sink consumes and processes messages in key order",
+		resourceSinkSinkTypeKey:                     "The sinks's connector provider",
+		resourceSinkSecretsKey:                      "The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider",
 	}
 }
 
@@ -284,6 +296,46 @@ func resourcePulsarSink() *schema.Resource {
 				Optional:    true,
 				Description: resourceSinkDescriptions[resourceSinkCustomRuntimeOptionsKey],
 			},
+			resourceSinkDeadLetterTopicKey: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: resourceSinkDescriptions[resourceSinkDeadLetterTopicKey],
+			},
+			resourceSinkMaxRedeliverCountKey: {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: resourceSinkDescriptions[resourceSinkMaxRedeliverCountKey],
+			},
+			resourceSinkNegativeCountRedeliveryDelayKey: {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: resourceSinkDescriptions[resourceSinkNegativeCountRedeliveryDelayKey],
+			},
+			resourceSinkRetainKeyOrderingKey: {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: resourceSinkDescriptions[resourceSinkRetainKeyOrderingKey],
+			},
+			resourceSinkSinkTypeKey: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: resourceSinkDescriptions[resourceSinkSinkTypeKey],
+			},
+			resourceSinkSecretsKey: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: resourceSinkDescriptions[resourceSinkSecretsKey],
+				ValidateFunc: func(val interface{}, key string) ([]string, []error) {
+					v := val.(string)
+					_, err := json.Marshal(v)
+					if err != nil {
+						return nil, []error{
+							fmt.Errorf("cannot marshal %s: %s", v, err.Error()),
+						}
+					}
+					return nil, nil
+				},
+			},
 		},
 	}
 }
@@ -387,7 +439,7 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 			item[resourceSinkInputSpecsSubsetTopicKey] = key
 			item[resourceSinkInputSpecsSubsetSchemaTypeKey] = config.SchemaType
 			item[resourceSinkInputSpecsSubsetSerdeClassNameKey] = config.SerdeClassName
-			item[resourceSinkInputSpecsSubsetIsRegexPatternKey] = config.IsRegexPattern
+			item[resourceSinkInputSpecsSubsetIsRegexPatternKey] = config.RegexPattern
 			item[resourceSinkInputSpecsSubsetReceiverQueueSizeKey] = config.ReceiverQueueSize
 			inputSpecs = append(inputSpecs, item)
 		}
@@ -458,6 +510,46 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 
 	if len(sinkConfig.CustomRuntimeOptions) != 0 {
 		err = d.Set(resourceSinkCustomRuntimeOptionsKey, sinkConfig.CustomRuntimeOptions)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if len(sinkConfig.DeadLetterTopic) != 0 {
+		err = d.Set(resourceSinkDeadLetterTopicKey, sinkConfig.DeadLetterTopic)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	err = d.Set(resourceSinkMaxRedeliverCountKey, sinkConfig.MaxMessageRetries)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	err = d.Set(resourceSinkNegativeCountRedeliveryDelayKey, sinkConfig.NegativeAckRedeliveryDelayMs)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	err = d.Set(resourceSinkRetainKeyOrderingKey, sinkConfig.RetainKeyOrdering)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if len(sinkConfig.SinkType) != 0 {
+		err = d.Set(resourceSinkSinkTypeKey, sinkConfig.SinkType)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if len(sinkConfig.Secrets) != 0 {
+		s, err := json.Marshal(sinkConfig.Configs)
+		if err != nil {
+			return diag.FromErr(errors.Wrap(err, "cannot marshal secrets from sinkConfig"))
+		}
+		err = d.Set(resourceSinkSecretsKey, string(s))
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -571,7 +663,7 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 				inputSpec := utils.ConsumerConfig{
 					SchemaType:        m[resourceSinkInputSpecsSubsetSchemaTypeKey].(string),
 					SerdeClassName:    m[resourceSinkInputSpecsSubsetSerdeClassNameKey].(string),
-					IsRegexPattern:    m[resourceSinkInputSpecsSubsetIsRegexPatternKey].(bool),
+					RegexPattern:      m[resourceSinkInputSpecsSubsetIsRegexPatternKey].(bool),
 					ReceiverQueueSize: m[resourceSinkInputSpecsSubsetReceiverQueueSizeKey].(int),
 				}
 				inputSpecs[m[resourceSinkInputSpecsSubsetTopicKey].(string)] = inputSpec
@@ -642,6 +734,38 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 
 	if inter, ok := d.GetOk(resourceSinkCustomRuntimeOptionsKey); ok {
 		sinkConfig.CustomRuntimeOptions = inter.(string)
+	}
+
+	if inter, ok := d.GetOk(resourceSinkDeadLetterTopicKey); ok {
+		sinkConfig.DeadLetterTopic = inter.(string)
+	}
+
+	if inter, ok := d.GetOk(resourceSinkMaxRedeliverCountKey); ok {
+		sinkConfig.MaxMessageRetries = inter.(int)
+	}
+
+	if inter, ok := d.GetOk(resourceSinkNegativeCountRedeliveryDelayKey); ok {
+		sinkConfig.NegativeAckRedeliveryDelayMs = int64(inter.(int))
+	}
+
+	if inter, ok := d.GetOk(resourceSinkRetainKeyOrderingKey); ok {
+		sinkConfig.RetainOrdering = inter.(bool)
+	}
+
+	if inter, ok := d.GetOk(resourceSinkSinkTypeKey); ok {
+		sinkConfig.SinkType = inter.(string)
+	}
+
+	if inter, ok := d.GetOk(resourceSinkSecretsKey); ok {
+		var secrets map[string]interface{}
+		secretsJSON := inter.(string)
+
+		err := json.Unmarshal([]byte(secretsJSON), &secrets)
+		if err != nil {
+			return nil, errors.Wrapf(err, "cannot unmarshal the secrets: %s", secretsJSON)
+		}
+
+		sinkConfig.Secrets = secrets
 	}
 
 	return sinkConfig, nil
