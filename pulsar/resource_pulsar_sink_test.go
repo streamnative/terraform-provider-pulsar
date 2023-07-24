@@ -142,8 +142,8 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 19 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 19, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 24 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 24, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -160,6 +160,13 @@ func createSampleSink(name string) error {
 		"\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
 	configs := make(map[string]interface{})
 	err = json.Unmarshal([]byte(configsJSON), &configs)
+	if err != nil {
+		return err
+	}
+
+	secretJSON := "{\"secret1\": {\"path\":\"sectest\",\"key\":\"hello\"}}"
+	secret := make(map[string]interface{})
+	err = json.Unmarshal([]byte(secretJSON), &secret)
 	if err != nil {
 		return err
 	}
@@ -182,6 +189,11 @@ func createSampleSink(name string) error {
 			Disk: int64(bytesize.FormMegaBytes(102400).ToBytes()),
 			RAM:  int64(bytesize.FormMegaBytes(2048).ToBytes()),
 		},
+		Secrets:                      secret,
+		DeadLetterTopic:              "dl-topic",
+		MaxMessageRetries:            5,
+		NegativeAckRedeliveryDelayMs: 3000,
+		RetainKeyOrdering:            false,
 	}
 
 	return client.Sinks().CreateSinkWithURL(config, config.Archive)
@@ -206,6 +218,12 @@ resource "pulsar_sink" "test" {
   cleanup_subscription = false
   parallelism = 1
   auto_ack = true
+
+  dead_letter_topic = "dl-topic"
+  max_redeliver_count = 5
+  negative_ack_redelivery_delay_ms = 3000
+  retain_key_ordering = false 
+  secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
