@@ -142,8 +142,8 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 25 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 19, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 24 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 24, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -194,7 +194,6 @@ func createSampleSink(name string) error {
 		MaxMessageRetries:            5,
 		NegativeAckRedeliveryDelayMs: 3000,
 		RetainKeyOrdering:            false,
-		SinkType:                     "sync_type",
 	}
 
 	return client.Sinks().CreateSinkWithURL(config, config.Archive)
@@ -224,7 +223,6 @@ resource "pulsar_sink" "test" {
   max_redeliver_count = 5
   negative_ack_redelivery_delay_ms = 3000
   retain_key_ordering = false 
-  sink_type = "sync_type"
   secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
 
   processing_guarantees = "EFFECTIVELY_ONCE"
