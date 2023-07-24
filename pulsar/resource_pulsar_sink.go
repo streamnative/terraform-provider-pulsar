@@ -545,7 +545,7 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 	}
 
 	if len(sinkConfig.Secrets) != 0 {
-		s, err := json.Marshal(sinkConfig.Configs)
+		s, err := json.Marshal(sinkConfig.Secrets)
 		if err != nil {
 			return diag.FromErr(errors.Wrap(err, "cannot marshal secrets from sinkConfig"))
 		}
