@@ -348,10 +348,10 @@ func resourcePulsarSinkCreate(ctx context.Context, d *schema.ResourceData, meta 
 		return diag.FromErr(err)
 	}
 
-	if isLocalArchive(sinkConfig.Archive) {
-		err = client.CreateSink(sinkConfig, sinkConfig.Archive)
-	} else {
+	if isPackageURLSupported(sinkConfig.Archive) {
 		err = client.CreateSinkWithURL(sinkConfig, sinkConfig.Archive)
+	} else {
+		err = client.CreateSink(sinkConfig, sinkConfig.Archive)
 	}
 	if err != nil {
 		return diag.FromErr(err)
@@ -567,10 +567,10 @@ func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	}
 
 	updateOptions := utils.NewUpdateOptions()
-	if isLocalArchive(sinkConfig.Archive) {
-		err = client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
-	} else {
+	if isPackageURLSupported(sinkConfig.Archive) {
 		err = client.UpdateSinkWithURL(sinkConfig, sinkConfig.Archive, updateOptions)
+	} else {
+		err = client.UpdateSink(sinkConfig, sinkConfig.Archive, updateOptions)
 	}
 	if err != nil {
 		return diag.FromErr(err)
