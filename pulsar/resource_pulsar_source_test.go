@@ -159,7 +159,7 @@ func testSourceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		count := 21
+		count := 20
 		if len(s[0].Attributes) != count {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", count, len(s[0].Attributes), s[0].Attributes)
 		}
@@ -213,7 +213,6 @@ func createSampleSource(name string) error {
 			UseThreadLocalProducers:            true,
 			CryptoConfig:                       nil,
 			BatchBuilder:                       "KEY_BASED",
-			CompressionType:                    "LZ4",
 		},
 	}
 
@@ -251,7 +250,6 @@ resource "pulsar_source" "test" {
   max_pending_messages_across_partitions = 101
   use_thread_local_producers = true
   batch_builder = "KEY_BASED"
-  compression_type = "LZ4"
   
   cpu = 2
   disk_mb = 20480
