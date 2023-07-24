@@ -448,7 +448,8 @@ func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta 
 		}
 
 		if sourceConfig.ProducerConfig.MaxPendingMessagesAcrossPartitions > 0 {
-			err = d.Set(resourceSourcePCMaxPendingMsgAcrossPartitionKey, sourceConfig.ProducerConfig.MaxPendingMessagesAcrossPartitions)
+			err = d.Set(resourceSourcePCMaxPendingMsgAcrossPartitionKey,
+				sourceConfig.ProducerConfig.MaxPendingMessagesAcrossPartitions)
 			if err != nil {
 				return diag.FromErr(err)
 			}
@@ -676,7 +677,8 @@ func marshalSourceConfig(d *schema.ResourceData) (*utils.SourceConfig, error) {
 
 		err := json.Unmarshal([]byte(cryptoKeyReaderConfigJSON), &cryptoKeyReaderConfig)
 		if err != nil {
-			return nil, errors.Wrapf(err, "cannot unmarshal the cryptoKeyReaderConfig: %s", cryptoKeyReaderConfigJSON)
+			return nil, errors.Wrapf(err,
+				"cannot unmarshal the cryptoKeyReaderConfig: %s", cryptoKeyReaderConfigJSON)
 		}
 
 		cryptoConfig.CryptoKeyReaderConfig = cryptoKeyReaderConfig
