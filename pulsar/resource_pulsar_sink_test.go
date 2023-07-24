@@ -142,7 +142,7 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 19 {
+		if len(s[0].Attributes) != 25 {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", 19, len(s[0].Attributes), s[0].Attributes)
 		}
 
@@ -160,6 +160,13 @@ func createSampleSink(name string) error {
 		"\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
 	configs := make(map[string]interface{})
 	err = json.Unmarshal([]byte(configsJSON), &configs)
+	if err != nil {
+		return err
+	}
+
+	secretJSON := "{\"secret1\": {\"path\":\"sectest\",\"key\":\"hello\"}}"
+	secret := make(map[string]interface{})
+	err = json.Unmarshal([]byte(secretJSON), &secret)
 	if err != nil {
 		return err
 	}
@@ -182,6 +189,12 @@ func createSampleSink(name string) error {
 			Disk: int64(bytesize.FormMegaBytes(102400).ToBytes()),
 			RAM:  int64(bytesize.FormMegaBytes(2048).ToBytes()),
 		},
+		Secrets:                      secret,
+		DeadLetterTopic:              "dl-topic",
+		MaxMessageRetries:            5,
+		NegativeAckRedeliveryDelayMs: 3000,
+		RetainKeyOrdering:            false,
+		SinkType:                     "sync_type",
 	}
 
 	return client.Sinks().CreateSinkWithURL(config, config.Archive)
