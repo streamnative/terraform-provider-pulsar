@@ -49,10 +49,9 @@ const (
 	resourceSourceDiskKey                     = "disk_mb"
 	resourceSourceConfigsKey                  = "configs"
 	resourceSourceRuntimeFlagsKey             = "runtime_flags"
-
-	ProcessingGuaranteesAtLeastOnce     = "ATLEAST_ONCE"
-	ProcessingGuaranteesAtMostOnce      = "ATMOST_ONCE"
-	ProcessingGuaranteesEffectivelyOnce = "EFFECTIVELY_ONCE"
+	resourceSourceCustomRuntimeOptionsKey     = "custom_runtime_options"
+	resourceSourceSchemaTypeKey               = "schema_type"
+	resourceSourceSecretsKey                  = "secrets"
 )
 
 var resourceSourceDescriptions = make(map[string]string)
@@ -74,6 +73,9 @@ func init() {
 		resourceSourceDiskKey:                     "The disk that need to be allocated per source instance (applicable only to Docker runtime)",
 		resourceSourceConfigsKey:                  "User defined configs key/values (JSON string)",
 		resourceSourceRuntimeFlagsKey:             "User defined configs key/values (JSON string)",
+		resourceSourceCustomRuntimeOptionsKey:     "A string that encodes options to customize the runtime, see docs for configured runtime for details",
+		resourceSourceSchemaTypeKey:               "The schema type (either a builtin schema like 'avro', 'json', etc.. or custom Schema class name to be used to encode messages emitted from the source",
+		resourceSourceSecretsKey:                  "The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider",
 	}
 }
 
@@ -205,6 +207,23 @@ func resourcePulsarSource() *schema.Resource {
 				Optional:    true,
 				Description: resourceSourceDescriptions[resourceSourceRuntimeFlagsKey],
 			},
+			resourceSourceCustomRuntimeOptionsKey: {
+				Type:         schema.TypeString,
+				Optional:     true,
+				Description:  resourceSourceDescriptions[resourceSourceCustomRuntimeOptionsKey],
+				ValidateFunc: jsonValidateFunc,
+			},
+			resourceSourceSchemaTypeKey: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: resourceSourceDescriptions[resourceSourceSchemaTypeKey],
+			},
+			resourceSourceSecretsKey: {
+				Type:         schema.TypeString,
+				Optional:     true,
+				Description:  resourceSourceDescriptions[resourceSourceSecretsKey],
+				ValidateFunc: jsonValidateFunc,
+			},
 		},
 	}
 }
@@ -319,6 +338,31 @@ func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta 
 		}
 	}
 
+	if len(sourceConfig.CustomRuntimeOptions) != 0 {
+		err = d.Set(resourceSourceCustomRuntimeOptionsKey, sourceConfig.CustomRuntimeOptions)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if len(sourceConfig.SchemaType) != 0 {
+		err = d.Set(resourceSourceSchemaTypeKey, sourceConfig.SchemaType)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if len(sourceConfig.Secrets) != 0 {
+		s, err := json.Marshal(sourceConfig.Secrets)
+		if err != nil {
+			return diag.FromErr(errors.Wrap(err, "cannot marshal secrets from sourceConfig"))
+		}
+		err = d.Set(resourceSourceSecretsKey, string(s))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
 	return nil
 }
 
@@ -428,14 +472,25 @@ func marshalSourceConfig(d *schema.ResourceData) (*utils.SourceConfig, error) {
 		sourceConfig.RuntimeFlags = inter.(string)
 	}
 
-	return sourceConfig, nil
-}
+	if inter, ok := d.GetOk(resourceSourceCustomRuntimeOptionsKey); ok {
+		sourceConfig.CustomRuntimeOptions = inter.(string)
+	}
 
-func isPackageURLSupported(functionPkgURL string) bool {
-	return strings.HasPrefix(functionPkgURL, "http://") ||
-		strings.HasPrefix(functionPkgURL, "https://") ||
-		strings.HasPrefix(functionPkgURL, "file://") ||
-		strings.HasPrefix(functionPkgURL, "function://") ||
-		strings.HasPrefix(functionPkgURL, "sink://") ||
-		strings.HasPrefix(functionPkgURL, "source://")
+	if inter, ok := d.GetOk(resourceSourceSchemaTypeKey); ok {
+		sourceConfig.SchemaType = inter.(string)
+	}
+
+	if inter, ok := d.GetOk(resourceSourceSecretsKey); ok {
+		var secrets map[string]interface{}
+		secretsJSON := inter.(string)
+
+		err := json.Unmarshal([]byte(secretsJSON), &secrets)
+		if err != nil {
+			return nil, errors.Wrapf(err, "cannot unmarshal the secrets: %s", secretsJSON)
+		}
+
+		sourceConfig.Secrets = secrets
+	}
+
+	return sourceConfig, nil
 }

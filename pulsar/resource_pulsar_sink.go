@@ -292,9 +292,10 @@ func resourcePulsarSink() *schema.Resource {
 				Description: resourceSinkDescriptions[resourceSinkTimeoutKey],
 			},
 			resourceSinkCustomRuntimeOptionsKey: {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: resourceSinkDescriptions[resourceSinkCustomRuntimeOptionsKey],
+				Type:         schema.TypeString,
+				Optional:     true,
+				Description:  resourceSinkDescriptions[resourceSinkCustomRuntimeOptionsKey],
+				ValidateFunc: jsonValidateFunc,
 			},
 			resourceSinkDeadLetterTopicKey: {
 				Type:        schema.TypeString,
@@ -322,19 +323,10 @@ func resourcePulsarSink() *schema.Resource {
 				Description: resourceSinkDescriptions[resourceSinkSinkTypeKey],
 			},
 			resourceSinkSecretsKey: {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: resourceSinkDescriptions[resourceSinkSecretsKey],
-				ValidateFunc: func(val interface{}, key string) ([]string, []error) {
-					v := val.(string)
-					_, err := json.Marshal(v)
-					if err != nil {
-						return nil, []error{
-							fmt.Errorf("cannot marshal %s: %s", v, err.Error()),
-						}
-					}
-					return nil, nil
-				},
+				Type:         schema.TypeString,
+				Optional:     true,
+				Description:  resourceSinkDescriptions[resourceSinkSecretsKey],
+				ValidateFunc: jsonValidateFunc,
 			},
 		},
 	}
