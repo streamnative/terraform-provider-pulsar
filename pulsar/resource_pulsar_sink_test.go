@@ -220,6 +220,13 @@ resource "pulsar_sink" "test" {
   parallelism = 1
   auto_ack = true
 
+  dead_letter_topic = "dl-topic"
+  max_redeliver_count = 5
+  negative_ack_redelivery_delay_ms = 3000
+  retain_key_ordering = false 
+  sink_type = "sync_type"
+  secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
+
   processing_guarantees = "EFFECTIVELY_ONCE"
 
   cpu = 1
