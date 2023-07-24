@@ -1,10 +1,10 @@
 package pulsar
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
-import "encoding/json"
 
 const (
 	ProcessingGuaranteesAtLeastOnce     = "ATLEAST_ONCE"

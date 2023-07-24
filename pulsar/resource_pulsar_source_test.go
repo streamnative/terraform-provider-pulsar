@@ -159,7 +159,7 @@ func testSourceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		count := 13
+		count := 16
 		if len(s[0].Attributes) != count {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", count, len(s[0].Attributes), s[0].Attributes)
 		}
@@ -181,6 +181,15 @@ func createSampleSource(name string) error {
 		return err
 	}
 
+	secretJSON := "{\"secret1\": {\"path\":\"sectest\",\"key\":\"hello\"}}"
+	secret := make(map[string]interface{})
+	err = json.Unmarshal([]byte(secretJSON), &secret)
+	if err != nil {
+		return err
+	}
+
+	runtimeOptionsJSON := "{\"maxMessageRetries\": 10}"
+
 	config := &utils.SourceConfig{
 		Tenant:               "public",
 		Namespace:            "default",
@@ -195,6 +204,9 @@ func createSampleSource(name string) error {
 			Disk: int64(bytesize.FormMegaBytes(20480).ToBytes()),
 			RAM:  int64(bytesize.FormMegaBytes(2048).ToBytes()),
 		},
+		Secrets:              secret,
+		SchemaType:           "JSON",
+		CustomRuntimeOptions: runtimeOptionsJSON,
 	}
 
 	return client.Sources().CreateSourceWithURL(config, config.Archive)
@@ -222,6 +234,10 @@ resource "pulsar_source" "test" {
   processing_guarantees = "EFFECTIVELY_ONCE"
 
   configs = "{\"inputDirectory\":\"opt\"}"
+
+  secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
+  schema_type = "JSON"
+  custom_runtime_options = "{\"maxMessageRetries\": 10}"
 
   cpu = 2
   disk_mb = 20480
