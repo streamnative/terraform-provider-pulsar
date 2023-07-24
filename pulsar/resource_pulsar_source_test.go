@@ -211,7 +211,6 @@ func createSampleSource(name string) error {
 			MaxPendingMessages:                 3000,
 			MaxPendingMessagesAcrossPartitions: 101,
 			UseThreadLocalProducers:            true,
-			CryptoConfig:                       nil,
 			BatchBuilder:                       "KEY_BASED",
 		},
 	}
