@@ -12,7 +12,7 @@ resource "pulsar_function" "function-1" {
     namespace = "default"
     parallelism = 1
 
-    processing_guarantees = "EFFECTIVELY_ONCE"
+    processing_guarantees = "ATLEAST_ONCE"
 
     jar = "function://public/default/api-examples@v1"
     classname = "org.apache.pulsar.functions.api.examples.WordCountFunction"
