@@ -37,7 +37,6 @@ resource "pulsar_source" "source-1" {
 
   secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
   schema_type = "JSON"
-  custom_runtime_options = "{\"maxMessageRetries\": 12}"
 
   max_pending_messages = 202
   max_pending_messages_across_partitions = 1000
