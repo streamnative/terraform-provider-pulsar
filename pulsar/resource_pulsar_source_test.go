@@ -208,8 +208,8 @@ func createSampleSource(name string) error {
 		SchemaType:           "JSON",
 		CustomRuntimeOptions: runtimeOptionsJSON,
 		ProducerConfig: &utils.ProducerConfig{
-			MaxPendingMessages:                 3000,
-			MaxPendingMessagesAcrossPartitions: 101,
+			MaxPendingMessages:                 101,
+			MaxPendingMessagesAcrossPartitions: 3000,
 			UseThreadLocalProducers:            true,
 			BatchBuilder:                       "KEY_BASED",
 		},
