@@ -33,11 +33,6 @@ resource "pulsar_source" "source-1" {
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
-  configs = "{\"inputDirectory\":\"/pulsar/conf/broker.conf\"}"
-
-  secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
-  schema_type = "JSON"
-
   max_pending_messages = 202
   max_pending_messages_across_partitions = 1000
   use_thread_local_producers = true
