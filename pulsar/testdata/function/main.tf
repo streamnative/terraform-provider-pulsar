@@ -24,7 +24,6 @@ resource "pulsar_function" "function-1" {
     subscription_name = "tf-sub"
     subscription_position = "Latest"
     cleanup_subscription = true
-    skip_to_latest = true
     forward_source_message_property = true
     retain_key_ordering = true
     auto_ack = true
