@@ -19,7 +19,7 @@ run)
   echo "Pulsar service is ready"
 
   echo "Uploading functions jar"
-  docker exec -it ${CONTAINER} /pulsar/bin/pulsar-admin packages upload \
+  docker exec ${CONTAINER} /pulsar/bin/pulsar-admin packages upload \
     --path /pulsar/examples/api-examples.jar \
     --description "api-examples" \
     function://public/default/api-examples@v1
