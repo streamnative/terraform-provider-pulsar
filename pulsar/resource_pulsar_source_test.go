@@ -245,8 +245,8 @@ resource "pulsar_source" "test" {
   schema_type = "JSON"
   custom_runtime_options = "{\"maxMessageRetries\": 10}"
 
-  max_pending_messages = 3000
-  max_pending_messages_across_partitions = 101
+  max_pending_messages = 101
+  max_pending_messages_across_partitions = 3000
   use_thread_local_producers = true
   batch_builder = "KEY_BASED"
   
