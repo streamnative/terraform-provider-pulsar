@@ -815,9 +815,15 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 		}
 	}
 
-	err = d.Set(resourceFunctionSecretsKey, functionConfig.Secrets)
-	if err != nil {
-		return err
+	if len(functionConfig.Secrets) != 0 {
+		s, err := json.Marshal(functionConfig.Secrets)
+		if err != nil {
+			return err
+		}
+		err = d.Set(resourceFunctionSecretsKey, string(s))
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.Resources != nil {
