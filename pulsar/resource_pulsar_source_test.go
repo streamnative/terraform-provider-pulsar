@@ -174,7 +174,7 @@ func createSampleSource(name string) error {
 		return err
 	}
 
-	configsJSON := "{\"inputDirectory\":\"opt\"}"
+	configsJSON := "{\"inputDirectory\":\"/pulsar/conf/broker.conf\"}"
 	configs := make(map[string]interface{})
 	err = json.Unmarshal([]byte(configsJSON), &configs)
 	if err != nil {
@@ -239,7 +239,7 @@ resource "pulsar_source" "test" {
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
-  configs = "{\"inputDirectory\":\"opt\"}"
+  configs = "{\"inputDirectory\":\"/pulsar/conf/broker.conf\"}"
 
   secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
   schema_type = "JSON"
