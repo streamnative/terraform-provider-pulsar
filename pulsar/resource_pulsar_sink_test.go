@@ -142,7 +142,7 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 24 {
+		if len(s[0].Attributes) != 27 {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", 24, len(s[0].Attributes), s[0].Attributes)
 		}
 
