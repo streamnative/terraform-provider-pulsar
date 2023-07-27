@@ -1,4 +1,4 @@
-FROM apachepulsar/pulsar:2.8.1
+FROM apachepulsar/pulsar:2.10.4
 
 COPY entrypoint.sh /
 RUN chmod +x /entrypoint.sh
