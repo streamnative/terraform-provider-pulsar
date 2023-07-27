@@ -54,6 +54,7 @@ jobs:
           docker ps
           make testacc
 
-      - name: Remove pulsar standalone from Docker
-        run: make remove-pulsar-from-docker
+      - name: Setup tmate session
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3
 
