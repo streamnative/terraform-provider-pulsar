@@ -20,15 +20,6 @@ provider "pulsar" {
   api_version = "3"
 }
 
-  secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
-  schema_type = "JSON"
-  custom_runtime_options = "{\"maxMessageRetries\": 10}"
-
-  max_pending_messages = 101
-  max_pending_messages_across_partitions = 3000
-  use_thread_local_producers = true
-  batch_builder = "KEY_BASED"
-
 resource "pulsar_source" "source-1" {
   provider = pulsar
 
