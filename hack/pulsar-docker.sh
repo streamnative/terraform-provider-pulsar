@@ -17,6 +17,14 @@ run)
     echo "Wait for pulsar service to be ready...$(date +%H:%M:%S)"
   done
   echo "Pulsar service is ready"
+
+  echo "Uploading functions jar"
+  docker exec -it ${CONTAINER} /pulsar/bin/pulsar-admin packages upload \
+    --path /pulsar/examples/api-examples.jar \
+    --description "api-examples" \
+    function://public/default/api-examples@v1
+  echo "functions jar uploaded"
+
   ;;
 remove)
   docker rm -f ${CONTAINER}
