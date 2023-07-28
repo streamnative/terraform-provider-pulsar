@@ -58,6 +58,17 @@ a [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar](ht
 
 - Run `make build-dev`, it will build the binary and copy it to the plugin directory automatically.
 
+# Version Compatibility
+
+The compatibility matrix from terraform-provider-pulsar to pulsar as shown below:
+
+|        | Min Version of Pulsar |
+|--------|-----------------------|
+| v0.2.x | pulsar 2.10.4         |
+| v0.1.x | pulsar 2.8.x          |
+
+> Note: It's not strictly tested. Please report issues when you encounter any bugs.
+
 # Using the Provider
 
 ## Configurations
