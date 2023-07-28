@@ -37,7 +37,7 @@ import (
 )
 
 var testdataArchive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?" +
-	"action=download&filename=pulsar/pulsar-2.8.1/connectors/pulsar-io-jdbc-postgres-2.8.1.nar"
+	"action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-jdbc-postgres-2.10.4.nar"
 
 func init() {
 	initTestWebServiceURL()
