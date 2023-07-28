@@ -354,7 +354,7 @@ resource "pulsar_source" "source-1" {
   tenant = "public"
   namespace = "default"
 
-  archive = "testdata/pulsar-io/pulsar-io-file-2.8.1.nar"
+  archive = "testdata/pulsar-io/pulsar-io-file-2.10.4.nar"
 
   destination_topic_name = "source-1-topic"
 
@@ -413,7 +413,7 @@ resource "pulsar_sink" "sample-sink-1" {
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
-  archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.8.1.nar"
+  archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.10.4.nar"
   configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
 }
 ```
