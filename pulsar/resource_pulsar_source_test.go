@@ -159,7 +159,7 @@ func testSourceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		count := 13
+		count := 20
 		if len(s[0].Attributes) != count {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", count, len(s[0].Attributes), s[0].Attributes)
 		}
@@ -174,12 +174,21 @@ func createSampleSource(name string) error {
 		return err
 	}
 
-	configsJSON := "{\"inputDirectory\":\"opt\"}"
+	configsJSON := "{\"inputDirectory\":\"/pulsar/conf/broker.conf\"}"
 	configs := make(map[string]interface{})
 	err = json.Unmarshal([]byte(configsJSON), &configs)
 	if err != nil {
 		return err
 	}
+
+	secretJSON := "{\"secret1\": {\"path\":\"sectest\",\"key\":\"hello\"}}"
+	secret := make(map[string]interface{})
+	err = json.Unmarshal([]byte(secretJSON), &secret)
+	if err != nil {
+		return err
+	}
+
+	runtimeOptionsJSON := "{\"maxMessageRetries\": 10}"
 
 	config := &utils.SourceConfig{
 		Tenant:               "public",
@@ -194,6 +203,15 @@ func createSampleSource(name string) error {
 			CPU:  2,
 			Disk: int64(bytesize.FormMegaBytes(20480).ToBytes()),
 			RAM:  int64(bytesize.FormMegaBytes(2048).ToBytes()),
+		},
+		Secrets:              secret,
+		SchemaType:           "JSON",
+		CustomRuntimeOptions: runtimeOptionsJSON,
+		ProducerConfig: &utils.ProducerConfig{
+			MaxPendingMessages:                 101,
+			MaxPendingMessagesAcrossPartitions: 3000,
+			UseThreadLocalProducers:            true,
+			BatchBuilder:                       "KEY_BASED",
 		},
 	}
 
@@ -221,8 +239,17 @@ resource "pulsar_source" "test" {
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
-  configs = "{\"inputDirectory\":\"opt\"}"
+  configs = "{\"inputDirectory\":\"/pulsar/conf/broker.conf\"}"
 
+  secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
+  schema_type = "JSON"
+  custom_runtime_options = "{\"maxMessageRetries\": 10}"
+
+  max_pending_messages = 101
+  max_pending_messages_across_partitions = 3000
+  use_thread_local_producers = true
+  batch_builder = "KEY_BASED"
+  
   cpu = 2
   disk_mb = 20480
   ram_mb = 2048

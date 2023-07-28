@@ -33,7 +33,10 @@ resource "pulsar_source" "source-1" {
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
-  configs = "{\"inputDirectory\":\"opt\"}"
+  max_pending_messages = 202
+  max_pending_messages_across_partitions = 1000
+  use_thread_local_producers = true
+  batch_builder = "KEY_BASED"
 
   cpu = 2
   disk_mb = 20480
