@@ -41,7 +41,7 @@ func init() {
 }
 
 var testdataSourceArchive = "https://www.apache.org/dyn/mirrors/mirrors.cgi" +
-	"?action=download&filename=pulsar/pulsar-2.8.1/connectors/pulsar-io-file-2.8.1.nar"
+	"?action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-file-2.10.4.nar"
 
 func TestSource(t *testing.T) {
 	configBytes, err := ioutil.ReadFile("testdata/source/main.tf")

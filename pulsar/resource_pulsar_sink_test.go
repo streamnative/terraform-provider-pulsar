@@ -37,7 +37,7 @@ import (
 )
 
 var testdataArchive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?" +
-	"action=download&filename=pulsar/pulsar-2.8.1/connectors/pulsar-io-jdbc-postgres-2.8.1.nar"
+	"action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-jdbc-postgres-2.10.4.nar"
 
 func init() {
 	initTestWebServiceURL()
@@ -142,7 +142,7 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 24 {
+		if len(s[0].Attributes) != 27 {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", 24, len(s[0].Attributes), s[0].Attributes)
 		}
 
