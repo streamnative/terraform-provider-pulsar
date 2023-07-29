@@ -346,6 +346,105 @@ resource "pulsar_topic" "sample-topic-2" {
 | `permission_grant`   | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No       |
 | `retention_policies` | Data retention policies                                                                                                                                                                                                 | No       |
 
+### `pulsar_function`
+
+A resource for creating and managing Apache Pulsar Functions.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+  api_version = "3"
+}
+
+resource "pulsar_function" "function-1" {
+  provider = pulsar
+
+  name = "function1"
+  tenant = "public"
+  namespace = "default"
+  parallelism = 1
+
+  processing_guarantees = "ATLEAST_ONCE"
+
+  jar = "/Downloads/apache-pulsar-2.10.1/examples/api-examples.jar"
+  classname = "org.apache.pulsar.functions.api.examples.WordCountFunction"
+
+  inputs = ["public/default/input1", "public/default/input2"]
+
+  output = "public/default/test-out"
+
+  subscription_name = "test-sub"
+  subscription_position = "Latest"
+  cleanup_subscription = true
+  skip_to_latest = true
+  forward_source_message_property = true
+  retain_key_ordering = true
+  auto_ack = true
+  max_message_retries = 101
+  dead_letter_topic = "public/default/dlt"
+  log_topic = "public/default/lt"
+  timeout_ms = 6666
+
+  secrets = jsonencode(
+  {
+    "SECRET1": {
+       "path": "sectest"
+       "key": "hello"
+    }
+  })
+  custom_runtime_options = jsonencode(
+  {
+      "env": {
+          "MILLBRAE": "HILLCREST"
+      }
+  })
+}
+```
+
+#### Properties
+
+| Property                          | Description                                                                                                                                             | Required |
+|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| `name`                            | The name of the function.                                                                                                                               | True     |
+| `tenant`                          | The tenant of the function.                                                                                                                             | True     |
+| `namespace`                       | The namespace of the function.                                                                                                                          | True     |
+| `jar`                             | The path to the jar file.                                                                                                                               | False    |
+| `py`                              | The path to the python file.                                                                                                                            | False    |
+| `go`                              | The path to the go file.                                                                                                                                | False    |
+| `classname`                       | The class name of the function.                                                                                                                         | False    |
+| `inputs`                          | The input topics of the function.                                                                                                                       | False    |
+| `topics_pattern`                  | The input topics pattern of the function. The pattern is a regex expression. The function consumes from all topics matching the pattern.                | False    |
+| `output`                          | The output topic of the function.                                                                                                                       | False    |
+| `parallelism`                     | The parallelism of the function.                                                                                                                        | False    |
+| `processing_guarantees`           | The processing guarantees (aka delivery semantics) applied to the function. Possible values are `ATMOST_ONCE`, `ATLEAST_ONCE`, and `EFFECTIVELY_ONCE`.  | False    |
+| `subscription_name`               | The subscription name of the function.                                                                                                                  | False    |
+| `subscription_position`           | The subscription position of the function. Possible values are `LATEST`, `EARLIEST`, and `CUSTOM`.                                                      | False    |
+| `cleanup_subscription`            | Whether to clean up subscription when the function is deleted.                                                                                          | False    |
+| `skip_to_latest`                  | Whether to skip to the latest position when the function is restarted after failure.                                                                    | False    |
+| `forward_source_message_property` | Whether to forward source message property to the function output message.                                                                              | False    |
+| `retain_ordering`                 | Whether to retain ordering when the function is restarted after failure.                                                                                | False    |
+| `retain_key_ordering`             | Whether to retain key ordering when the function is restarted after failure.                                                                            | False    |
+| `auto_ack`                        | User defined configs key/values (JSON string)                                                                                                           | False    |
+| `max_message_retries`             | The maximum number of times that a message will be retried when the function is configured with `EFFECTIVELY_ONCE` processing guarantees.               | False    |
+| `dead_letter_topic`               | The dead letter topic of the function.                                                                                                                  | False    |
+| `log_topic`                       | The log topic of the function.                                                                                                                          | False    |
+| `timeout_ms`                      | The timeout of the function in milliseconds.                                                                                                            | False    |
+| `input_type_classname`            | The input type class name of the function.                                                                                                              | False    |
+| `output_type_classname`           | The output type class name of the function.                                                                                                             | False    |
+| `output_serde_classname`          | The output serde class name of the function.                                                                                                            | False    |
+| `output_schema_type`              | The output schema type of the function.                                                                                                                 | False    |
+| `custom_serde_inputs`             | The custom serde inputs of the function.                                                                                                                | False    |
+| `custom_schema_inputs`            | The custom schema inputs of the function.                                                                                                               | False    |
+| `custom_schema_outputs`           | The custom schema outputs of the function.                                                                                                              | False    |
+| `custom_runtime_options`          | The custom runtime options of the function.                                                                                                             | False    |
+| `secrets`                         | The secrets of the function.                                                                                                                            | False    |
+| `cpu`                             | The CPU that needs to be allocated per function instance                                                                                                | False    |
+| `ram_mb`                          | The RAM that need to be allocated per function instance                                                                                                 | False    |
+| `disk_mb`                         | The disk that need to be allocated per function instance                                                                                                | False    |
+
+
 ### `pulsar_source`
 
 A resource for creating and managing Apache Pulsar Sources.
