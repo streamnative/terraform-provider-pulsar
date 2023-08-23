@@ -20,7 +20,7 @@
 name: Document Bot
 
 on:
-  pull_request_target :
+  pull_request_target:
     types:
       - opened
       - edited
@@ -37,7 +37,7 @@ jobs:
     name: Labeling
     if: ${{ github.repository == 'streamnative/terraform-provider-pulsar' }}
     permissions:
-      pull-requests: write 
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3

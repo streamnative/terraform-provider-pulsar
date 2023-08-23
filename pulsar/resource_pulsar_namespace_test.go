@@ -22,10 +22,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/streamnative/pulsar-admin-go/pkg/admin"
 )
 
 func init() {

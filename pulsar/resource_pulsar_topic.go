@@ -21,11 +21,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
-	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 func resourcePulsarTopic() *schema.Resource {

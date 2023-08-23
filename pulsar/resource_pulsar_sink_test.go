@@ -24,14 +24,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/pkg/errors"
-	"github.com/streamnative/pulsar-admin-go/pkg/admin"
-	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
-	"github.com/streamnative/pulsar-admin-go/pkg/rest"
-	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 
 	"github.com/streamnative/terraform-provider-pulsar/bytesize"
 )

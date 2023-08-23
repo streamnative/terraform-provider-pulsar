@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 func schemaBacklogQuotaSubset() *schema.Resource {

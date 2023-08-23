@@ -29,7 +29,8 @@ In this project, use `go mod` as the package management tool and make sure your 
 
 ## Fork
 
-Before contributing, you need to fork [terraform-provider-pulsar](https://github.com/streamnative/terraform-provider-pulsar) to your GitHub account.
+Before contributing, you need to
+fork [terraform-provider-pulsar](https://github.com/streamnative/terraform-provider-pulsar) to your GitHub account.
 
 ## Contribution flow
 
@@ -62,7 +63,7 @@ To configure annotation processing in GoLand, follow the steps below.
 
 ## Code style
 
-We use Go Community Style Guide in `terraform-provider-pulsar`. 
+We use Go Community Style Guide in `terraform-provider-pulsar`.
 For more information, see [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments).
 Also please refer to [Terraform Community Guidelines](https://www.hashicorp.com/community-guidelines)
 Always use gofmt and linter (linter config is provided), before submitting any code changes.
@@ -70,13 +71,15 @@ Always use gofmt and linter (linter config is provided), before submitting any c
 To make your pull request easy to review, maintain and develop, follow this style.
 
 ## Test Scripts
-To make sure that the changes/features/bug-fixes submitted by you does not break anything, always include test scripts 
+
+To make sure that the changes/features/bug-fixes submitted by you does not break anything, always include test scripts
 for your work. If you're implementing a feature/pulsar entity, please submit an Acceptance Test as well.
 You can learn more about Terraform Acceptance Tests [here](https://www.terraform.io/docs/extend/testing/index.html)
 
 ## Create a new file
 
-The project uses the open source protocol of Apache License 2.0. If you need to create a new file when developing new features, 
+The project uses the open source protocol of Apache License 2.0. If you need to create a new file when developing new
+features,
 add the license at the beginning of each file. The location of the header file: [header file](../.header).
 
 ## Update dependencies
