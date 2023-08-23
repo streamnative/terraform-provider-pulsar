@@ -24,10 +24,10 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
-	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 
 	"github.com/streamnative/terraform-provider-pulsar/pkg/admin"
 )

@@ -1,4 +1,3 @@
-
 <!--
 ### Contribution Checklist
 
@@ -46,24 +45,25 @@ This change is already covered by existing tests, such as *(please describe test
 This change added tests and can be verified as follows:
 
 *(example:)*
-  - *Added integration tests for end-to-end deployment with large payloads (10MB)*
-  - *Extended integration test for recovery after broker failure*
+
+- *Added integration tests for end-to-end deployment with large payloads (10MB)*
+- *Extended integration test for recovery after broker failure*
 
 ### Documentation
 
 Check the box below.
 
-Need to update docs? 
+Need to update docs?
 
-- [ ] `doc-required` 
-  
+- [ ] `doc-required`
+
   (If you need help on updating docs, create a doc issue)
-  
-- [ ] `no-need-doc` 
-  
+
+- [ ] `no-need-doc`
+
   (Please explain why)
-  
-- [ ] `doc` 
-  
+
+- [ ] `doc`
+
   (If this PR contains doc changes)
 

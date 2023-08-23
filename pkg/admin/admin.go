@@ -19,9 +19,9 @@ package admin
 
 import (
 	"github.com/apache/pulsar-client-go/oauth2"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/auth"
 	"github.com/pkg/errors"
-	"github.com/streamnative/pulsar-admin-go/pkg/admin"
-	"github.com/streamnative/pulsar-admin-go/pkg/admin/auth"
 
 	"github.com/streamnative/terraform-provider-pulsar/pkg/authentication"
 )

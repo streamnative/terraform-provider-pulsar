@@ -18,7 +18,7 @@
 package pulsar
 
 import (
-	"github.com/streamnative/pulsar-admin-go/pkg/admin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 )
 
 func getClientFromMeta(meta interface{}) admin.Client {

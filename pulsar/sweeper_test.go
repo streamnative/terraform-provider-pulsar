@@ -18,8 +18,8 @@
 package pulsar
 
 import (
-	"github.com/streamnative/pulsar-admin-go/pkg/admin"
-	common "github.com/streamnative/pulsar-admin-go/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	common "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 )
 
 func sharedClient(url string) (interface{}, error) {

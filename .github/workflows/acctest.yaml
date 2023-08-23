@@ -18,7 +18,7 @@
 #
 
 name: Tests
-on: [pull_request]
+on: [ pull_request ]
 jobs:
   acctest:
     name: Run acceptance tests
