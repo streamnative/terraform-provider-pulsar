@@ -70,6 +70,7 @@ const (
 	resourceFunctionCPUKey                  = "cpu"
 	resourceFunctionRAMKey                  = "ram_mb"
 	resourceFunctionDiskKey                 = "disk_mb"
+	resourceFunctionUserConfig              = "user_config"
 )
 
 var resourceFunctionDescriptions = make(map[string]string)
@@ -113,6 +114,7 @@ func init() {
 		resourceFunctionCPUKey:                  "The CPU that needs to be allocated per function instance",
 		resourceFunctionRAMKey:                  "The RAM that need to be allocated per function instance",
 		resourceFunctionDiskKey:                 "The disk that need to be allocated per function instance",
+		resourceFunctionUserConfig:              "User-defined config key/values",
 	}
 }
 
@@ -339,6 +341,12 @@ func resourcePulsarFunction() *schema.Resource {
 				Optional:    true,
 				Default:     128,
 				Description: resourceFunctionDescriptions[resourceFunctionDiskKey],
+			},
+			resourceFunctionUserConfig: {
+				Type:        schema.TypeMap,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionUserConfig],
+				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 		},
 	}
@@ -631,6 +639,11 @@ func marshalFunctionConfig(d *schema.ResourceData) (*utils.FunctionConfig, error
 	}
 	functionConfig.Resources = resources
 
+	if inter, ok := d.GetOk(resourceFunctionUserConfig); ok {
+		interMap := inter.(map[string]interface{})
+		functionConfig.UserConfig = interMap
+	}
+
 	return functionConfig, nil
 }
 
@@ -838,6 +851,17 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 		}
 
 		err = d.Set(resourceFunctionDiskKey, bytesize.FormBytes(uint64(functionConfig.Resources.Disk)).ToMegaBytes())
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(functionConfig.UserConfig) != 0 {
+		userConfig := make(map[string]interface{}, len(functionConfig.UserConfig))
+		for key, value := range functionConfig.UserConfig {
+			userConfig[key] = value
+		}
+		err = d.Set(resourceFunctionUserConfig, userConfig)
 		if err != nil {
 			return err
 		}
