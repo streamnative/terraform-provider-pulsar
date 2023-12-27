@@ -503,6 +503,7 @@ resource "pulsar_namespace" "test" {
     message_ttl_seconds            = "86400"
     replication_clusters           = ["standalone"]
     is_allow_auto_update_schema    = false
+	offload_threshold_size_in_mb   = "100"
   }
 
   dispatch_rate {
