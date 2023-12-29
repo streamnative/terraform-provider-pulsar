@@ -281,6 +281,7 @@ namespace_config nested schema
 | `replication_clusters`           | List of replication clusters for the namespace | No       |
 | `schema_compatibility_strategy`  | Set schema compatibility strategy              | No       |
 | `schema_validation_enforce`      | Enable or disable schema validation            | No       |
+| `offload_threshold_size_in_mb`   | Set topic offload threshold size in MB         | No       |
 
 The `schema_compatibility_strategy` can take the following values:
 
