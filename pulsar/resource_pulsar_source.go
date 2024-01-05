@@ -421,7 +421,7 @@ func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta 
 			if err != nil {
 				return diag.FromErr(err)
 			}
-			err = d.Set(resourceSourceCustomRuntimeOptionsKey, string(s))
+			err = d.Set(resourceSourceCustomRuntimeOptionsKey, s)
 			if err != nil {
 				return diag.FromErr(err)
 			}

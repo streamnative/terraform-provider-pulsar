@@ -503,7 +503,7 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 			if err != nil {
 				return diag.FromErr(err)
 			}
-			err = d.Set(resourceSinkCustomRuntimeOptionsKey, string(s))
+			err = d.Set(resourceSinkCustomRuntimeOptionsKey, s)
 			if err != nil {
 				return diag.FromErr(err)
 			}

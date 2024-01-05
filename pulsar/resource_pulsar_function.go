@@ -828,7 +828,7 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 			if err != nil {
 				return err
 			}
-			err = d.Set(resourceFunctionCustomRuntimeOptionsKey, string(s))
+			err = d.Set(resourceFunctionCustomRuntimeOptionsKey, s)
 			if err != nil {
 				return err
 			}
