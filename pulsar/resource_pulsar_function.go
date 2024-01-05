@@ -327,19 +327,19 @@ func resourcePulsarFunction() *schema.Resource {
 			resourceFunctionCPUKey: {
 				Type:        schema.TypeFloat,
 				Optional:    true,
-				Default:     0.5,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionCPUKey],
 			},
 			resourceFunctionRAMKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Default:     128,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionRAMKey],
 			},
 			resourceFunctionDiskKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Default:     128,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionDiskKey],
 			},
 			resourceFunctionUserConfig: {
@@ -822,9 +822,16 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 	}
 
 	if functionConfig.CustomRuntimeOptions != "" {
-		err = d.Set(resourceFunctionCustomRuntimeOptionsKey, functionConfig.CustomRuntimeOptions)
-		if err != nil {
-			return err
+		orig, ok := d.GetOk(resourceFunctionCustomRuntimeOptionsKey)
+		if ok {
+			s, err := ignoreServerSetCustomRuntimeOptions(orig.(string), functionConfig.CustomRuntimeOptions)
+			if err != nil {
+				return err
+			}
+			err = d.Set(resourceFunctionCustomRuntimeOptionsKey, string(s))
+			if err != nil {
+				return err
+			}
 		}
 	}
 

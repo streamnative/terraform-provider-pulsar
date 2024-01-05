@@ -31,3 +31,27 @@ func jsonValidateFunc(i interface{}, s string) ([]string, []error) {
 	}
 	return nil, nil
 }
+
+func ignoreServerSetCustomRuntimeOptions(tfGenString string, readString string) (string, error) {
+	tfGenMap := make(map[string]interface{})
+	err := json.Unmarshal([]byte(tfGenString), &tfGenMap)
+	if err != nil {
+		return "", err
+	}
+	readMap := make(map[string]interface{})
+	computedMap := make(map[string]interface{})
+	err = json.Unmarshal([]byte(readString), &readMap)
+	if err != nil {
+		return "", err
+	}
+	for k := range readMap {
+		if _, has := tfGenMap[k]; has {
+			computedMap[k] = readMap[k]
+		}
+	}
+	s, err := json.Marshal(computedMap)
+	if err != nil {
+		return "", err
+	}
+	return string(s), nil
+}

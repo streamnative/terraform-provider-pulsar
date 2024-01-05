@@ -260,19 +260,19 @@ func resourcePulsarSink() *schema.Resource {
 			resourceSinkCPUKey: {
 				Type:        schema.TypeFloat,
 				Optional:    true,
-				Default:     utils.NewDefaultResources().CPU,
+				Computed:    true,
 				Description: resourceSinkDescriptions[resourceSinkCPUKey],
 			},
 			resourceSinkRAMKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Default:     int(bytesize.FormBytes(uint64(utils.NewDefaultResources().RAM)).ToMegaBytes()),
+				Computed:    true,
 				Description: resourceSinkDescriptions[resourceSinkRAMKey],
 			},
 			resourceSinkDiskKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Default:     int(bytesize.FormBytes(uint64(utils.NewDefaultResources().Disk)).ToMegaBytes()),
+				Computed:    true,
 				Description: resourceSinkDescriptions[resourceSinkDiskKey],
 			},
 			resourceSinkConfigsKey: {
@@ -294,6 +294,7 @@ func resourcePulsarSink() *schema.Resource {
 			resourceSinkCustomRuntimeOptionsKey: {
 				Type:         schema.TypeString,
 				Optional:     true,
+				Computed:     true,
 				Description:  resourceSinkDescriptions[resourceSinkCustomRuntimeOptionsKey],
 				ValidateFunc: jsonValidateFunc,
 			},
@@ -353,11 +354,6 @@ func resourcePulsarSinkCreate(ctx context.Context, d *schema.ResourceData, meta 
 }
 
 func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// NOTE: Pulsar cannot returns the fields correctly, so ignore these:
-	// - resourceSinkSubscriptionPositionKey
-	// - resourceSinkProcessingGuaranteesKey
-	// - resourceSinkRetainOrderingKey
-
 	client := meta.(admin.Client).Sinks()
 
 	tenant := d.Get(resourceSinkTenantKey).(string)
@@ -500,10 +496,17 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 		}
 	}
 
-	if len(sinkConfig.CustomRuntimeOptions) != 0 {
-		err = d.Set(resourceSinkCustomRuntimeOptionsKey, sinkConfig.CustomRuntimeOptions)
-		if err != nil {
-			return diag.FromErr(err)
+	if sinkConfig.CustomRuntimeOptions != "" {
+		orig, ok := d.GetOk(resourceSinkCustomRuntimeOptionsKey)
+		if ok {
+			s, err := ignoreServerSetCustomRuntimeOptions(orig.(string), sinkConfig.CustomRuntimeOptions)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = d.Set(resourceSinkCustomRuntimeOptionsKey, string(s))
+			if err != nil {
+				return diag.FromErr(err)
+			}
 		}
 	}
 
@@ -542,6 +545,25 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 			return diag.FromErr(errors.Wrap(err, "cannot marshal secrets from sinkConfig"))
 		}
 		err = d.Set(resourceSinkSecretsKey, string(s))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	err = d.Set(resourceSinkRetainOrderingKey, sinkConfig.RetainOrdering)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if sinkConfig.ProcessingGuarantees != "" {
+		err = d.Set(resourceSinkProcessingGuaranteesKey, sinkConfig.ProcessingGuarantees)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if sinkConfig.SourceSubscriptionPosition != "" {
+		err = d.Set(resourceFunctionSubscriptionPositionKey, sinkConfig.SourceSubscriptionPosition)
 		if err != nil {
 			return diag.FromErr(err)
 		}
