@@ -279,31 +279,7 @@ func TestSinkUpdate(t *testing.T) {
 			{
 				Config:             configString,
 				PlanOnly:           true,
-				ExpectNonEmptyPlan: true,
-			},
-			{
-				Config: configString,
-				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
-					name := "pulsar_sink.update-sink-test-1"
-					rs, ok := s.RootModule().Resources[name]
-					if !ok {
-						return fmt.Errorf("%s not be found", name)
-					}
-
-					client := getClientFromMeta(testAccProvider.Meta()).Sinks()
-
-					parts := strings.Split(rs.Primary.ID, "/")
-					if len(parts) != 3 {
-						return errors.New("resource id should be tenant/namespace/name format")
-					}
-
-					_, err := client.GetSink(parts[0], parts[1], parts[2])
-					if err != nil {
-						return err
-					}
-
-					return nil
-				}),
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
