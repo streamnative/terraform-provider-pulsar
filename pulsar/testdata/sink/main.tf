@@ -32,7 +32,7 @@ resource "pulsar_sink" "sink-1" {
   parallelism = 1
   auto_ack = true
 
-  processing_guarantees = "EFFECTIVELY_ONCE"
+  processing_guarantees = "ATLEAST_ONCE"
   retain_ordering = false
 
   archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-jdbc-postgres-2.10.4.nar"
