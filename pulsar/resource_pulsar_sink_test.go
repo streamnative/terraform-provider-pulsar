@@ -20,7 +20,7 @@ package pulsar
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
@@ -44,7 +44,7 @@ func init() {
 }
 
 func TestSink(t *testing.T) {
-	configBytes, err := ioutil.ReadFile("testdata/sink/main.tf")
+	configBytes, err := os.ReadFile("testdata/sink/main.tf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,10 +239,12 @@ resource "pulsar_sink" "test" {
 }
 
 func TestSinkUpdate(t *testing.T) {
-	configBytes, err := ioutil.ReadFile("testdata/sink/main.tf")
+	configBytes, err := os.ReadFile("testdata/sink/main.tf")
 	if err != nil {
 		t.Fatal(err)
 	}
+	configString := string(configBytes)
+	configString = strings.ReplaceAll(configString, "sink-1", "update-sink-test-1")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
@@ -251,9 +253,9 @@ func TestSinkUpdate(t *testing.T) {
 		CheckDestroy:              testPulsarSinkDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: string(configBytes),
+				Config: configString,
 				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
-					name := "pulsar_sink.sink-1"
+					name := "pulsar_sink.update-sink-test-1"
 					rs, ok := s.RootModule().Resources[name]
 					if !ok {
 						return fmt.Errorf("%s not be found", name)
@@ -275,14 +277,14 @@ func TestSinkUpdate(t *testing.T) {
 				}),
 			},
 			{
-				Config:             string(configBytes),
+				Config:             configString,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: true,
 			},
 			{
-				Config: string(configBytes),
+				Config: configString,
 				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
-					name := "pulsar_sink.sink-1"
+					name := "pulsar_sink.update-sink-test-1"
 					rs, ok := s.RootModule().Resources[name]
 					if !ok {
 						return fmt.Errorf("%s not be found", name)
