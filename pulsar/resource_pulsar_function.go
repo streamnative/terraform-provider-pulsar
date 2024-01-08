@@ -214,7 +214,31 @@ func resourcePulsarFunction() *schema.Resource {
 			resourceFunctionSubscriptionPositionKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionSubscriptionPositionKey],
+				ValidateFunc: func(val interface{}, key string) ([]string, []error) {
+					v := val.(string)
+					subscriptionPositionSupported := []string{
+						SubscriptionPositionEarliest,
+						SubscriptionPositionLatest,
+					}
+
+					found := false
+					for _, item := range subscriptionPositionSupported {
+						if v == item {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return nil, []error{
+							fmt.Errorf("%s is unsupported, shold be one of %s", v,
+								strings.Join(subscriptionPositionSupported, ",")),
+						}
+					}
+
+					return nil, nil
+				},
 			},
 			resourceFunctionCleanupSubscriptionKey: {
 				Type:        schema.TypeBool,

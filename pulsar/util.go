@@ -12,6 +12,11 @@ const (
 	ProcessingGuaranteesEffectivelyOnce = "EFFECTIVELY_ONCE"
 )
 
+const (
+	SubscriptionPositionEarliest = "Earliest"
+	SubscriptionPositionLatest   = "Latest"
+)
+
 func isPackageURLSupported(functionPkgURL string) bool {
 	return strings.HasPrefix(functionPkgURL, "http://") ||
 		strings.HasPrefix(functionPkgURL, "https://") ||

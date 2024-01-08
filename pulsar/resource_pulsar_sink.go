@@ -173,8 +173,31 @@ func resourcePulsarSink() *schema.Resource {
 			resourceSinkSubscriptionPositionKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Default:     "Earliest",
+				Default:     SubscriptionPositionEarliest,
 				Description: resourceSinkDescriptions[resourceSinkSubscriptionPositionKey],
+				ValidateFunc: func(val interface{}, key string) ([]string, []error) {
+					v := val.(string)
+					subscriptionPositionSupported := []string{
+						SubscriptionPositionEarliest,
+						SubscriptionPositionLatest,
+					}
+
+					found := false
+					for _, item := range subscriptionPositionSupported {
+						if v == item {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return nil, []error{
+							fmt.Errorf("%s is unsupported, shold be one of %s", v,
+								strings.Join(subscriptionPositionSupported, ",")),
+						}
+					}
+
+					return nil, nil
+				},
 			},
 			resourceSinkCustomSerdeInputsKey: {
 				Type:        schema.TypeMap,
@@ -563,7 +586,7 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 	}
 
 	if sinkConfig.SourceSubscriptionPosition != "" {
-		err = d.Set(resourceFunctionSubscriptionPositionKey, sinkConfig.SourceSubscriptionPosition)
+		err = d.Set(resourceSinkSubscriptionPositionKey, sinkConfig.SourceSubscriptionPosition)
 		if err != nil {
 			return diag.FromErr(err)
 		}
