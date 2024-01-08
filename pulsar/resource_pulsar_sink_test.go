@@ -223,6 +223,7 @@ resource "pulsar_sink" "test" {
   max_redeliver_count = 5
   negative_ack_redelivery_delay_ms = 3000
   retain_key_ordering = false 
+	retain_ordering = false
   secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
 
   processing_guarantees = "EFFECTIVELY_ONCE"
