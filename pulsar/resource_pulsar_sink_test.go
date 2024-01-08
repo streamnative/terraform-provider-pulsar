@@ -237,3 +237,72 @@ resource "pulsar_sink" "test" {
 }
 `, name, testdataArchive)
 }
+
+func TestSinkUpdate(t *testing.T) {
+	configBytes, err := ioutil.ReadFile("testdata/sink/main.tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
+		ProviderFactories:         testAccProviderFactories,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarSinkDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: string(configBytes),
+				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
+					name := "pulsar_sink.sink-1"
+					rs, ok := s.RootModule().Resources[name]
+					if !ok {
+						return fmt.Errorf("%s not be found", name)
+					}
+
+					client := getClientFromMeta(testAccProvider.Meta()).Sinks()
+
+					parts := strings.Split(rs.Primary.ID, "/")
+					if len(parts) != 3 {
+						return errors.New("resource id should be tenant/namespace/name format")
+					}
+
+					_, err := client.GetSink(parts[0], parts[1], parts[2])
+					if err != nil {
+						return err
+					}
+
+					return nil
+				}),
+			},
+			{
+				Config:             string(configBytes),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+			{
+				Config: string(configBytes),
+				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
+					name := "pulsar_sink.sink-1"
+					rs, ok := s.RootModule().Resources[name]
+					if !ok {
+						return fmt.Errorf("%s not be found", name)
+					}
+
+					client := getClientFromMeta(testAccProvider.Meta()).Sinks()
+
+					parts := strings.Split(rs.Primary.ID, "/")
+					if len(parts) != 3 {
+						return errors.New("resource id should be tenant/namespace/name format")
+					}
+
+					_, err := client.GetSink(parts[0], parts[1], parts[2])
+					if err != nil {
+						return err
+					}
+
+					return nil
+				}),
+			},
+		},
+	})
+}
