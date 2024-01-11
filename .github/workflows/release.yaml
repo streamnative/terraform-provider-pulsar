@@ -32,6 +32,6 @@ jobs:
     uses: hashicorp/ghaction-terraform-provider-release/.github/workflows/community.yml@v2
     secrets:
       gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-      gpg-private-key-passphrase: ${{ secrets.PASSPHRASE }}
+      gpg-private-key-passphrase: ${{ secrets.GPG_PRIVATE_KEY_PASSPHRASE }}
     with:
       setup-go-version-file: 'go.mod'
