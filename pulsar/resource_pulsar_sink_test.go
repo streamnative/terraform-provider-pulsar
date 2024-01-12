@@ -20,7 +20,7 @@ package pulsar
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
@@ -44,7 +44,7 @@ func init() {
 }
 
 func TestSink(t *testing.T) {
-	configBytes, err := ioutil.ReadFile("testdata/sink/main.tf")
+	configBytes, err := os.ReadFile("testdata/sink/main.tf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,8 +142,8 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 27 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 24, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 30 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 30, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -173,7 +173,7 @@ func createSampleSink(name string) error {
 
 	config := &utils.SinkConfig{
 		CleanupSubscription:        false,
-		RetainOrdering:             false,
+		RetainOrdering:             true,
 		AutoAck:                    true,
 		Parallelism:                1,
 		Tenant:                     "public",
@@ -223,6 +223,7 @@ resource "pulsar_sink" "test" {
   max_redeliver_count = 5
   negative_ack_redelivery_delay_ms = 3000
   retain_key_ordering = false 
+	retain_ordering = true
   secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
 
   processing_guarantees = "EFFECTIVELY_ONCE"
@@ -235,4 +236,51 @@ resource "pulsar_sink" "test" {
   configs = "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
 }
 `, name, testdataArchive)
+}
+
+func TestSinkUpdate(t *testing.T) {
+	configBytes, err := os.ReadFile("testdata/sink/main.tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	configString := string(configBytes)
+	configString = strings.ReplaceAll(configString, "sink-1", "update-sink-test-1")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
+		ProviderFactories:         testAccProviderFactories,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarSinkDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: configString,
+				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
+					name := "pulsar_sink.update-sink-test-1"
+					rs, ok := s.RootModule().Resources[name]
+					if !ok {
+						return fmt.Errorf("%s not be found", name)
+					}
+
+					client := getClientFromMeta(testAccProvider.Meta()).Sinks()
+
+					parts := strings.Split(rs.Primary.ID, "/")
+					if len(parts) != 3 {
+						return errors.New("resource id should be tenant/namespace/name format")
+					}
+
+					_, err := client.GetSink(parts[0], parts[1], parts[2])
+					if err != nil {
+						return err
+					}
+
+					return nil
+				}),
+			},
+			{
+				Config:             configString,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
 }

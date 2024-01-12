@@ -203,20 +203,20 @@ func resourcePulsarSource() *schema.Resource {
 			resourceSourceCPUKey: {
 				Type:        schema.TypeFloat,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceSourceDescriptions[resourceSourceCPUKey],
-				Default:     utils.NewDefaultResources().CPU,
 			},
 			resourceSourceRAMKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceSourceDescriptions[resourceSourceRAMKey],
-				Default:     int(bytesize.FormBytes(uint64(utils.NewDefaultResources().RAM)).ToMegaBytes()),
 			},
 			resourceSourceDiskKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceSourceDescriptions[resourceSourceDiskKey],
-				Default:     int(bytesize.FormBytes(uint64(utils.NewDefaultResources().Disk)).ToMegaBytes()),
 			},
 			resourceSourceConfigsKey: {
 				Type:        schema.TypeString,
@@ -414,10 +414,17 @@ func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta 
 		}
 	}
 
-	if len(sourceConfig.CustomRuntimeOptions) != 0 {
-		err = d.Set(resourceSourceCustomRuntimeOptionsKey, sourceConfig.CustomRuntimeOptions)
-		if err != nil {
-			return diag.FromErr(err)
+	if sourceConfig.CustomRuntimeOptions != "" {
+		orig, ok := d.GetOk(resourceSourceCustomRuntimeOptionsKey)
+		if ok {
+			s, err := ignoreServerSetCustomRuntimeOptions(orig.(string), sourceConfig.CustomRuntimeOptions)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = d.Set(resourceSourceCustomRuntimeOptionsKey, s)
+			if err != nil {
+				return diag.FromErr(err)
+			}
 		}
 	}
 

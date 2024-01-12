@@ -70,3 +70,4 @@ gen
 .DS_Store
 
 .vscode/
+.terraform.lock.hcl
