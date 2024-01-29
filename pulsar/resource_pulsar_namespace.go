@@ -791,16 +791,9 @@ func unmarshalTopicAutoCreation(v *schema.Set) (*utils.TopicAutoCreationConfig, 
 		topicAutoCreation.Allow = data["enable"].(bool)
 		topicAutoCreation.Type = utils.TopicType(data["type"].(string))
 		if topicAutoCreation.Type == utils.Partitioned {
-			if data["partitions"] == nil {
-				return nil, fmt.Errorf("ERROR_PARSE_TOPIC_AUTO_CREATION: partitions is required for partitioned topic")
-			}
 			partitions := data["partitions"].(int)
 			topicAutoCreation.Partitions = &partitions
-		} else if topicAutoCreation.Type == utils.NonPartitioned {
-			if data["partitions"] != nil {
-				return nil, fmt.Errorf("ERROR_PARSE_TOPIC_AUTO_CREATION: partitions is not allowed for non-partitioned topic")
-			}
-		} else {
+		} else if topicAutoCreation.Type != utils.NonPartitioned {
 			return nil, fmt.Errorf("ERROR_PARSE_TOPIC_AUTO_CREATION: unknown topic type %s", topicAutoCreation.Type)
 		}
 	}
