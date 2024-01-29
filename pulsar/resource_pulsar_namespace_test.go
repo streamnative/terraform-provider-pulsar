@@ -134,6 +134,10 @@ func TestNamespaceWithUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.0", "consume"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.1", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.enable", "true"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.type", "partitioned"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.partitions", "3"),
 				),
 			},
 		},
@@ -239,6 +243,75 @@ func TestNamespaceWithPermissionGrantUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "produce"),
+				),
+			},
+		},
+	})
+}
+
+func TestNamespaceWithTopicAutoCreationUpdate(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckNoResourceAttr(resourceName, "topic_auto_creation.#"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithTopicAutoCreation(testWebServiceURL, cName, tName, nsName,
+					`topic_auto_creation {
+						enable = "false"
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.enable", "false"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithTopicAutoCreation(testWebServiceURL, cName, tName, nsName,
+					`topic_auto_creation {
+						enable = "true"
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.enable", "true"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.type", "non-partitioned"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithTopicAutoCreation(testWebServiceURL, cName, tName, nsName,
+					`topic_auto_creation {
+						enable = "true"
+						type = "partitioned"
+						partitions = 3
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.enable", "true"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.type", "partitioned"),
+					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.partitions", "3"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckNoResourceAttr(resourceName, "topic_auto_creation.#"),
 				),
 			},
 		},
@@ -462,6 +535,12 @@ resource "pulsar_namespace" "test" {
 		role 		= "some-role-2"
 		actions = ["produce", "consume"]
 	}
+
+	topic_auto_creation {
+		enable = true
+		type = "partitioned"
+		partitions = 3
+	}
 }
 `, wsURL, cluster, tenant, ns)
 }
@@ -543,4 +622,35 @@ resource "pulsar_namespace" "test" {
 	%s
 }
 `, wsURL, cluster, tenant, ns, permissionGrants)
+}
+
+func testPulsarNamespaceWithTopicAutoCreation(wsURL, cluster, tenant, ns string, topicAutoCreation string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+  cluster = "%s"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "%s"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+	namespace = "%s"
+
+	%s
+}
+`, wsURL, cluster, tenant, ns, topicAutoCreation)
 }

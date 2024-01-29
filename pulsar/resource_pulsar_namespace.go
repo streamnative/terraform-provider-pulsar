@@ -792,6 +792,9 @@ func unmarshalTopicAutoCreation(v *schema.Set) (*utils.TopicAutoCreationConfig, 
 		topicAutoCreation.Type = utils.TopicType(data["type"].(string))
 		if topicAutoCreation.Type == utils.Partitioned {
 			partitions := data["partitions"].(int)
+			if partitions <= 0 {
+				return nil, fmt.Errorf("ERROR_PARSE_TOPIC_AUTO_CREATION: partitions must be greater than 0")
+			}
 			topicAutoCreation.Partitions = &partitions
 		} else if topicAutoCreation.Type != utils.NonPartitioned {
 			return nil, fmt.Errorf("ERROR_PARSE_TOPIC_AUTO_CREATION: unknown topic type %s", topicAutoCreation.Type)
