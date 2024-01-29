@@ -3,7 +3,7 @@ module github.com/streamnative/terraform-provider-pulsar
 go 1.18
 
 require (
-	github.com/apache/pulsar-client-go v0.9.1-0.20230816081803-fbee610ddcbf
+	github.com/apache/pulsar-client-go v0.12.0
 	github.com/cenkalti/backoff/v4 v4.1.2
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/terraform-plugin-log v0.4.0
