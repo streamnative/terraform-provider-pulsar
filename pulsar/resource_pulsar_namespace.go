@@ -392,7 +392,7 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 				"schema_validation_enforce":      schemaValidationEnforce,
 				"schema_compatibility_strategy":  schemaCompatibilityStrategy.String(),
 				"is_allow_auto_update_schema":    isAllowAutoUpdateSchema,
-				"offload_threshold_size_in_mb":   offloadTresholdSizeInMb,
+				"offload_threshold_size_in_mb":   int(offloadTresholdSizeInMb),
 			},
 		}))
 	}
