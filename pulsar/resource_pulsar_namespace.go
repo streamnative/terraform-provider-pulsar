@@ -230,6 +230,30 @@ func resourcePulsarNamespace() *schema.Resource {
 					},
 				},
 			},
+			"topic_auto_creation": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"enable": {
+							Type:     schema.TypeBool,
+							Required: true,
+						},
+						"type": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							ValidateFunc: validatePartitionedTopicType,
+							Default:      "non-partitioned",
+						},
+						"partitions": {
+							Type:     schema.TypeInt,
+							Optional: true,
+						},
+					},
+				},
+				Set: topicAutoCreationPoliciesToHash,
+			},
 		},
 	}
 }
@@ -411,6 +435,23 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		setPermissionGrant(d, grants)
 	}
 
+	if topicAutoCreation, ok := d.GetOk("topic_auto_creation"); ok && topicAutoCreation.(*schema.Set).Len() > 0 {
+		autoCreation, err := client.GetTopicAutoCreation(*ns)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetTopicAutoCreation: %w", err))
+		}
+
+		data := map[string]interface{}{
+			"enable": autoCreation.Allow,
+			"type":   autoCreation.Type.String(),
+		}
+		if autoCreation.Partitions != nil {
+			data["partitions"] = *autoCreation.Partitions
+		}
+
+		_ = d.Set("topic_auto_creation", schema.NewSet(topicAutoCreationPoliciesToHash, []interface{}{data}))
+	}
+
 	return nil
 }
 
@@ -426,6 +467,7 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
 	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
 	permissionGrantConfig := d.Get("permission_grant").(*schema.Set)
+	topicAutoCreation := d.Get("topic_auto_creation").(*schema.Set)
 
 	nsName, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
@@ -562,6 +604,21 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 	}
 
+	if topicAutoCreation.Len() > 0 {
+		topicAutoCreationPolicy, err := unmarshalTopicAutoCreation(topicAutoCreation)
+		if err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("SetTopicAutoCreation: %w", err))
+		} else {
+			if err = client.SetTopicAutoCreation(*nsName, *topicAutoCreationPolicy); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetTopicAutoCreation: %w", err))
+			}
+		}
+	} else { // remove the topicAutoCreation
+		if err = client.RemoveTopicAutoCreation(*nsName); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("RemoveTopicAutoCreation: %w", err))
+		}
+	}
+
 	if errs != nil {
 		return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: %w", errs))
 	}
@@ -591,6 +648,7 @@ func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, 
 	_ = d.Set("dispatch_rate", nil)
 	_ = d.Set("persistence_policies", nil)
 	_ = d.Set("permission_grant", nil)
+	_ = d.Set("topic_auto_creation", nil)
 
 	return nil
 }
@@ -640,6 +698,19 @@ func persistencePoliciesToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%d-", m["bookkeeper_write_quorum"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["bookkeeper_ack_quorum"].(int)))
 	buf.WriteString(fmt.Sprintf("%f-", m["managed_ledger_max_mark_delete_rate"].(float64)))
+
+	return hashcode.String(buf.String())
+}
+
+func topicAutoCreationPoliciesToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%t-", m["enable"].(bool)))
+	buf.WriteString(fmt.Sprintf("%s-", m["type"].(string)))
+	if m["partitions"] != nil {
+		buf.WriteString(fmt.Sprintf("%d-", m["partitions"].(int)))
+	}
 
 	return hashcode.String(buf.String())
 }
@@ -709,4 +780,26 @@ func unmarshalPersistencePolicies(v *schema.Set) *utils.PersistencePolicies {
 	}
 
 	return &persPolicies
+}
+
+func unmarshalTopicAutoCreation(v *schema.Set) (*utils.TopicAutoCreationConfig, error) {
+	var topicAutoCreation utils.TopicAutoCreationConfig
+
+	for _, policy := range v.List() {
+		data := policy.(map[string]interface{})
+
+		topicAutoCreation.Allow = data["enable"].(bool)
+		topicAutoCreation.Type = utils.TopicType(data["type"].(string))
+		if topicAutoCreation.Type == utils.Partitioned {
+			partitions := data["partitions"].(int)
+			if partitions <= 0 {
+				return nil, fmt.Errorf("ERROR_PARSE_TOPIC_AUTO_CREATION: partitions must be greater than 0")
+			}
+			topicAutoCreation.Partitions = &partitions
+		} else if topicAutoCreation.Type != utils.NonPartitioned {
+			return nil, fmt.Errorf("ERROR_PARSE_TOPIC_AUTO_CREATION: unknown topic type %s", topicAutoCreation.Type)
+		}
+	}
+
+	return &topicAutoCreation, nil
 }
