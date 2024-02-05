@@ -27,6 +27,7 @@ description: |-
 - `permission_grant` (Block Set) (see [below for nested schema](#nestedblock--permission_grant))
 - `persistence_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--persistence_policies))
 - `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
+- `topic_auto_creation` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_auto_creation))
 
 ### Read-Only
 
@@ -98,4 +99,15 @@ Required:
 - `retention_minutes` (String)
 - `retention_size_in_mb` (String)
 
+<a id="nestedblock--topic_auto_creation"></a>
 
+### Nested Schema for `topic_auto_creation`
+
+Required:
+
+- `enable` (Boolean)
+
+Optional:
+
+- `type` (String)
+- `partitions` (Number)

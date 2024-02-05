@@ -50,3 +50,12 @@ func validateAuthAction(val interface{}, key string) (warns []string, errs []err
 	}
 	return
 }
+
+func validatePartitionedTopicType(val interface{}, key string) (warns []string, errs []error) {
+	v := val.(string)
+	_, err := utils.ParseTopicType(v)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("%q must be a valid topic type (got: %s): %w", key, v, err))
+	}
+	return
+}

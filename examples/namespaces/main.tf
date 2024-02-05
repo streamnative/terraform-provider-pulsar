@@ -73,4 +73,10 @@ resource "pulsar_namespace" "test" {
     limit_bytes  = "10000000000"
     policy = "producer_request_hold"
   }
+
+  topic_auto_creation {
+    enable = true
+    type = "partitioned"
+    partitions = 3
+  }
 }
