@@ -178,6 +178,12 @@ func resourcePulsarNamespace() *schema.Resource {
 							Optional: true,
 							Default:  true,
 						},
+						"offload_threshold_size_in_mb": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      -1,
+							ValidateFunc: validateGtEq0,
+						},
 					},
 				},
 				Set: namespaceConfigToHash,
@@ -347,6 +353,11 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetIsAllowAutoUpdateSchema: %w", err))
 		}
 
+		offloadTresholdSizeInMb, err := client.GetOffloadThreshold(*ns)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetOffloadThreshold: %w", err))
+		}
+
 		_ = d.Set("namespace_config", schema.NewSet(namespaceConfigToHash, []interface{}{
 			map[string]interface{}{
 				"anti_affinity":                  strings.Trim(strings.TrimSpace(afgrp), "\""),
@@ -358,6 +369,7 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 				"schema_validation_enforce":      schemaValidationEnforce,
 				"schema_compatibility_strategy":  schemaCompatibilityStrategy.String(),
 				"is_allow_auto_update_schema":    isAllowAutoUpdateSchema,
+				"offload_threshold_size_in_mb":   int(offloadTresholdSizeInMb),
 			},
 		}))
 	}
@@ -512,6 +524,12 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		if nsCfg.MessageTTLInSeconds >= 0 {
 			if err = client.SetNamespaceMessageTTL(nsName.String(), nsCfg.MessageTTLInSeconds); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetNamespaceMessageTTL: %w", err))
+			}
+		}
+
+		if nsCfg.OffloadThresholdSizeInMb >= 0 {
+			if err = client.SetOffloadThreshold(*nsName, int64(nsCfg.OffloadThresholdSizeInMb)); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetOffloadThreshold: %w", err))
 			}
 		}
 
@@ -686,6 +704,7 @@ func namespaceConfigToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%s-", m["replication_clusters"].([]interface{})))
 	buf.WriteString(fmt.Sprintf("%t-", m["schema_validation_enforce"].(bool)))
 	buf.WriteString(fmt.Sprintf("%s-", m["schema_compatibility_strategy"].(string)))
+	buf.WriteString(fmt.Sprintf("%d-", m["offload_threshold_size_in_mb"].(int)))
 
 	return hashcode.String(buf.String())
 }
@@ -762,6 +781,7 @@ func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
 		nsConfig.SchemaValidationEnforce = data["schema_validation_enforce"].(bool)
 		nsConfig.SchemaCompatibilityStrategy = data["schema_compatibility_strategy"].(string)
 		nsConfig.IsAllowAutoUpdateSchema = data["is_allow_auto_update_schema"].(bool)
+		nsConfig.OffloadThresholdSizeInMb = data["offload_threshold_size_in_mb"].(int)
 	}
 
 	return &nsConfig

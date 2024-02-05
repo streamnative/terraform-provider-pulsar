@@ -33,6 +33,7 @@ type (
 		SchemaValidationEnforce     bool
 		SchemaCompatibilityStrategy string
 		IsAllowAutoUpdateSchema     bool
+		OffloadThresholdSizeInMb    int
 	}
 
 	SplitNS struct {
