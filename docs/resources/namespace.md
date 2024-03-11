@@ -20,8 +20,10 @@ description: |-
 ### Optional
 
 - `backlog_quota` (Block Set) (see [below for nested schema](#nestedblock--backlog_quota))
-- `dispatch_rate` (Block Set, Max: 1) Data transfer rate, in and out of the Pulsar Broker (
+- `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace (
   see [below for nested schema](#nestedblock--dispatch_rate))
+- `subscription_dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the subscriptions under the given
+  namespace (see [below for nested schema](#nestedblock--subscription_dispatch_rate))
 - `enable_deduplication` (Boolean)
 - `namespace_config` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--namespace_config))
 - `permission_grant` (Block Set) (see [below for nested schema](#nestedblock--permission_grant))
@@ -47,6 +49,16 @@ Required:
 <a id="nestedblock--dispatch_rate"></a>
 
 ### Nested Schema for `dispatch_rate`
+
+Required:
+
+- `dispatch_byte_throttling_rate` (Number)
+- `dispatch_msg_throttling_rate` (Number)
+- `rate_period_seconds` (Number)
+
+<a id="nestedblock--subscription_dispatch_rate"></a>
+
+### Nested Schema for `subscription_dispatch_rate`
 
 Required:
 
