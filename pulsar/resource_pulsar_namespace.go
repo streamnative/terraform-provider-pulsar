@@ -94,6 +94,29 @@ func resourcePulsarNamespace() *schema.Resource {
 				},
 				Set: dispatchRateToHash,
 			},
+			"subscription_dispatch_rate": {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Description: descriptions["subscription_dispatch_rate"],
+				MaxItems:    1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"dispatch_msg_throttling_rate": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+						"rate_period_seconds": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+						"dispatch_byte_throttling_rate": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+					},
+				},
+				Set: dispatchRateToHash,
+			},
 			"retention_policies": {
 				Type:     schema.TypeSet,
 				Optional: true,
@@ -426,6 +449,21 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		}))
 	}
 
+	if subscriptionDispatchRateCfg, ok := d.GetOk("subscription_dispatch_rate"); ok && subscriptionDispatchRateCfg.(*schema.Set).Len() > 0 { //nolint:lll
+		sdr, err := client.GetSubscriptionDispatchRate(*ns)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSubscriptionDispatchRate: %w", err))
+		}
+
+		_ = d.Set("subscription_dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
+			map[string]interface{}{
+				"dispatch_msg_throttling_rate":  sdr.DispatchThrottlingRateInMsg,
+				"rate_period_seconds":           sdr.RatePeriodInSecond,
+				"dispatch_byte_throttling_rate": int(sdr.DispatchThrottlingRateInByte),
+			},
+		}))
+	}
+
 	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.(*schema.Set).List()) > 0 {
 		grants, err := client.GetNamespacePermissions(*ns)
 		if err != nil {
@@ -465,6 +503,7 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
 	backlogQuotaConfig := d.Get("backlog_quota").(*schema.Set)
 	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
+	subscriptionDispatchRateConfig := d.Get("subscription_dispatch_rate").(*schema.Set)
 	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
 	permissionGrantConfig := d.Get("permission_grant").(*schema.Set)
 	topicAutoCreation := d.Get("topic_auto_creation").(*schema.Set)
@@ -560,6 +599,13 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 	}
 
+	if subscriptionDispatchRateConfig.Len() > 0 {
+		subscriptionDispatchRate := unmarshalDispatchRate(subscriptionDispatchRateConfig)
+		if err = client.SetSubscriptionDispatchRate(*nsName, *subscriptionDispatchRate); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("SetSubscriptionDispatchRate: %w", err))
+		}
+	}
+
 	if persistencePoliciesConfig.Len() > 0 {
 		persistencePolicies := unmarshalPersistencePolicies(persistencePoliciesConfig)
 		if err = client.SetPersistence(nsName.String(), *persistencePolicies); err != nil {
@@ -646,6 +692,7 @@ func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, 
 	_ = d.Set("retention_policies", nil)
 	_ = d.Set("backlog_quota", nil)
 	_ = d.Set("dispatch_rate", nil)
+	_ = d.Set("subscription_dispatch_rate", nil)
 	_ = d.Set("persistence_policies", nil)
 	_ = d.Set("permission_grant", nil)
 	_ = d.Set("topic_auto_creation", nil)
