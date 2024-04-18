@@ -183,12 +183,14 @@ func resourcePulsarFunction() *schema.Resource {
 			resourceFunctionInputsKey: {
 				Type:        schema.TypeSet,
 				Optional:    true,
+				ForceNew:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionInputsKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			resourceFunctionTopicsPatternKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
+				ForceNew:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionTopicsPatternKey],
 			},
 			resourceFunctionOutputKey: {
@@ -209,6 +211,7 @@ func resourcePulsarFunction() *schema.Resource {
 			resourceFunctionSubscriptionNameKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
+				ForceNew:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionSubscriptionNameKey],
 			},
 			resourceFunctionSubscriptionPositionKey: {

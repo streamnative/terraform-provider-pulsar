@@ -152,17 +152,20 @@ func resourcePulsarSink() *schema.Resource {
 			resourceSinkInputsKey: {
 				Type:        schema.TypeSet,
 				Optional:    true,
+				ForceNew:    true,
 				Description: resourceSinkDescriptions[resourceSinkInputsKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			resourceSinkTopicsPatternKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
+				ForceNew:    true,
 				Description: resourceSinkDescriptions[resourceSinkTopicsPatternKey],
 			},
 			resourceSinkSubscriptionNameKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
+				ForceNew:    true,
 				Description: resourceSinkDescriptions[resourceSinkSubscriptionNameKey],
 			},
 			resourceSinkCleanupSubscriptionKey: {
