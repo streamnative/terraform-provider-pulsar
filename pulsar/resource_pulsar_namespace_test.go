@@ -110,6 +110,7 @@ func TestNamespaceWithUpdate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "subscription_dispatch_rate.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "0"),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
@@ -121,6 +122,7 @@ func TestNamespaceWithUpdate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "subscription_dispatch_rate.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "enable_deduplication", "true"),
@@ -162,6 +164,7 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "subscription_dispatch_rate.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "0"),
@@ -174,6 +177,7 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "0"),
+					resource.TestCheckResourceAttr(resourceName, "subscription_dispatch_rate.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
@@ -395,8 +399,8 @@ func testNamespaceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 11 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 11, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 12 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 12, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -502,6 +506,12 @@ resource "pulsar_namespace" "test" {
   }
 
   dispatch_rate {
+    dispatch_msg_throttling_rate  = 50
+    rate_period_seconds           = 50
+    dispatch_byte_throttling_rate = 2048
+  }
+
+  subscription_dispatch_rate {
     dispatch_msg_throttling_rate  = 50
     rate_period_seconds           = 50
     dispatch_byte_throttling_rate = 2048

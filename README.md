@@ -221,6 +221,12 @@ resource "pulsar_namespace" "test" {
     dispatch_byte_throttling_rate = 2048
   }
 
+  subscription_dispatch_rate {
+    dispatch_msg_throttling_rate  = 50
+    rate_period_seconds           = 50
+    dispatch_byte_throttling_rate = 2048
+  }
+
   retention_policies {
     retention_minutes    = "1600"
     retention_size_in_mb = "10000"
@@ -249,17 +255,18 @@ resource "pulsar_namespace" "test" {
 
 #### Properties
 
-| Property               | Description                                                                                                                                               | Required |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `tenant`               | Name of the Tenant managing this namespace                                                                                                                | Yes      |
-| `namespace`            | name of the namespace                                                                                                                                     | Yes      |
-| `enable_deduplication` | Message deduplication state on a namespace                                                                                                                | No       |
-| `namespace_config`     | Configuration for your namespaces like max allowed producers to produce messages                                                                          | No       |
-| `dispatch_rate`        | Apache Pulsar throttling config                                                                                                                           | No       |
-| `retention_policies`   | Data retention policies                                                                                                                                   | No       |
-| `backlog_quota`        | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics                                        | No       |
-| `persistence_policies` | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace           | No       |
-| `permission_grant`     | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No       |
+| Property                     | Description                                                                                                                                               | Required |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `tenant`                     | Name of the Tenant managing this namespace                                                                                                                | Yes      |
+| `namespace`                  | name of the namespace                                                                                                                                     | Yes      |
+| `enable_deduplication`       | Message deduplication state on a namespace                                                                                                                | No       |
+| `namespace_config`           | Configuration for your namespaces like max allowed producers to produce messages                                                                          | No       |
+| `dispatch_rate`              | [Apache Pulsar throttling config for topics](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-dispatch-throttling-for-topics)                  | No       |
+| `subscription_dispatch_rate` | [Apache Pulsar throttling config for subscriptions](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-dispatch-throttling-for-subscription)     | No       |
+| `retention_policies`         | Data retention policies                                                                                                                                   | No       |
+| `backlog_quota`              | [Backlog Quota](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-backlog-quota-policies) for all topics                                        | No       |
+| `persistence_policies`       | [Persistence policies](https://pulsar.apache.org/docs/en/admin-api-namespaces/#set-persistence-policies) for all topics under a given namespace           | No       |
+| `permission_grant`           | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a namespace. This block can be repeated for each grant you'd like to add | No       |
 
 namespace_config nested schema
 
