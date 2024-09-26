@@ -111,7 +111,7 @@ func resourcePulsarTenantUpdate(ctx context.Context, d *schema.ResourceData, met
 	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
-	adminRoles := handleHCLArray(d, "admin_roles")
+	adminRoles := handleHCLArrayV2(d.Get("admin_roles").(*schema.Set).List())
 	allowedClusters := handleHCLArrayV2(d.Get("allowed_clusters").(*schema.Set).List())
 
 	input := utils.TenantData{
