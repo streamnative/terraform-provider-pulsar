@@ -57,7 +57,7 @@ func resourcePulsarTenant() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"admin_roles": {
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Optional:    true,
 				Description: descriptions["admin_roles"],
 				Elem:        &schema.Schema{Type: schema.TypeString},

@@ -189,3 +189,71 @@ resource "pulsar_tenant" "test" {
 }
 `, url, tname)
 }
+
+func TestTenantWithAdminRoles(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { testAccPreCheck(t) },
+		ProviderFactories:         testAccProviderFactories,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarTenantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTenantWithAdminRoles,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTenantExists("pulsar_tenant.test"),
+					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
+					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.0", "pulsar-tenant-admin-role-1"),
+					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.1", "pulsar-oauth2-tenant-admin-role@testing.local"),
+				),
+			},
+		},
+	})
+}
+
+func TestTenantUpdateAdminRoles(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { testAccPreCheck(t) },
+		ProviderFactories:         testAccProviderFactories,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarTenantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTenantWithAdminRoles,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTenantExists("pulsar_tenant.test"),
+				),
+			},
+			{
+				Config: testPulsarTenantWithAdminRolesUpdated,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTenantExists("pulsar_tenant.test"),
+					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
+					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.0", "pulsar-oauth2-tenant-hearo-admin-role@aud-testing.auth.streamnative.cloud"),
+					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.1", "pulsar-tenant-hearo-admin-role"),
+				),
+			},
+		},
+	})
+}
+
+var testPulsarTenantWithAdminRoles = fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_tenant" "test" {
+  tenant = "thanos"
+  allowed_clusters = ["standalone"]
+  admin_roles = ["pulsar-tenant-admin-role-1", "pulsar-oauth2-tenant-admin-role@testing.local"]
+}`, testWebServiceURL)
+
+var testPulsarTenantWithAdminRolesUpdated = fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_tenant" "test" {
+  tenant = "thanos"
+  allowed_clusters = ["standalone"]
+  admin_roles = ["pulsar-oauth2-tenant-admin-role@testing.local", "pulsar-tenant-admin-role-1"]
+}`, testWebServiceURL)
