@@ -287,7 +287,7 @@ provider "pulsar" {
 resource "pulsar_tenant" "test" {
   tenant = "thanos"
   allowed_clusters = ["standalone"]
-  admin_roles = [%s, %s]
+  admin_roles = ["%s", "%s"]
 }`, testWebServiceURL, testPulsarTenantWithAdminRoles1, testPulsarTenantWithAdminRoles2)
 
 var testPulsarTenantWithAdminRolesUpdated = fmt.Sprintf(`
@@ -298,5 +298,5 @@ provider "pulsar" {
 resource "pulsar_tenant" "test" {
   tenant = "thanos"
   allowed_clusters = ["standalone"]
-  admin_roles = [%s, %s]
+  admin_roles = ["%s", "%s"]
 }`, testWebServiceURL, testPulsarTenantWithAdminRoles2, testPulsarTenantWithAdminRoles1)
