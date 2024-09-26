@@ -190,6 +190,12 @@ resource "pulsar_tenant" "test" {
 `, url, tname)
 }
 
+const (
+	testPulsarTenantWithAdminRoles1 = "pulsar-tenant-admin-role-1"
+	testPulsarTenantWithAdminRoles2 = "pulsar-oauth2-tenant-admin-role@testing.local"
+	testPulsarTenantWithAdminRoles3 = "pulsar-tenant-admin-role-2"
+)
+
 func TestTenantWithAdminRoles(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
@@ -202,10 +208,8 @@ func TestTenantWithAdminRoles(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTenantExists("pulsar_tenant.test"),
 					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
-					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.0",
-						"pulsar-tenant-admin-role-1"),
-					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.1",
-						"pulsar-oauth2-tenant-admin-role@testing.local"),
+					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles1),
+					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles2),
 				),
 			},
 		},
@@ -230,10 +234,45 @@ func TestTenantUpdateAdminRoles(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTenantExists("pulsar_tenant.test"),
 					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
-					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.0",
-						"pulsar-oauth2-tenant-hearo-admin-role@aud-testing.auth.streamnative.cloud"),
-					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.1",
-						"pulsar-tenant-hearo-admin-role"),
+					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles1),
+					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles2),
+				),
+			},
+		},
+	})
+}
+
+func TestTenantAdminRolesDrift(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { testAccPreCheck(t) },
+		ProviderFactories:         testAccProviderFactories,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarTenantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTenantWithAdminRoles,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTenantExists("pulsar_tenant.test"),
+					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
+					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles1),
+					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles2),
+				),
+			},
+			{
+				// Simulate drift by modifying the state directly
+				PreConfig: func() {
+					rs, ok := terraform.NewState().RootModule().Resources["pulsar_tenant.test"]
+					if !ok {
+						t.Fatalf("NOT_FOUND: pulsar_tenant.test")
+					}
+					rs.Primary.Attributes["admin_roles.0"] = testPulsarTenantWithAdminRoles3
+				},
+				Config: testPulsarTenantWithAdminRoles,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTenantExists("pulsar_tenant.test"),
+					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
+					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles1),
+					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles2),
 				),
 			},
 		},
@@ -248,8 +287,8 @@ provider "pulsar" {
 resource "pulsar_tenant" "test" {
   tenant = "thanos"
   allowed_clusters = ["standalone"]
-  admin_roles = ["pulsar-tenant-admin-role-1", "pulsar-oauth2-tenant-admin-role@testing.local"]
-}`, testWebServiceURL)
+  admin_roles = [%s, %s]
+}`, testWebServiceURL, testPulsarTenantWithAdminRoles1, testPulsarTenantWithAdminRoles2)
 
 var testPulsarTenantWithAdminRolesUpdated = fmt.Sprintf(`
 provider "pulsar" {
@@ -259,5 +298,5 @@ provider "pulsar" {
 resource "pulsar_tenant" "test" {
   tenant = "thanos"
   allowed_clusters = ["standalone"]
-  admin_roles = ["pulsar-oauth2-tenant-admin-role@testing.local", "pulsar-tenant-admin-role-1"]
-}`, testWebServiceURL)
+  admin_roles = [%s, %s]
+}`, testWebServiceURL, testPulsarTenantWithAdminRoles2, testPulsarTenantWithAdminRoles1)
