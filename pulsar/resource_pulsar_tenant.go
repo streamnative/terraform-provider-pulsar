@@ -174,11 +174,6 @@ func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
 	return nil
 }
 
-func handleHCLArray(d *schema.ResourceData, key string) []string {
-	hclArray := d.Get(key).([]interface{})
-	return handleHCLArrayV2(hclArray)
-}
-
 func handleHCLArrayV2(hclArray []interface{}) []string {
 	out := make([]string, 0)
 
