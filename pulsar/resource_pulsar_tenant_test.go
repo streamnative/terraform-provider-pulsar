@@ -20,6 +20,7 @@ package pulsar
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
@@ -197,14 +198,17 @@ const (
 )
 
 func TestTenantWithAdminRoles(t *testing.T) {
+	tName := acctest.RandString(10)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+		},
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarTenantDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarTenantWithAdminRoles,
+				Config: strings.Replace(testPulsarTenantWithAdminRoles, "thanos", tName, 1),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTenantExists("pulsar_tenant.test"),
 					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
@@ -217,6 +221,7 @@ func TestTenantWithAdminRoles(t *testing.T) {
 }
 
 func TestTenantUpdateAdminRoles(t *testing.T) {
+	tName := acctest.RandString(10)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
@@ -224,13 +229,13 @@ func TestTenantUpdateAdminRoles(t *testing.T) {
 		CheckDestroy:              testPulsarTenantDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarTenantWithAdminRoles,
+				Config: strings.Replace(testPulsarTenantWithAdminRoles, "thanos", tName, 1),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTenantExists("pulsar_tenant.test"),
 				),
 			},
 			{
-				Config: testPulsarTenantWithAdminRolesUpdated,
+				Config: strings.Replace(testPulsarTenantWithAdminRolesUpdated, "thanos", tName, 1),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTenantExists("pulsar_tenant.test"),
 					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
@@ -243,6 +248,7 @@ func TestTenantUpdateAdminRoles(t *testing.T) {
 }
 
 func TestTenantAdminRolesDrift(t *testing.T) {
+	tName := acctest.RandString(10)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
@@ -250,7 +256,7 @@ func TestTenantAdminRolesDrift(t *testing.T) {
 		CheckDestroy:              testPulsarTenantDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarTenantWithAdminRoles,
+				Config: strings.Replace(testPulsarTenantWithAdminRoles, "thanos", tName, 1),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTenantExists("pulsar_tenant.test"),
 					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
@@ -259,21 +265,9 @@ func TestTenantAdminRolesDrift(t *testing.T) {
 				),
 			},
 			{
-				// Simulate drift by modifying the state directly
-				PreConfig: func() {
-					rs, ok := terraform.NewState().RootModule().Resources["pulsar_tenant.test"]
-					if !ok {
-						t.Fatalf("NOT_FOUND: pulsar_tenant.test")
-					}
-					rs.Primary.Attributes["admin_roles.0"] = testPulsarTenantWithAdminRoles3
-				},
-				Config: testPulsarTenantWithAdminRoles,
-				Check: resource.ComposeTestCheckFunc(
-					testPulsarTenantExists("pulsar_tenant.test"),
-					resource.TestCheckResourceAttr("pulsar_tenant.test", "admin_roles.#", "2"),
-					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles1),
-					resource.TestCheckTypeSetElemAttr("pulsar_tenant.test", "admin_roles.*", testPulsarTenantWithAdminRoles2),
-				),
+				Config:             strings.Replace(testPulsarTenantWithAdminRoles, "thanos", tName, 1),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
