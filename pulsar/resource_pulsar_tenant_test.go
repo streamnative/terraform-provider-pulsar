@@ -194,7 +194,6 @@ resource "pulsar_tenant" "test" {
 const (
 	testPulsarTenantWithAdminRoles1 = "pulsar-tenant-admin-role-1"
 	testPulsarTenantWithAdminRoles2 = "pulsar-oauth2-tenant-admin-role@testing.local"
-	testPulsarTenantWithAdminRoles3 = "pulsar-tenant-admin-role-2"
 )
 
 func TestTenantWithAdminRoles(t *testing.T) {
