@@ -69,6 +69,7 @@ func TestFunction(t *testing.T) {
 					assert.Equal(t, "public", config.Tenant)
 					assert.Equal(t, "default", config.Namespace)
 					assert.Equal(t, ProcessingGuaranteesAtLeastOnce, config.ProcessingGuarantees)
+					assert.NotNil(t, config.TimeoutMs)
 					assert.Equal(t, int64(6666), *config.TimeoutMs)
 					assert.NotNil(t, config.Resources)
 
