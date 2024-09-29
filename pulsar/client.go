@@ -22,5 +22,9 @@ import (
 )
 
 func getClientFromMeta(meta interface{}) admin.Client {
-	return meta.(admin.Client)
+	return meta.(PulsarClientBundle).Client
+}
+
+func getV3ClientFromMeta(meta interface{}) admin.Client {
+	return meta.(PulsarClientBundle).V3Client
 }

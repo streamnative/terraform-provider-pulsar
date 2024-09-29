@@ -223,7 +223,6 @@ func testSampleSource(name string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
-  api_version = "3"
 }
 
 resource "pulsar_source" "test" {

@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -360,7 +359,7 @@ func resourcePulsarSink() *schema.Resource {
 }
 
 func resourcePulsarSinkCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Sinks()
+	client := getV3ClientFromMeta(meta).Sinks()
 
 	sinkConfig, err := marshalSinkConfig(d)
 	if err != nil {
@@ -380,7 +379,7 @@ func resourcePulsarSinkCreate(ctx context.Context, d *schema.ResourceData, meta 
 }
 
 func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Sinks()
+	client := getV3ClientFromMeta(meta).Sinks()
 
 	tenant := d.Get(resourceSinkTenantKey).(string)
 	namespace := d.Get(resourceSinkNamespaceKey).(string)
@@ -599,7 +598,7 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 }
 
 func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Sinks()
+	client := getV3ClientFromMeta(meta).Sinks()
 
 	sinkConfig, err := marshalSinkConfig(d)
 	if err != nil {
@@ -620,7 +619,7 @@ func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta 
 }
 
 func resourcePulsarSinkDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Sinks()
+	client := getV3ClientFromMeta(meta).Sinks()
 
 	tenant := d.Get(resourceSinkTenantKey).(string)
 	namespace := d.Get(resourceSinkNamespaceKey).(string)
