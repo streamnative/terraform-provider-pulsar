@@ -17,7 +17,7 @@ description: |-
 
 ### Optional
 
-- `api_version` (String) Api Version to be used for the pulsar admin interaction (DEPRECATED)
+- `api_version` (String) Api Version to be used for the pulsar admin interaction
 - `audience` (String) The OAuth 2.0 resource server identifier for the Pulsar cluster
 - `client_id` (String) The OAuth 2.0 client identifier
 - `issuer_url` (String) The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token
