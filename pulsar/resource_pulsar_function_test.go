@@ -64,6 +64,7 @@ func TestFunction(t *testing.T) {
 					if config == nil {
 						return fmt.Errorf("failed to create %s function", rs.Primary.ID)
 					}
+					fmt.Printf("config: %v\n", config)
 
 					assert.Equal(t, "function-1", config.Name)
 					assert.Equal(t, "public", config.Tenant)
