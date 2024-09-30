@@ -24,7 +24,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -84,7 +83,7 @@ func TestSink(t *testing.T) {
 }
 
 func testPulsarSinkDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(admin.Client).Sinks()
+	client := getV3ClientFromMeta(testAccProvider.Meta()).Sinks()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_sink" {
