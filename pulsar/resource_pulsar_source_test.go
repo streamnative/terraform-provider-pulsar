@@ -20,7 +20,7 @@ package pulsar
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
@@ -44,13 +44,13 @@ var testdataSourceArchive = "https://www.apache.org/dyn/mirrors/mirrors.cgi" +
 	"?action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-file-2.10.4.nar"
 
 func TestSource(t *testing.T) {
-	configBytes, err := ioutil.ReadFile("testdata/source/main.tf")
+	configBytes, err := os.ReadFile("testdata/source/main.tf")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
+		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSourceDestroy,
@@ -114,7 +114,7 @@ func testPulsarSourceDestroy(s *terraform.State) error {
 }
 
 func getPulsarSourceByResourceID(id string) (*utils.SourceConfig, error) {
-	client := getClientFromMeta(testAccProvider.Meta()).Sources()
+	client := getV3ClientFromMeta(testAccProvider.Meta()).Sources()
 
 	parts := strings.Split(id, "/")
 	if len(parts) != 3 {

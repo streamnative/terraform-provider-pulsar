@@ -20,7 +20,7 @@ package pulsar
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
@@ -36,7 +36,7 @@ func init() {
 }
 
 func TestFunction(t *testing.T) {
-	configBytes, err := ioutil.ReadFile("testdata/function/main.tf")
+	configBytes, err := os.ReadFile("testdata/function/main.tf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func testPulsarFunctionDestroy(s *terraform.State) error {
 }
 
 func getPulsarFunctionByResourceID(id string) (*utils.FunctionConfig, error) {
-	client := getClientFromMeta(testAccProvider.Meta()).Functions()
+	client := getV3ClientFromMeta(testAccProvider.Meta()).Functions()
 
 	parts := strings.Split(id, "/")
 	if len(parts) != 3 {

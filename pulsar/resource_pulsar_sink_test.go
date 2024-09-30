@@ -50,7 +50,7 @@ func TestSink(t *testing.T) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
+		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSinkDestroy,
@@ -64,7 +64,7 @@ func TestSink(t *testing.T) {
 						return fmt.Errorf("%s not be found", name)
 					}
 
-					client := getClientFromMeta(testAccProvider.Meta()).Sinks()
+					client := getV3ClientFromMeta(testAccProvider.Meta()).Sinks()
 
 					parts := strings.Split(rs.Primary.ID, "/")
 					if len(parts) != 3 {
@@ -246,7 +246,7 @@ func TestSinkUpdate(t *testing.T) {
 	configString = strings.ReplaceAll(configString, "sink-1", "update-sink-test-1")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
+		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSinkDestroy,
@@ -260,7 +260,7 @@ func TestSinkUpdate(t *testing.T) {
 						return fmt.Errorf("%s not be found", name)
 					}
 
-					client := getClientFromMeta(testAccProvider.Meta()).Sinks()
+					client := getV3ClientFromMeta(testAccProvider.Meta()).Sinks()
 
 					parts := strings.Split(rs.Primary.ID, "/")
 					if len(parts) != 3 {
