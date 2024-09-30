@@ -57,7 +57,7 @@ func resourcePulsarTenant() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"admin_roles": {
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Optional:    true,
 				Description: descriptions["admin_roles"],
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -70,7 +70,7 @@ func resourcePulsarTenantCreate(ctx context.Context, d *schema.ResourceData, met
 	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
-	adminRoles := handleHCLArray(d, "admin_roles")
+	adminRoles := handleHCLArrayV2(d.Get("admin_roles").(*schema.Set).List())
 	allowedClusters := handleHCLArrayV2(d.Get("allowed_clusters").(*schema.Set).List())
 
 	input := utils.TenantData{
@@ -111,7 +111,7 @@ func resourcePulsarTenantUpdate(ctx context.Context, d *schema.ResourceData, met
 	client := getClientFromMeta(meta).Tenants()
 
 	tenant := d.Get("tenant").(string)
-	adminRoles := handleHCLArray(d, "admin_roles")
+	adminRoles := handleHCLArrayV2(d.Get("admin_roles").(*schema.Set).List())
 	allowedClusters := handleHCLArrayV2(d.Get("allowed_clusters").(*schema.Set).List())
 
 	input := utils.TenantData{
@@ -172,11 +172,6 @@ func deleteExistingNamespacesForTenant(tenant string, meta interface{}) error {
 	}
 
 	return nil
-}
-
-func handleHCLArray(d *schema.ResourceData, key string) []string {
-	hclArray := d.Get(key).([]interface{})
-	return handleHCLArrayV2(hclArray)
 }
 
 func handleHCLArrayV2(hclArray []interface{}) []string {
