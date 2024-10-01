@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -380,7 +379,7 @@ func resourcePulsarFunction() *schema.Resource {
 }
 
 func resourcePulsarFunctionRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Functions()
+	client := getV3ClientFromMeta(meta).Functions()
 
 	tenant := d.Get(resourceFunctionTenantKey).(string)
 	namespace := d.Get(resourceFunctionNamespaceKey).(string)
@@ -396,13 +395,17 @@ func resourcePulsarFunctionRead(ctx context.Context, d *schema.ResourceData, met
 		return diag.FromErr(errors.Wrapf(err, "failed to get function %s", d.Id()))
 	}
 
-	unmarshalFunctionConfig(functionConfig, d)
+	err = unmarshalFunctionConfig(functionConfig, d)
+	if err != nil {
+		tflog.Debug(ctx, fmt.Sprintf("@@@Read function: %v", err))
+		return diag.Errorf("ERROR_UNMARSHAL_FUNCTION_CONFIG: %v", err)
+	}
 
 	return nil
 }
 
 func resourcePulsarFunctionCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Functions()
+	client := getV3ClientFromMeta(meta).Functions()
 
 	functionConfig, err := marshalFunctionConfig(d)
 	if err != nil {
@@ -434,7 +437,7 @@ func resourcePulsarFunctionCreate(ctx context.Context, d *schema.ResourceData, m
 }
 
 func resourcePulsarFunctionUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Functions()
+	client := getV3ClientFromMeta(meta).Functions()
 
 	functionConfig, err := marshalFunctionConfig(d)
 	if err != nil {
@@ -465,7 +468,7 @@ func resourcePulsarFunctionUpdate(ctx context.Context, d *schema.ResourceData, m
 }
 
 func resourcePulsarFunctionDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Functions()
+	client := getV3ClientFromMeta(meta).Functions()
 
 	tenant := d.Get(resourceFunctionTenantKey).(string)
 	namespace := d.Get(resourceFunctionNamespaceKey).(string)
@@ -676,19 +679,31 @@ func marshalFunctionConfig(d *schema.ResourceData) (*utils.FunctionConfig, error
 
 func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.ResourceData) error {
 	if functionConfig.Jar != nil {
-		d.Set(resourceFunctionJarKey, *functionConfig.Jar)
+		err := d.Set(resourceFunctionJarKey, *functionConfig.Jar)
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.Py != nil {
-		d.Set(resourceFunctionPyKey, *functionConfig.Py)
+		err := d.Set(resourceFunctionPyKey, *functionConfig.Py)
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.Go != nil {
-		d.Set(resourceFunctionGoKey, *functionConfig.Go)
+		err := d.Set(resourceFunctionGoKey, *functionConfig.Go)
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.ClassName != "" {
-		d.Set(resourceFunctionClassNameKey, functionConfig.ClassName)
+		err := d.Set(resourceFunctionClassNameKey, functionConfig.ClassName)
+		if err != nil {
+			return err
+		}
 	}
 
 	if len(functionConfig.Inputs) != 0 {
@@ -702,31 +717,52 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 	}
 
 	if functionConfig.TopicsPattern != nil {
-		d.Set(resourceFunctionTopicsPatternKey, *functionConfig.TopicsPattern)
+		err := d.Set(resourceFunctionTopicsPatternKey, *functionConfig.TopicsPattern)
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.Parallelism != 0 {
-		d.Set(resourceFunctionParallelismKey, functionConfig.Parallelism)
+		err := d.Set(resourceFunctionParallelismKey, functionConfig.Parallelism)
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.Output != "" {
-		d.Set(resourceFunctionOutputKey, functionConfig.Output)
+		err := d.Set(resourceFunctionOutputKey, functionConfig.Output)
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.Parallelism != 0 {
-		d.Set(resourceFunctionParallelismKey, functionConfig.Parallelism)
+		err := d.Set(resourceFunctionParallelismKey, functionConfig.Parallelism)
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.ProcessingGuarantees != "" {
-		d.Set(resourceFunctionProcessingGuaranteesKey, functionConfig.ProcessingGuarantees)
+		err := d.Set(resourceFunctionProcessingGuaranteesKey, functionConfig.ProcessingGuarantees)
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.SubName != "" {
-		d.Set(resourceFunctionSubscriptionNameKey, functionConfig.SubName)
+		err := d.Set(resourceFunctionSubscriptionNameKey, functionConfig.SubName)
+		if err != nil {
+			return err
+		}
 	}
 
 	if functionConfig.SubscriptionPosition != "" {
-		d.Set(resourceFunctionSubscriptionPositionKey, functionConfig.SubscriptionPosition)
+		err := d.Set(resourceFunctionSubscriptionPositionKey, functionConfig.SubscriptionPosition)
+		if err != nil {
+			return err
+		}
 	}
 
 	err := d.Set(resourceFunctionCleanupSubscriptionKey, functionConfig.CleanupSubscription)

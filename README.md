@@ -363,7 +363,6 @@ A resource for creating and managing Apache Pulsar Functions.
 ```hcl
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
-  api_version = "3"
 }
 
 resource "pulsar_function" "function-1" {
@@ -462,7 +461,6 @@ A resource for creating and managing Apache Pulsar Sources.
 ```hcl
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
-  api_version = "3"
 }
 
 resource "pulsar_source" "source-1" {
@@ -514,7 +512,6 @@ A resource for creating and managing Apache Pulsar Sinks.
 ```hcl
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
-  api_version = "3"
 }
 
 resource "pulsar_sink" "sample-sink-1" {

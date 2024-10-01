@@ -24,7 +24,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -50,7 +49,7 @@ func TestSink(t *testing.T) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
+		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSinkDestroy,
@@ -64,7 +63,7 @@ func TestSink(t *testing.T) {
 						return fmt.Errorf("%s not be found", name)
 					}
 
-					client := getClientFromMeta(testAccProvider.Meta()).Sinks()
+					client := getV3ClientFromMeta(testAccProvider.Meta()).Sinks()
 
 					parts := strings.Split(rs.Primary.ID, "/")
 					if len(parts) != 3 {
@@ -84,7 +83,7 @@ func TestSink(t *testing.T) {
 }
 
 func testPulsarSinkDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(admin.Client).Sinks()
+	client := getV3ClientFromMeta(testAccProvider.Meta()).Sinks()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "pulsar_sink" {
@@ -204,7 +203,6 @@ func testSampleSink(name string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
-  api_version = "3"
 }
 
 resource "pulsar_sink" "test" {
@@ -247,7 +245,7 @@ func TestSinkUpdate(t *testing.T) {
 	configString = strings.ReplaceAll(configString, "sink-1", "update-sink-test-1")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
+		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarSinkDestroy,
@@ -261,7 +259,7 @@ func TestSinkUpdate(t *testing.T) {
 						return fmt.Errorf("%s not be found", name)
 					}
 
-					client := getClientFromMeta(testAccProvider.Meta()).Sinks()
+					client := getV3ClientFromMeta(testAccProvider.Meta()).Sinks()
 
 					parts := strings.Split(rs.Primary.ID, "/")
 					if len(parts) != 3 {

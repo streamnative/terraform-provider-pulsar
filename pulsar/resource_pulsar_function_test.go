@@ -20,11 +20,10 @@ package pulsar
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -37,13 +36,13 @@ func init() {
 }
 
 func TestFunction(t *testing.T) {
-	configBytes, err := ioutil.ReadFile("testdata/function/main.tf")
+	configBytes, err := os.ReadFile("testdata/function/main.tf")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheckWithAPIVersion(t, config.V3) },
+		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
 		CheckDestroy:              testPulsarFunctionDestroy,
@@ -65,11 +64,13 @@ func TestFunction(t *testing.T) {
 					if config == nil {
 						return fmt.Errorf("failed to create %s function", rs.Primary.ID)
 					}
+					fmt.Printf("config: %v\n", config)
 
 					assert.Equal(t, "function-1", config.Name)
 					assert.Equal(t, "public", config.Tenant)
 					assert.Equal(t, "default", config.Namespace)
 					assert.Equal(t, ProcessingGuaranteesAtLeastOnce, config.ProcessingGuarantees)
+					assert.NotNil(t, config.TimeoutMs)
 					assert.Equal(t, int64(6666), *config.TimeoutMs)
 					assert.NotNil(t, config.Resources)
 
@@ -100,7 +101,7 @@ func testPulsarFunctionDestroy(s *terraform.State) error {
 }
 
 func getPulsarFunctionByResourceID(id string) (*utils.FunctionConfig, error) {
-	client := getClientFromMeta(testAccProvider.Meta()).Functions()
+	client := getV3ClientFromMeta(testAccProvider.Meta()).Functions()
 
 	parts := strings.Split(id, "/")
 	if len(parts) != 3 {

@@ -24,7 +24,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	pulsaradmin "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	adminconfig "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
@@ -67,6 +68,12 @@ func init() {
 		"scope":                          "The OAuth 2.0 scope(s) to request",
 		"key_file_path":                  "The path of the private key file",
 	}
+}
+
+// PulsarClientBundle is a struct that holds the pulsar admin client for both v2 and v3 api versions
+type PulsarClientBundle struct {
+	Client   pulsaradmin.Client
+	V3Client pulsaradmin.Client
 }
 
 // Provider returns a schema.Provider
@@ -204,10 +211,17 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 		return nil, diag.FromErr(fmt.Errorf("ERROR_PULSAR_CONFIG_tls_TRUST_FILE_NOTEXIST: %q", TLSTrustCertsFilePath))
 	}
 
-	config := &config.Config{
+	configVersion := adminconfig.APIVersion(apiVersion)
+	// for backward compatibility, if user state api_version as 3
+	// we will use v2 as the default client version because we have v3 as individual client
+	if configVersion == adminconfig.V3 {
+		configVersion = adminconfig.APIVersion(0) // v2 will be the default client version
+	}
+
+	config := &adminconfig.Config{
 		WebServiceURL:              clusterURL,
 		Token:                      token,
-		PulsarAPIVersion:           config.APIVersion(apiVersion),
+		PulsarAPIVersion:           configVersion,
 		TLSTrustCertsFilePath:      TLSTrustCertsFilePath,
 		TLSAllowInsecureConnection: TLSAllowInsecureConnection,
 		IssuerEndpoint:             issuerEndpoint,
@@ -226,7 +240,34 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 		return nil, diag.FromErr(err)
 	}
 
-	return client, nil
+	configV3 := &adminconfig.Config{
+		WebServiceURL:              clusterURL,
+		Token:                      token,
+		PulsarAPIVersion:           adminconfig.V3,
+		TLSTrustCertsFilePath:      TLSTrustCertsFilePath,
+		TLSAllowInsecureConnection: TLSAllowInsecureConnection,
+		IssuerEndpoint:             issuerEndpoint,
+		ClientID:                   clientID,
+		Audience:                   audience,
+		Scope:                      scope,
+		KeyFile:                    keyFilePath,
+		TLSKeyFile:                 TLSKeyFilePath,
+		TLSCertFile:                TLSCertFilePath,
+	}
+
+	clientV3, err := admin.NewPulsarAdminClient(&admin.PulsarAdminConfig{
+		Config: configV3,
+	})
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+
+	clientBundle := PulsarClientBundle{
+		Client:   client,
+		V3Client: clientV3,
+	}
+
+	return clientBundle, nil
 }
 
 // Exists reports whether the named file or directory exists.

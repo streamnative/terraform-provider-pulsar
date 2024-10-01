@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -305,7 +304,7 @@ func resourcePulsarSource() *schema.Resource {
 }
 
 func resourcePulsarSourceCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Sources()
+	client := getV3ClientFromMeta(meta).Sources()
 
 	sourceConfig, err := marshalSourceConfig(d)
 	if err != nil {
@@ -327,7 +326,7 @@ func resourcePulsarSourceCreate(ctx context.Context, d *schema.ResourceData, met
 }
 
 func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Sources()
+	client := getV3ClientFromMeta(meta).Sources()
 
 	tenant := d.Get(resourceSourceTenantKey).(string)
 	namespace := d.Get(resourceSourceNamespaceKey).(string)
@@ -527,7 +526,7 @@ func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta 
 }
 
 func resourcePulsarSourceUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Sources()
+	client := getV3ClientFromMeta(meta).Sources()
 
 	sourceConfig, err := marshalSourceConfig(d)
 	if err != nil {
@@ -548,7 +547,7 @@ func resourcePulsarSourceUpdate(ctx context.Context, d *schema.ResourceData, met
 }
 
 func resourcePulsarSourceDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(admin.Client).Sources()
+	client := getV3ClientFromMeta(meta).Sources()
 
 	tenant := d.Get(resourceSourceTenantKey).(string)
 	namespace := d.Get(resourceSourceNamespaceKey).(string)

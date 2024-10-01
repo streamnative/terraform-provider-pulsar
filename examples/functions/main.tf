@@ -26,7 +26,6 @@ terraform {
 
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
-  api_version = "3"
 }
 
 // Note: function resource requires v3 api.
