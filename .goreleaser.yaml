@@ -1,4 +1,7 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=jcroql
 # Visit https://goreleaser.com for documentation on how to customize this behavior.
+version: 2
 project_name: terraform-provider-pulsar
 before:
   hooks:
@@ -57,5 +60,3 @@ release:
   # If you want to manually examine the release before its live, uncomment this line:
   # draft: true
   prerelease: auto
-changelog:
-  skip: true
