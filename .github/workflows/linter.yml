@@ -18,7 +18,7 @@
 #
 
 name: Linter
-on: [ pull_request ]
+on: [pull_request]
 jobs:
   golangci:
     name: Run golangci-lint
@@ -38,3 +38,14 @@ jobs:
         with:
           version: v1.46.2
 
+  goreleaser:
+    name: Run GoReleaser check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Run GoReleaser (check)
+        uses: goreleaser/goreleaser-action@v3
+        with:
+          args: check
