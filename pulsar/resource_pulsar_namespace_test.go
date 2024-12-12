@@ -466,7 +466,8 @@ func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 	}
 }
 
-func testPulsarNamespacePermissionGrantList(ns string, expectedNo int, role string, actionsNo int, actions []string) resource.TestCheckFunc {
+func testPulsarNamespacePermissionGrantList(ns string, expectedNo int,
+	role string, actionsNo int, actions []string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[ns]
 		if !ok {
