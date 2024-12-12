@@ -390,7 +390,8 @@ func resourcePulsarFunctionRead(ctx context.Context, d *schema.ResourceData, met
 	functionConfig, err := client.GetFunction(tenant, namespace, name)
 	if err != nil {
 		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
-			return diag.Errorf("ERROR_FUNCTION_NOT_FOUND: %s", err.Error())
+			d.SetId("")
+			return nil
 		}
 		return diag.FromErr(errors.Wrapf(err, "failed to get function %s", d.Id()))
 	}

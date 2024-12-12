@@ -390,7 +390,8 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 	sinkConfig, err := client.GetSink(tenant, namespace, name)
 	if err != nil {
 		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
-			return diag.Errorf("ERROR_SINK_NOT_FOUND")
+			d.SetId("")
+			return nil
 		}
 		return diag.FromErr(errors.Wrapf(err, "failed to get %s sink from %s/%s", name, tenant, namespace))
 	}
