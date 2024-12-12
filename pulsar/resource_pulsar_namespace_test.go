@@ -349,7 +349,7 @@ func TestImportExistingNamespace(t *testing.T) {
 
 func TestNamespaceExternallyRemoved(t *testing.T) {
 
-	resourceName := "pulsar_namespace.testremoved"
+	resourceName := "pulsar_namespace.test"
 	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
 	nsName := acctest.RandString(10)
