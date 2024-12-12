@@ -322,7 +322,7 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 
 	if nss, err := client.GetNamespaces(tenant); err != nil {
 		return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaces: %w", err))
-	} else if !contains(nss, namespace) {
+	} else if !contains(nss, ns.String()) {
 		d.SetId("")
 		return nil
 	}
