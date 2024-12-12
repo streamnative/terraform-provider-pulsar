@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"strings"
 	"testing"
 
@@ -316,6 +317,7 @@ func TestNamespaceWithPermissionGrantRemove(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "consume"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1", "produce"),
+					testPulsarNamespacePermissionGrantList(resourceName, 1, "some-role-2", 2, []string{"consume", "produce"}),
 				),
 			},
 		},
@@ -459,6 +461,55 @@ func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 		}
 
 		return fmt.Errorf(`ERROR_RESOURCE_NAMESPACE_DOES_NOT_EXISTS: "%s"`, ns)
+	}
+}
+
+func testPulsarNamespacePermissionGrantList(ns string, expectedNo int, role string, actionsNo int, actions []string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[ns]
+		if !ok {
+			return fmt.Errorf("NOT_FOUND: %s", ns)
+		}
+
+		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
+
+		if rs.Primary.ID == "" || !strings.Contains(rs.Primary.ID, "/") {
+			return fmt.Errorf(`ERROR_NAMESPACE_ID_INVALID: "%s"`, rs.Primary.ID)
+		}
+
+		// id is the full path of the namespace, tenant-name/namespace-name
+		// split would give us [tenant-name, namespace-name]
+		nsParts := strings.Split(rs.Primary.ID, "/")
+
+		nsname, err := utils.GetNameSpaceName(nsParts[0], nsParts[1])
+		if err != nil || nsname == nil {
+			return fmt.Errorf("ERROR_GETTING_NAMESPACE_NAME: %w", err)
+		}
+
+		permissions, err := client.GetNamespacePermissions(*nsname)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE_PERMISSIONS: %w", err)
+		}
+
+		if len(permissions) != expectedNo {
+			return fmt.Errorf("ERROR_PERMISSIONS_COUNT: expected %d, got %d", expectedNo, len(permissions))
+		}
+
+		if p, has := permissions[role]; !has {
+			return fmt.Errorf("ERROR_PERMISSION_ROLE_NOT_FOUND: %s", role)
+		} else {
+			if len(p) != actionsNo {
+				return fmt.Errorf("ERROR_PERMISSION_ACTIONS_COUNT: expected %d, got %d", actionsNo, len(p))
+			}
+
+			for i, a := range p {
+				if a.String() != actions[i] {
+					return fmt.Errorf("ERROR_PERMISSION_ACTION: expected %s, got %s", actions[i], a)
+				}
+			}
+		}
+
+		return nil
 	}
 }
 
