@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -323,7 +322,7 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 
 	if nss, err := client.GetNamespaces(tenant); err != nil {
 		return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaces: %w", err))
-	} else if !slices.Contains(nss, namespace) {
+	} else if !contains(nss, namespace) {
 		d.SetId("")
 		return nil
 	}
@@ -877,4 +876,13 @@ func unmarshalTopicAutoCreation(v *schema.Set) (*utils.TopicAutoCreationConfig, 
 	}
 
 	return &topicAutoCreation, nil
+}
+
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
 }
