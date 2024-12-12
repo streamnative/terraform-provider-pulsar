@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -318,6 +319,13 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 	ns, err := utils.GetNameSpaceName(tenant, namespace)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
+	}
+
+	if nss, err := client.GetNamespaces(tenant); err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaces: %w", err))
+	} else if !slices.Contains(nss, namespace) {
+		d.SetId("")
+		return nil
 	}
 
 	d.SetId(ns.String())

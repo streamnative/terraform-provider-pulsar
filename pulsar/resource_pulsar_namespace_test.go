@@ -347,6 +347,45 @@ func TestImportExistingNamespace(t *testing.T) {
 	})
 }
 
+func TestNamespaceExternallyRemoved(t *testing.T) {
+
+	resourceName := "pulsar_namespace.testremoved"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+				),
+			},
+			{
+				PreConfig: func() {
+					client, err := sharedClient(testWebServiceURL)
+					if err != nil {
+						t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
+					}
+
+					conn := client.(admin.Client)
+					if err = conn.Namespaces().DeleteNamespace(tName + "/" + nsName); err != nil {
+						t.Fatalf("ERROR_DELETING_TEST_NS: %v", err)
+					}
+				},
+				Config:             testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
 func createNamespace(t *testing.T, id string) {
 	client, err := sharedClient(testWebServiceURL)
 	if err != nil {
