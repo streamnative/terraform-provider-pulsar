@@ -320,6 +320,13 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 	}
 
+	if nss, err := client.GetNamespaces(tenant); err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaces: %w", err))
+	} else if !contains(nss, ns.String()) {
+		d.SetId("")
+		return nil
+	}
+
 	d.SetId(ns.String())
 
 	_ = d.Set("namespace", namespace)
@@ -869,4 +876,13 @@ func unmarshalTopicAutoCreation(v *schema.Set) (*utils.TopicAutoCreationConfig, 
 	}
 
 	return &topicAutoCreation, nil
+}
+
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
 }

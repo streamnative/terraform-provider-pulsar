@@ -337,7 +337,8 @@ func resourcePulsarSourceRead(ctx context.Context, d *schema.ResourceData, meta 
 	sourceConfig, err := client.GetSource(tenant, namespace, name)
 	if err != nil {
 		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
-			return diag.Errorf("ERROR_SOURCE_NOT_FOUND")
+			d.SetId("")
+			return nil
 		}
 		return diag.FromErr(errors.Wrapf(err, "failed to get %s source from %s/%s", name, tenant, namespace))
 	}

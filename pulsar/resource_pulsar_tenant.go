@@ -94,7 +94,8 @@ func resourcePulsarTenantRead(ctx context.Context, d *schema.ResourceData, meta 
 	td, err := client.Get(tenant)
 	if err != nil {
 		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
-			return diag.Errorf("ERROR_TENANT_NOT_FOUND")
+			d.SetId("")
+			return nil
 		}
 		return diag.FromErr(fmt.Errorf("ERROR_READ_TENANT: %w", err))
 	}

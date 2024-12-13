@@ -165,7 +165,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		return diag.Errorf("%v", err)
 	}
 	if !found {
-		return diag.Errorf("topic not found")
+		d.SetId("")
+		return nil
 	}
 
 	d.SetId(topicName.String())
