@@ -105,7 +105,7 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: testAccProviderFactories,
 		IDRefreshName:     resourceName,
-		CheckDestroy:      testPulsarNamespaceDestroy,
+		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarNamespaceWithTopic(testWebServiceURL, cName, tName, nsName, topicName),
