@@ -110,10 +110,10 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 	topicName := acctest.RandString(10)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviderFactories,
-		IDRefreshName:     resourceName,
-		CheckDestroy:      testPulsarTopicDestroy,
+		PreCheck:                  func() { testAccPreCheck(t) },
+		ProviderFactories:         testAccProviderFactories,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarNamespaceWithTopic(testWebServiceURL, tName, nsName, topicName),
@@ -133,8 +133,22 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 					if err != nil {
 						t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
 					}
-					if err = conn.Topics().Delete(*topicName, false, false); err != nil {
-						t.Fatalf("ERROR_DELETING_TEST_TOPIC: %v", err)
+					namespace, err := utils.GetNameSpaceName(topicName.GetTenant(), topicName.GetNamespace())
+					if err != nil {
+						t.Fatalf("ERROR_READ_NAMESPACE: %w", err)
+					}
+
+					partitionedTopics, nonPartitionedTopics, err := conn.Topics().List(*namespace)
+					if err != nil {
+						t.Fatalf("ERROR_READ_TOPIC_DATA: %w", err)
+					}
+
+					for _, topic := range append(partitionedTopics, nonPartitionedTopics...) {
+						if topicName.String() == topic {
+							if err = conn.Topics().Delete(*topicName, false, false); err != nil {
+								t.Fatalf("ERROR_DELETING_TEST_TOPIC: %v", err)
+							}
+						}
 					}
 					if err = conn.Namespaces().DeleteNamespace(tName + "/" + nsName); err != nil {
 						t.Fatalf("ERROR_DELETING_TEST_NS: %v", err)
