@@ -65,13 +65,17 @@ func TestImportExistingTopic(t *testing.T) {
 	pnum := 10
 
 	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+	topicName, err := utils.GetTopicName(fullID)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
+	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
 			createTopic(t, fullID, pnum)
 			t.Cleanup(func() {
-				if err := getClientFromMeta(testAccProvider.Meta()).Topics().Delete(fullID); err != nil {
+				if err := getClientFromMeta(testAccProvider.Meta()).Topics().Delete(*topicName, true, pnum == 0); err != nil {
 					t.Fatalf("ERROR_DELETING_TEST_TOPIC: %v", err)
 				}
 			})
