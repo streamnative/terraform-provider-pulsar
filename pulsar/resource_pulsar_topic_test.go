@@ -135,12 +135,12 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 					}
 					namespace, err := utils.GetNameSpaceName(topicName.GetTenant(), topicName.GetNamespace())
 					if err != nil {
-						t.Fatalf("ERROR_READ_NAMESPACE: %w", err)
+						t.Fatalf("ERROR_READ_NAMESPACE: %v", err)
 					}
 
 					partitionedTopics, nonPartitionedTopics, err := conn.Topics().List(*namespace)
 					if err != nil {
-						t.Fatalf("ERROR_READ_TOPIC_DATA: %w", err)
+						t.Fatalf("ERROR_READ_TOPIC_DATA: %v", err)
 					}
 
 					for _, topic := range append(partitionedTopics, nonPartitionedTopics...) {
