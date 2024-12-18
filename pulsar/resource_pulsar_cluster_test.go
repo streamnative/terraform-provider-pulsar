@@ -56,6 +56,11 @@ func TestHandleExistingCluster(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			createCluster(t, cName)
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Clusters().Delete(cName); err != nil {
+					t.Fatalf("ERROR_DELETING_TEST_CLUSTER: %v", err)
+				}
+			})
 		},
 		CheckDestroy:      testPulsarClusterDestroy,
 		ProviderFactories: testAccProviderFactories,
@@ -75,6 +80,11 @@ func TestImportExistingCluster(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			createCluster(t, cName)
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Clusters().Delete(cName); err != nil {
+					t.Fatalf("ERROR_DELETING_TEST_CLUSTER: %v", err)
+				}
+			})
 		},
 		CheckDestroy:      testPulsarClusterDestroy,
 		ProviderFactories: testAccProviderFactories,

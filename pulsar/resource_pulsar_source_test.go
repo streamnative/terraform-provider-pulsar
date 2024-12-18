@@ -133,12 +133,23 @@ func getPulsarSourceByResourceID(id string) (*utils.SourceConfig, error) {
 
 func TestImportExistingSource(t *testing.T) {
 	sourceName := acctest.RandString(6)
-	err := createSampleSource(sourceName)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createSampleSource(sourceName)
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Sources().DeleteSource(
+					"public",
+					"default",
+					sourceName); err != nil {
+					if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
+						return
+					}
+					t.Fatalf("ERROR_DELETING_TEST_SOURCE: %v", err)
+				}
+			})
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testPulsarSourceDestroy,
 		Steps: []resource.TestStep{

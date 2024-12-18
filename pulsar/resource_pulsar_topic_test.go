@@ -44,15 +44,15 @@ func TestTopic(t *testing.T) {
 			{
 				Config: testPulsarPartitionTopic,
 				Check: resource.ComposeTestCheckFunc(
-					testPulsarTopicExists("pulsar_topic.sample-topic-1"),
-					testPulsarTopicExists("pulsar_topic.sample-topic-2"),
+					testPulsarTopicExists("pulsar_topic.sample-topic-1", t),
+					testPulsarTopicExists("pulsar_topic.sample-topic-2", t),
 				),
 			},
 			{
 				Config: testPulsarNonPartitionTopic,
 				Check: resource.ComposeTestCheckFunc(
-					testPulsarTopicExists("pulsar_topic.sample-topic-3"),
-					testPulsarTopicExists("pulsar_topic.sample-topic-4"),
+					testPulsarTopicExists("pulsar_topic.sample-topic-3", t),
+					testPulsarTopicExists("pulsar_topic.sample-topic-4", t),
 				),
 			},
 		},
@@ -65,11 +65,20 @@ func TestImportExistingTopic(t *testing.T) {
 	pnum := 10
 
 	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+	topicName, err := utils.GetTopicName(fullID)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
+	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
 			createTopic(t, fullID, pnum)
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Topics().Delete(*topicName, true, pnum == 0); err != nil {
+					t.Fatalf("ERROR_DELETING_TEST_TOPIC: %v", err)
+				}
+			})
 		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testPulsarTopicDestroy,
@@ -93,6 +102,61 @@ func TestPartionedTopicWithPermissionGrantUpdate(t *testing.T) {
 	testTopicWithPermissionGrantUpdate(t, 10)
 }
 
+func TestTopicNamespaceExternallyRemoved(t *testing.T) {
+
+	resourceName := "pulsar_topic.test"
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithTopic(testWebServiceURL, tName, nsName, topicName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+				),
+				ExpectError: nil,
+			},
+			{
+				PreConfig: func() {
+					client := getClientFromMeta(testAccProvider.Meta())
+					topicName, err := utils.GetTopicName(fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName))
+					if err != nil {
+						t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
+					}
+					namespace, err := utils.GetNameSpaceName(topicName.GetTenant(), topicName.GetNamespace())
+					if err != nil {
+						t.Fatalf("ERROR_READ_NAMESPACE: %v", err)
+					}
+					partitionedTopics, nonPartitionedTopics, err := client.Topics().List(*namespace)
+					if err != nil {
+						t.Fatalf("ERROR_READ_TOPIC_DATA: %v", err)
+					}
+
+					for _, topic := range append(partitionedTopics, nonPartitionedTopics...) {
+						if topicName.String() == topic {
+							if err = client.Topics().Delete(*topicName, true, true); err != nil {
+								t.Fatalf("ERROR_DELETING_TEST_TOPIC: %v", err)
+							}
+						}
+					}
+					if err = client.Namespaces().DeleteNamespace(tName + "/" + nsName); err != nil {
+						t.Fatalf("ERROR_DELETING_TEST_NS: %v", err)
+					}
+				},
+				Config:             testPulsarNamespaceWithTopic(testWebServiceURL, tName, nsName, topicName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+				ExpectError:        nil,
+			},
+		},
+	})
+}
+
 func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
@@ -114,7 +178,7 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 						actions = ["produce", "consume"]
 					}`),
 				Check: resource.ComposeTestCheckFunc(
-					testPulsarTopicExists(resourceName),
+					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
@@ -134,7 +198,7 @@ func testTopicWithPermissionGrantUpdate(t *testing.T, pnum int) {
 						actions = ["produce"]
 					}`),
 				Check: resource.ComposeTestCheckFunc(
-					testPulsarTopicExists(resourceName),
+					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "1"),
@@ -177,7 +241,7 @@ func testPulsarTopicDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testPulsarTopicExists(topic string) resource.TestCheckFunc {
+func testPulsarTopicExists(topic string, t *testing.T) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[topic]
 		if !ok {
@@ -188,6 +252,7 @@ func testPulsarTopicExists(topic string) resource.TestCheckFunc {
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_TOPIC: %w", err)
 		}
+		t.Logf("topicName: %v", topicName)
 		namespace, err := utils.GetNameSpaceName(topicName.GetTenant(), topicName.GetNamespace())
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: %w", err)
@@ -337,4 +402,42 @@ resource "pulsar_topic" "test" {
   }
 }
 `, url, ttype, tname, pnum, permissionGrants)
+}
+
+func testPulsarNamespaceWithTopic(wsURL, tenant, ns, topicName string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "%s"
+  allowed_clusters = ["standalone"]
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+  namespace = "%s"
+
+	topic_auto_creation {
+		enable = false
+	}
+
+	depends_on = [
+		pulsar_tenant.test_tenant
+	]
+}
+
+resource "pulsar_topic" "test" {
+  tenant     = "%s"
+  namespace  = "%s"
+  topic_type = "persistent"
+  topic_name = "%s"
+	partitions = 0
+
+	depends_on = [
+		pulsar_namespace.test
+	]
+}
+`, wsURL, tenant, ns, tenant, ns, topicName)
 }

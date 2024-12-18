@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -162,6 +163,10 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	topicName, found, err := getTopic(d, meta)
 	if err != nil {
+		if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
+			d.SetId("")
+			return nil
+		}
 		return diag.Errorf("%v", err)
 	}
 	if !found {

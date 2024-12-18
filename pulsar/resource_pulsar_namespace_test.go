@@ -332,6 +332,11 @@ func TestImportExistingNamespace(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			createNamespace(t, id)
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Namespaces().DeleteNamespace(id); err != nil {
+					t.Fatalf("ERROR_DELETING_TEST_NS: %v", err)
+				}
+			})
 		},
 		CheckDestroy:      testPulsarNamespaceDestroy,
 		ProviderFactories: testAccProviderFactories,
