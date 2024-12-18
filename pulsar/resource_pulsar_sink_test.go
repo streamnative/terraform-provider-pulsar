@@ -126,6 +126,9 @@ func TestImportExistingSink(t *testing.T) {
 					"default",
 					sinkName,
 				); err != nil {
+					if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
+						return
+					}
 					t.Fatalf("ERROR_DELETING_TEST_SINK: %v", err)
 				}
 			})

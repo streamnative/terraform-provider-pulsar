@@ -143,6 +143,9 @@ func TestImportExistingSource(t *testing.T) {
 					"public",
 					"default",
 					sourceName); err != nil {
+					if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
+						return
+					}
 					t.Fatalf("ERROR_DELETING_TEST_SOURCE: %v", err)
 				}
 			})
