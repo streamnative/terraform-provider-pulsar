@@ -123,12 +123,9 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 			},
 			{
 				PreConfig: func() {
-					client, err := sharedClient(testWebServiceURL)
-					if err != nil {
-						t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
-					}
+					client := getClientFromMeta(testAccProvider.Meta())
+					t.Logf("tName: %s, nsName: %s, topicName: %s", tName, nsName, topicName)
 
-					conn := client.(admin.Client)
 					topicName, err := utils.GetTopicName(fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName))
 					if err != nil {
 						t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
@@ -138,19 +135,21 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 						t.Fatalf("ERROR_READ_NAMESPACE: %v", err)
 					}
 
-					partitionedTopics, nonPartitionedTopics, err := conn.Topics().List(*namespace)
+					t.Logf("topicName: %v, namespace: %v", topicName, namespace)
+
+					partitionedTopics, nonPartitionedTopics, err := client.Topics().List(*namespace)
 					if err != nil {
 						t.Fatalf("ERROR_READ_TOPIC_DATA: %v", err)
 					}
 
 					for _, topic := range append(partitionedTopics, nonPartitionedTopics...) {
 						if topicName.String() == topic {
-							if err = conn.Topics().Delete(*topicName, false, false); err != nil {
+							if err = client.Topics().Delete(*topicName, false, false); err != nil {
 								t.Fatalf("ERROR_DELETING_TEST_TOPIC: %v", err)
 							}
 						}
 					}
-					if err = conn.Namespaces().DeleteNamespace(tName + "/" + nsName); err != nil {
+					if err = client.Namespaces().DeleteNamespace(tName + "/" + nsName); err != nil {
 						t.Fatalf("ERROR_DELETING_TEST_NS: %v", err)
 					}
 				},
