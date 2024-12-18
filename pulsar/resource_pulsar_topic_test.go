@@ -110,10 +110,9 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 	topicName := acctest.RandString(10)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                  func() { testAccPreCheck(t) },
-		ProviderFactories:         testAccProviderFactories,
-		PreventPostDestroyRefresh: false,
-		CheckDestroy:              testPulsarTopicDestroy,
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarNamespaceWithTopic(testWebServiceURL, tName, nsName, topicName),
@@ -135,12 +134,14 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 						t.Fatalf("ERROR_READ_NAMESPACE: %v", err)
 					}
 
-					t.Logf("topicName: %v, namespace: %v", topicName, namespace)
+					t.Logf("topicName: %v, namespace: %s", topicName, namespace)
 
 					partitionedTopics, nonPartitionedTopics, err := client.Topics().List(*namespace)
 					if err != nil {
 						t.Fatalf("ERROR_READ_TOPIC_DATA: %v", err)
 					}
+
+					t.Logf("partitionedTopics: %v, nonPartitionedTopics: %v", partitionedTopics, nonPartitionedTopics)
 
 					for _, topic := range append(partitionedTopics, nonPartitionedTopics...) {
 						if topicName.String() == topic {
@@ -426,10 +427,6 @@ resource "pulsar_namespace" "test" {
 	topic_auto_creation {
 		enable = false
 	}
-
-	depends_on = [
-    pulsar_tenant.test_tenant
-  ]
 }
 
 resource "pulsar_topic" "test" {
@@ -438,10 +435,6 @@ resource "pulsar_topic" "test" {
   topic_type = "persistent"
   topic_name = "%s"
 	partitions = 0
-	depends_on = [
-    pulsar_namespace.test,
-		pulsar_tenant.test_tenant
-  ]
 }
 `, wsURL, tenant, ns, tenant, ns, topicName)
 }
