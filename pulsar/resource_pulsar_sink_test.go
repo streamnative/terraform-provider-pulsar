@@ -115,12 +115,21 @@ func testPulsarSinkDestroy(s *terraform.State) error {
 
 func TestImportExistingSink(t *testing.T) {
 	sinkName := acctest.RandString(6)
-	err := createSampleSink(sinkName)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createSampleSink(sinkName)
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Sinks().DeleteSink(
+					"public",
+					"default",
+					sinkName,
+				); err != nil {
+					t.Fatalf("ERROR_DELETING_TEST_SINK: %v", err)
+				}
+			})
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testPulsarSinkDestroy,
 		Steps: []resource.TestStep{

@@ -70,6 +70,11 @@ func TestImportExistingTopic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			createTopic(t, fullID, pnum)
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Topics().Delete(fullID); err != nil {
+					t.Fatalf("ERROR_DELETING_TEST_TOPIC: %v", err)
+				}
+			})
 		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testPulsarTopicDestroy,
@@ -96,7 +101,6 @@ func TestPartionedTopicWithPermissionGrantUpdate(t *testing.T) {
 func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 
 	resourceName := "pulsar_topic.test"
-	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
 	nsName := acctest.RandString(10)
 	topicName := acctest.RandString(10)
@@ -108,7 +112,7 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarNamespaceWithTopic(testWebServiceURL, cName, tName, nsName, topicName),
+				Config: testPulsarNamespaceWithTopic(testWebServiceURL, tName, nsName, topicName),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName),
 				),
@@ -132,7 +136,7 @@ func TestTopicNamespaceExternallyRemoved(t *testing.T) {
 						t.Fatalf("ERROR_DELETING_TEST_NS: %v", err)
 					}
 				},
-				Config:             testPulsarNamespaceWithTopic(testWebServiceURL, cName, tName, nsName, topicName),
+				Config:             testPulsarNamespaceWithTopic(testWebServiceURL, tName, nsName, topicName),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: true,
 				ExpectError:        nil,
@@ -387,26 +391,15 @@ resource "pulsar_topic" "test" {
 `, url, ttype, tname, pnum, permissionGrants)
 }
 
-func testPulsarNamespaceWithTopic(wsURL, cluster, tenant, ns, topicName string) string {
+func testPulsarNamespaceWithTopic(wsURL, tenant, ns, topicName string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
 }
 
-resource "pulsar_cluster" "test_cluster" {
-  cluster = "%s"
-
-  cluster_data {
-    web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
-    peer_clusters      = ["standalone"]
-  }
-
-}
-
 resource "pulsar_tenant" "test_tenant" {
   tenant           = "%s"
-  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+  allowed_clusters = ["standalone"]
 }
 
 resource "pulsar_namespace" "test" {
@@ -423,7 +416,7 @@ resource "pulsar_namespace" "test" {
     message_ttl_seconds            = "86400"
     replication_clusters           = ["standalone"]
     is_allow_auto_update_schema    = false
-	offload_threshold_size_in_mb   = "100"
+	  offload_threshold_size_in_mb   = "100"
   }
 
   dispatch_rate {
@@ -487,5 +480,5 @@ resource "pulsar_topic" "test" {
 		pulsar_tenant.test_tenant
   ]
 }
-`, wsURL, cluster, tenant, ns, tenant, ns, topicName)
+`, wsURL, tenant, ns, tenant, ns, topicName)
 }
