@@ -536,13 +536,13 @@ resource "pulsar_namespace" "test" {
 
   namespace_config {
     anti_affinity                  = "anti-aff"
-    max_consumers_per_subscription = "50"
+    is_allow_auto_update_schema    = false
+	max_consumers_per_subscription = "50"
     max_consumers_per_topic        = "50"
     max_producers_per_topic        = "50"
     message_ttl_seconds            = "86400"
-    replication_clusters           = ["standalone"]
-    is_allow_auto_update_schema    = false
-	offload_threshold_size_in_mb   = "100"
+    offload_threshold_size_in_mb   = "100"
+	replication_clusters           = ["standalone"]
   }
 
   dispatch_rate {
