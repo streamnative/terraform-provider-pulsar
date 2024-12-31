@@ -83,6 +83,7 @@ Optional:
 - `replication_clusters` (List of String)
 - `schema_compatibility_strategy` (String)
 - `schema_validation_enforce` (Boolean)
+- `subscription_expiration_time_minutes` (Number)
 
 
 <a id="nestedblock--permission_grant"></a>

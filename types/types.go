@@ -24,16 +24,17 @@ import (
 type (
 	// configurable features of the Pulsar Namespace Entity via Terraform
 	NamespaceConfig struct {
-		AntiAffinity                string
-		IsAllowAutoUpdateSchema     bool
-		MaxConsumersPerTopic        int
-		MaxProducersPerTopic        int
-		MaxConsumersPerSubscription int
-		MessageTTLInSeconds         int
-		OffloadThresholdSizeInMb    int
-		ReplicationClusters         []string
-		SchemaCompatibilityStrategy string
-		SchemaValidationEnforce     bool
+		AntiAffinity                      string
+		IsAllowAutoUpdateSchema           bool
+		MaxConsumersPerTopic              int
+		MaxProducersPerTopic              int
+		MaxConsumersPerSubscription       int
+		MessageTTLInSeconds               int
+		OffloadThresholdSizeInMb          int
+		ReplicationClusters               []string
+		SchemaCompatibilityStrategy       string
+		SchemaValidationEnforce           bool
+		SubscriptionExpirationTimeMinutes int
 	}
 
 	SplitNS struct {

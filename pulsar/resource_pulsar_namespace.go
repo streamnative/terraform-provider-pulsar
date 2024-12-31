@@ -207,6 +207,12 @@ func resourcePulsarNamespace() *schema.Resource {
 							Optional: true,
 							Default:  false,
 						},
+						"subscription_expiration_time_minutes": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      -1,
+							ValidateFunc: validateGtEq0,
+						},
 					},
 				},
 				Set: namespaceConfigToHash,
@@ -388,18 +394,24 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaAutoUpdateCompatibilityStrategy: %w", err))
 		}
 
+		subscriptionExpirationTimeMinutes, err := client.GetSubscriptionExpirationTime(*ns)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSubscriptionExpirationTime: %w", err))
+		}
+
 		_ = d.Set("namespace_config", schema.NewSet(namespaceConfigToHash, []interface{}{
 			map[string]interface{}{
-				"anti_affinity":                  strings.Trim(strings.TrimSpace(afgrp), "\""),
-				"is_allow_auto_update_schema":    isAllowAutoUpdateSchema,
-				"max_consumers_per_subscription": maxConsPerSub,
-				"max_consumers_per_topic":        maxConsPerTopic,
-				"max_producers_per_topic":        maxProdPerTopic,
-				"message_ttl_seconds":            messageTTL,
-				"offload_threshold_size_in_mb":   int(offloadTresholdSizeInMb),
-				"replication_clusters":           replClusters,
-				"schema_compatibility_strategy":  schemaCompatibilityStrategy.String(),
-				"schema_validation_enforce":      schemaValidationEnforce,
+				"anti_affinity":                        strings.Trim(strings.TrimSpace(afgrp), "\""),
+				"is_allow_auto_update_schema":          isAllowAutoUpdateSchema,
+				"max_consumers_per_subscription":       maxConsPerSub,
+				"max_consumers_per_topic":              maxConsPerTopic,
+				"max_producers_per_topic":              maxProdPerTopic,
+				"message_ttl_seconds":                  messageTTL,
+				"offload_threshold_size_in_mb":         int(offloadTresholdSizeInMb),
+				"replication_clusters":                 replClusters,
+				"schema_compatibility_strategy":        schemaCompatibilityStrategy.String(),
+				"schema_validation_enforce":            schemaValidationEnforce,
+				"subscription_expiration_time_minutes": subscriptionExpirationTimeMinutes,
 			},
 		}))
 	}
@@ -596,6 +608,15 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 			errs = multierror.Append(errs, fmt.Errorf("SetSchemaValidationEnforced: %w", err))
 		}
 
+		if nsCfg.SubscriptionExpirationTimeMinutes >= 0 {
+			if err = client.SetSubscriptionExpirationTime(*nsName, nsCfg.SubscriptionExpirationTimeMinutes); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetSubscriptionExpirationTime: %w", err))
+			}
+		} else { // remove the subscription expiration time
+			if err = client.RemoveSubscriptionExpirationTime(*nsName); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("RemoveSubscriptionExpirationTime: %w", err))
+			}
+		}
 	}
 
 	if retentionPoliciesConfig.Len() > 0 {
@@ -761,6 +782,7 @@ func namespaceConfigToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%s-", m["replication_clusters"].([]interface{})))
 	buf.WriteString(fmt.Sprintf("%s-", m["schema_compatibility_strategy"].(string)))
 	buf.WriteString(fmt.Sprintf("%t-", m["schema_validation_enforce"].(bool)))
+	buf.WriteString(fmt.Sprintf("%d-", m["subscription_expiration_time_minutes"].(int)))
 
 	return hashcode.String(buf.String())
 }
@@ -838,6 +860,7 @@ func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
 		nsConfig.ReplicationClusters = handleHCLArrayV2(rplClusters)
 		nsConfig.SchemaCompatibilityStrategy = data["schema_compatibility_strategy"].(string)
 		nsConfig.SchemaValidationEnforce = data["schema_validation_enforce"].(bool)
+		nsConfig.SubscriptionExpirationTimeMinutes = data["subscription_expiration_time_minutes"].(int)
 	}
 
 	return &nsConfig
