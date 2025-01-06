@@ -57,6 +57,11 @@ func TestHandleExistingTenant(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			createTenant(t, tName)
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Tenants().Delete(tName); err != nil {
+					t.Fatalf("ERROR_DELETING_TEST_TENANT: %v", err)
+				}
+			})
 		},
 		ProviderFactories:         testAccProviderFactories,
 		PreventPostDestroyRefresh: false,
@@ -77,6 +82,11 @@ func TestImportExistingTenant(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			createTenant(t, tName)
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Tenants().Delete(tName); err != nil {
+					t.Fatalf("ERROR_DELETING_TEST_TENANT: %v", err)
+				}
+			})
 		},
 		CheckDestroy:      testPulsarTenantDestroy,
 		ProviderFactories: testAccProviderFactories,
