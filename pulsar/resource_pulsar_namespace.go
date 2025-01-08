@@ -331,75 +331,86 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 	_ = d.Set("namespace", namespace)
 	_ = d.Set("tenant", tenant)
 
-	if namespaceConfig, ok := d.GetOk("namespace_config"); ok && len(namespaceConfig.([]interface{})) > 0 {
+	if _, ok := d.GetOk("namespace_config"); ok {
+		var namespaceConfig = make(map[string]interface{})
 		afgrp, err := client.GetNamespaceAntiAffinityGroup(ns.String())
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceAntiAffinityGroup: %w", err))
+		} else {
+			namespaceConfig["anti_affinity"] = strings.Trim(strings.TrimSpace(afgrp), "\"")
 		}
 
 		maxConsPerSub, err := client.GetMaxConsumersPerSubscription(*ns)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerSubscription: %w", err))
+		} else {
+			namespaceConfig["max_consumers_per_subscription"] = maxConsPerSub
 		}
 
 		maxConsPerTopic, err := client.GetMaxConsumersPerTopic(*ns)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerTopic: %w", err))
+		} else {
+			namespaceConfig["max_consumers_per_topic"] = maxConsPerTopic
 		}
 
 		maxProdPerTopic, err := client.GetMaxProducersPerTopic(*ns)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err))
+		} else {
+			namespaceConfig["max_producers_per_topic"] = maxProdPerTopic
 		}
 
 		messageTTL, err := client.GetNamespaceMessageTTL(ns.String())
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceMessageTTL: %w", err))
+		} else {
+			namespaceConfig["message_ttl_seconds"] = messageTTL
 		}
 
 		schemaValidationEnforce, err := client.GetSchemaValidationEnforced(*ns)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaValidationEnforced: %w", err))
+		} else {
+			namespaceConfig["schema_validation_enforce"] = schemaValidationEnforce
 		}
 
 		schemaCompatibilityStrategy, err := client.GetSchemaAutoUpdateCompatibilityStrategy(*ns)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaAutoUpdateCompatibilityStrategy: %w", err))
+			if !strings.Contains(err.Error(), "Invalid auth strategy") {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaAutoUpdateCompatibilityStrategy: %w", err))
+			}
+		} else {
+			namespaceConfig["schema_compatibility_strategy"] = schemaCompatibilityStrategy.String()
 		}
 
 		replClustersRaw, err := client.GetNamespaceReplicationClusters(ns.String())
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err))
-		}
-
-		replClusters := make([]interface{}, len(replClustersRaw))
-		for i, cl := range replClustersRaw {
-			replClusters[i] = cl
+		} else {
+			replClusters := make([]interface{}, len(replClustersRaw))
+			for i, cl := range replClustersRaw {
+				replClusters[i] = cl
+			}
+			namespaceConfig["replication_clusters"] = replClusters
 		}
 
 		isAllowAutoUpdateSchema, err := client.GetIsAllowAutoUpdateSchema(*ns)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetIsAllowAutoUpdateSchema: %w", err))
+		} else {
+			namespaceConfig["is_allow_auto_update_schema"] = isAllowAutoUpdateSchema
 		}
 
 		offloadTresholdSizeInMb, err := client.GetOffloadThreshold(*ns)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetOffloadThreshold: %w", err))
+		} else {
+			namespaceConfig["offload_threshold_size_in_mb"] = int(offloadTresholdSizeInMb)
 		}
 
 		_ = d.Set("namespace_config", []interface{}{
-			map[string]interface{}{
-				"anti_affinity":                  strings.Trim(strings.TrimSpace(afgrp), "\""),
-				"max_consumers_per_subscription": maxConsPerSub,
-				"max_consumers_per_topic":        maxConsPerTopic,
-				"max_producers_per_topic":        maxProdPerTopic,
-				"message_ttl_seconds":            messageTTL,
-				"replication_clusters":           replClusters,
-				"schema_validation_enforce":      schemaValidationEnforce,
-				"schema_compatibility_strategy":  schemaCompatibilityStrategy.String(),
-				"is_allow_auto_update_schema":    isAllowAutoUpdateSchema,
-				"offload_threshold_size_in_mb":   int(offloadTresholdSizeInMb),
-			},
+			namespaceConfig,
 		})
 	}
 

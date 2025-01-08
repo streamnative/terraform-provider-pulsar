@@ -184,6 +184,15 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
 					resource.TestCheckNoResourceAttr(resourceName, "permission_grant.#"),
 				),
+			},
+			{
+				Config:             testPulsarNamespaceWithUndefinedOptionalsInNsConf(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config:             testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
 				ExpectNonEmptyPlan: true,
 			},
 		},
