@@ -426,6 +426,11 @@ func TestNamespaceWithUndefinedOptionalsDrift(t *testing.T) {
 				),
 				ExpectNonEmptyPlan: false,
 			},
+			{
+				Config:             testPulsarNamespaceWithUndefinedOptionalsInNsConf(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
 		},
 	})
 }
