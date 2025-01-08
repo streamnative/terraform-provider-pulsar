@@ -70,6 +70,7 @@ func resourcePulsarNamespace() *schema.Resource {
 			"enable_deduplication": {
 				Type:     schema.TypeBool,
 				Optional: true,
+				Computed: true,
 			},
 			"dispatch_rate": {
 				Type:        schema.TypeSet,
@@ -152,30 +153,31 @@ func resourcePulsarNamespace() *schema.Resource {
 							Type:         schema.TypeString,
 							Optional:     true,
 							ValidateFunc: validateNotBlank,
+							Computed:     true,
 						},
 						"max_consumers_per_subscription": {
 							Type:         schema.TypeInt,
 							Optional:     true,
-							Default:      -1,
 							ValidateFunc: validateGtEq0,
+							Computed:     true,
 						},
 						"max_consumers_per_topic": {
 							Type:         schema.TypeInt,
 							Optional:     true,
-							Default:      -1,
 							ValidateFunc: validateGtEq0,
+							Computed:     true,
 						},
 						"max_producers_per_topic": {
 							Type:         schema.TypeInt,
 							Optional:     true,
-							Default:      -1,
 							ValidateFunc: validateGtEq0,
+							Computed:     true,
 						},
 						"message_ttl_seconds": {
 							Type:         schema.TypeInt,
 							Optional:     true,
-							Default:      -1,
 							ValidateFunc: validateGtEq0,
+							Computed:     true,
 						},
 						"replication_clusters": {
 							Type:     schema.TypeList,
@@ -184,28 +186,29 @@ func resourcePulsarNamespace() *schema.Resource {
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
+							Computed: true,
 						},
 						"schema_validation_enforce": {
 							Type:     schema.TypeBool,
 							Optional: true,
-							Default:  false,
+							Computed: true,
 						},
 						"schema_compatibility_strategy": {
 							Type:         schema.TypeString,
 							Optional:     true,
-							Default:      "Full",
 							ValidateFunc: validateNotBlank,
+							Computed:     true,
 						},
 						"is_allow_auto_update_schema": {
 							Type:     schema.TypeBool,
 							Optional: true,
-							Default:  true,
+							Computed: true,
 						},
 						"offload_threshold_size_in_mb": {
 							Type:         schema.TypeInt,
 							Optional:     true,
-							Default:      -1,
 							ValidateFunc: validateGtEq0,
+							Computed:     true,
 						},
 					},
 				},
