@@ -36,7 +36,7 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.46.2
+          version: v1.54.1
 
   goreleaser:
     name: Run GoReleaser check
