@@ -84,5 +84,5 @@ add the license at the beginning of each file. The location of the header file: 
 
 ## Update dependencies
 
-The `terraform-provider-pulsar` uses [Go 1.16 module](https://github.com/golang/go/wiki/Modules) to manage dependencies.
+The `terraform-provider-pulsar` uses [Go module](https://go.dev/wiki/Modules) to manage dependencies.
 To add or update a dependency, use the `go mod edit` command to change the dependencies

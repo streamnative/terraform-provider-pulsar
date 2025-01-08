@@ -25,7 +25,7 @@ a [Terraform](https://www.terraform.io) provider for managing [Apache Pulsar](ht
 # Prerequisites
 
 - [Terraform](https://www.terraform.io/downloads.html) 0.12.0 or later
-- [Go](https://golang.org/doc/install) 1.16 or later (to build the provider plugin)
+- [Go](https://golang.org/doc/install) 1.21 or later (to build the provider plugin)
 
 # Installation
 
