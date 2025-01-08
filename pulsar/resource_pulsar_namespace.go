@@ -197,7 +197,7 @@ func resourcePulsarNamespace() *schema.Resource {
 							Type:         schema.TypeString,
 							Optional:     true,
 							ValidateFunc: validateNotBlank,
-							Computed:     true,
+							Default:      "Full",
 						},
 						"is_allow_auto_update_schema": {
 							Type:     schema.TypeBool,
