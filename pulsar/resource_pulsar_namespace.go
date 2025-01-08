@@ -209,7 +209,6 @@ func resourcePulsarNamespace() *schema.Resource {
 						},
 					},
 				},
-				//Set: namespaceConfigToHash,
 			},
 			"persistence_policies": {
 				Type:     schema.TypeSet,
@@ -746,23 +745,6 @@ func retentionPoliciesToHash(v interface{}) int {
 	return hashcode.String(buf.String())
 }
 
-func namespaceConfigToHash(v interface{}) int {
-	var buf bytes.Buffer
-	m := v.(map[string]interface{})
-
-	buf.WriteString(fmt.Sprintf("%s-", m["anti_affinity"].(string)))
-	buf.WriteString(fmt.Sprintf("%d-", m["max_consumers_per_subscription"].(int)))
-	buf.WriteString(fmt.Sprintf("%d-", m["max_consumers_per_topic"].(int)))
-	buf.WriteString(fmt.Sprintf("%d-", m["max_producers_per_topic"].(int)))
-	buf.WriteString(fmt.Sprintf("%d-", m["message_ttl_seconds"].(int)))
-	buf.WriteString(fmt.Sprintf("%s-", m["replication_clusters"].([]interface{})))
-	buf.WriteString(fmt.Sprintf("%t-", m["schema_validation_enforce"].(bool)))
-	buf.WriteString(fmt.Sprintf("%s-", m["schema_compatibility_strategy"].(string)))
-	buf.WriteString(fmt.Sprintf("%d-", m["offload_threshold_size_in_mb"].(int)))
-
-	return hashcode.String(buf.String())
-}
-
 func persistencePoliciesToHash(v interface{}) int {
 	var buf bytes.Buffer
 	m := v.(map[string]interface{})
@@ -817,28 +799,6 @@ func unmarshalRetentionPolicies(v *schema.Set) *utils.RetentionPolicies {
 	}
 
 	return &rtnPolicies
-}
-
-func unmarshalNamespaceConfig(v *schema.Set) *types.NamespaceConfig {
-	var nsConfig types.NamespaceConfig
-
-	for _, ns := range v.List() {
-		data := ns.(map[string]interface{})
-		rplClusters := data["replication_clusters"].([]interface{})
-
-		nsConfig.ReplicationClusters = handleHCLArrayV2(rplClusters)
-		nsConfig.MaxProducersPerTopic = data["max_producers_per_topic"].(int)
-		nsConfig.MaxConsumersPerTopic = data["max_consumers_per_topic"].(int)
-		nsConfig.MaxConsumersPerSubscription = data["max_consumers_per_subscription"].(int)
-		nsConfig.MessageTTLInSeconds = data["message_ttl_seconds"].(int)
-		nsConfig.AntiAffinity = data["anti_affinity"].(string)
-		nsConfig.SchemaValidationEnforce = data["schema_validation_enforce"].(bool)
-		nsConfig.SchemaCompatibilityStrategy = data["schema_compatibility_strategy"].(string)
-		nsConfig.IsAllowAutoUpdateSchema = data["is_allow_auto_update_schema"].(bool)
-		nsConfig.OffloadThresholdSizeInMb = data["offload_threshold_size_in_mb"].(int)
-	}
-
-	return &nsConfig
 }
 
 func unmarshalNamespaceConfigList(v []interface{}) *types.NamespaceConfig {
