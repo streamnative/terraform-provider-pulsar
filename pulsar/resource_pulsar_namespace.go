@@ -181,6 +181,11 @@ func resourcePulsarNamespace() *schema.Resource {
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								// If the field is not set in config, suppress the diff
+								_, exists := d.GetOk("namespace_config.0.replication_clusters")
+								return !exists
+							},
 						},
 						"schema_validation_enforce": {
 							Type:     schema.TypeBool,
@@ -191,6 +196,11 @@ func resourcePulsarNamespace() *schema.Resource {
 							Optional:     true,
 							ValidateFunc: validateNotBlank,
 							Default:      "Full",
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								// If the field is not set in config, suppress the diff
+								_, exists := d.GetOk("namespace_config.0.schema_compatibility_strategy")
+								return !exists
+							},
 						},
 						"is_allow_auto_update_schema": {
 							Type:     schema.TypeBool,
@@ -392,11 +402,14 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err))
 			}
 
-			replClusters := make([]interface{}, len(replClustersRaw))
-			for i, cl := range replClustersRaw {
-				replClusters[i] = cl
+			// Only set replication_clusters if it was explicitly configured
+			if len(replClustersRaw) > 0 {
+				replClusters := make([]interface{}, len(replClustersRaw))
+				for i, cl := range replClustersRaw {
+					replClusters[i] = cl
+				}
+				data["replication_clusters"] = replClusters
 			}
-			data["replication_clusters"] = replClusters
 		}
 
 		if _, ok := configData["is_allow_auto_update_schema"]; ok {
