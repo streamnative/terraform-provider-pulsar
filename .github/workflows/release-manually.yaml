@@ -17,12 +17,19 @@
 # under the License.
 #
 
-name: Release
+name: Release (Manually)
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'The git ref to release'
+        required: true
+        default: 'master'
+      version:
+        description: 'The version to release'
+        required: true
+        default: 'v0.0.0'
 
 permissions:
   contents: write
@@ -35,5 +42,5 @@ jobs:
       gpg-private-key-passphrase: ${{ secrets.GPG_PRIVATE_KEY_PASSPHRASE }}
     with:
       setup-go-version-file: 'go.mod'
-      git-ref: ${{ github.ref }}
-      product-version: '${{ github.ref_name }}'
+      git-ref: ${{ github.event.inputs.ref }}
+      product-version: ${{ github.event.inputs.version }}
