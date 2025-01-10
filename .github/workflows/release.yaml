@@ -28,12 +28,41 @@ permissions:
   contents: write
 
 jobs:
-  terraform-provider-release:
-    uses: hashicorp/ghaction-terraform-provider-release/.github/workflows/community.yml@v2
-    secrets:
-      gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-      gpg-private-key-passphrase: ${{ secrets.GPG_PRIVATE_KEY_PASSPHRASE }}
-    with:
-      setup-go-version-file: 'go.mod'
-      git-ref: ${{ github.ref }}
-      product-version: '${{ github.ref_name }}'
+  Release:
+    runs-on: ubuntu-latest
+    env:
+      ACCESS_TOKEN: ${{ secrets.SNBOT_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
+        with:
+          ref: '${{ github.ref }}'
+          fetch-depth: 0
+
+      - name: Set Tag as Environment Variable
+        id: set_tag
+        run: |
+          echo "GORELEASER_CURRENT_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
+          LAST_TAG=$(git describe --abbrev=0 --tags `git rev-list --tags --skip=1 --max-count=1`)
+          echo "GORELEASER_PREVIOUS_TAG=$LAST_TAG" >> $GITHUB_ENV
+
+      - uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.5.0
+        with:
+          go-version-file: go.mod
+      - name: Import GPG key
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@111c56156bcc6918c056dbef52164cfa583dc549 # v5.2.0
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PRIVATE_KEY_PASSPHRASE }}
+      - name: Setup Git token
+        run: |
+          git config --global user.email "snbot@streamnative.io"
+          git config --global user.name "StreamNative Bot"
+          git config --global url."https://streamnativebot:${ACCESS_TOKEN}@github.com/".insteadOf "https://github.com/"
+      - name: goreleaser release (without release notes)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --clean --timeout 60m
+        env:
+          GITHUB_TOKEN: ${{ secrets.SNBOT_GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
