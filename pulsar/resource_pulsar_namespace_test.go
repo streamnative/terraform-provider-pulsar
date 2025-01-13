@@ -184,6 +184,15 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
 					resource.TestCheckNoResourceAttr(resourceName, "permission_grant.#"),
 				),
+			},
+			{
+				Config:             testPulsarNamespaceWithUndefinedOptionalsInNsConf(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config:             testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
 				ExpectNonEmptyPlan: true,
 			},
 		},
@@ -386,6 +395,41 @@ func TestNamespaceExternallyRemoved(t *testing.T) {
 				Config:             testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestNamespaceWithUndefinedOptionalsDrift(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithUndefinedOptionalsInNsConf(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithUndefinedOptionalsInNsConf(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+				),
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config:             testPulsarNamespaceWithUndefinedOptionalsInNsConf(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})

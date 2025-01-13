@@ -254,7 +254,8 @@ func TestSinkUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	configString := string(configBytes)
-	configString = strings.ReplaceAll(configString, "sink-1", "update-sink-test-1")
+	newName := "sink" + acctest.RandString(10)
+	configString = strings.ReplaceAll(configString, "sink-1", newName)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
@@ -265,7 +266,7 @@ func TestSinkUpdate(t *testing.T) {
 			{
 				Config: configString,
 				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
-					name := "pulsar_sink.update-sink-test-1"
+					name := "pulsar_sink." + newName
 					rs, ok := s.RootModule().Resources[name]
 					if !ok {
 						return fmt.Errorf("%s not be found", name)

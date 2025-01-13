@@ -1,6 +1,6 @@
 module github.com/streamnative/terraform-provider-pulsar
 
-go 1.18
+go 1.21
 
 require (
 	github.com/apache/pulsar-client-go v0.14.0
@@ -69,4 +69,5 @@ require (
 	google.golang.org/grpc v1.59.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	k8s.io/utils v0.0.0-20241210054802-24370beab758 // indirect
 )
