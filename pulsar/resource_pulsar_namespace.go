@@ -177,7 +177,7 @@ func resourcePulsarNamespace() *schema.Resource {
 							ValidateFunc: validateGtEq0,
 						},
 						"replication_clusters": {
-							Type:     schema.TypeSet,
+							Type:     schema.TypeList,
 							Optional: true,
 							Computed: true,
 							MinItems: 1,
