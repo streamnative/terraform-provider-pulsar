@@ -88,6 +88,11 @@ func TestNamespace(t *testing.T) {
 					testPulsarNamespaceExists(resourceName),
 				),
 			},
+			{
+				Config:             testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
 		},
 	})
 }
