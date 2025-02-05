@@ -464,6 +464,12 @@ func TestNamespaceReplicationClustersDrift(t *testing.T) {
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
+			{
+				Config: testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+				),
+			},
 		},
 	})
 }
