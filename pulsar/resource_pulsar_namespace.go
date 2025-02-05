@@ -177,7 +177,7 @@ func resourcePulsarNamespace() *schema.Resource {
 							ValidateFunc: validateGtEq0,
 						},
 						"replication_clusters": {
-							Type:     schema.TypeList,
+							Type:     schema.TypeSet,
 							Optional: true,
 							Computed: true,
 							MinItems: 1,
@@ -388,9 +388,9 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err))
 		} else {
-			replClusters := make([]interface{}, len(replClustersRaw))
-			for i, cl := range replClustersRaw {
-				replClusters[i] = cl
+			replClusters := schema.NewSet(schema.HashString, make([]interface{}, len(replClustersRaw)))
+			for _, cl := range replClustersRaw {
+				replClusters.Add(cl)
 			}
 			namespaceConfig["replication_clusters"] = replClusters
 		}
@@ -817,8 +817,7 @@ func unmarshalNamespaceConfigList(v []interface{}) *types.NamespaceConfig {
 
 	for _, ns := range v {
 		data := ns.(map[string]interface{})
-		rplClusters := data["replication_clusters"].([]interface{})
-
+		rplClusters := data["replication_clusters"].(*schema.Set).List()
 		nsConfig.ReplicationClusters = handleHCLArrayV2(rplClusters)
 		nsConfig.MaxProducersPerTopic = data["max_producers_per_topic"].(int)
 		nsConfig.MaxConsumersPerTopic = data["max_consumers_per_topic"].(int)
