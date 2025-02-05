@@ -88,6 +88,11 @@ func TestNamespace(t *testing.T) {
 					testPulsarNamespaceExists(resourceName),
 				),
 			},
+			{
+				Config:             testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
 		},
 	})
 }
@@ -435,6 +440,40 @@ func TestNamespaceWithUndefinedOptionalsDrift(t *testing.T) {
 	})
 }
 
+func TestNamespaceReplicationClustersDrift(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithMultipleReplicationClusters(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+				),
+			},
+			{
+				Config:             testPulsarNamespaceWithMultipleReplicationClusters(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+				),
+			},
+		},
+	})
+}
+
 func createNamespace(t *testing.T, id string) {
 	client, err := sharedClient(testWebServiceURL)
 	if err != nil {
@@ -752,4 +791,93 @@ resource "pulsar_namespace" "test" {
 	%s
 }
 `, wsURL, cluster, tenant, ns, topicAutoCreation)
+}
+
+func testPulsarNamespaceWithMultipleReplicationClusters(wsURL, cluster, tenant, ns string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+  cluster = "%s"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "http://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "%s"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+  namespace = "%s"
+
+  enable_deduplication = true
+
+  namespace_config {
+    anti_affinity                  = "anti-aff"
+    max_consumers_per_subscription = "50"
+    max_consumers_per_topic        = "50"
+    max_producers_per_topic        = "50"
+    message_ttl_seconds            = "86400"
+    replication_clusters           = [pulsar_cluster.test_cluster.cluster]
+    is_allow_auto_update_schema    = false
+	offload_threshold_size_in_mb   = "100"
+  }
+
+  dispatch_rate {
+    dispatch_msg_throttling_rate  = 50
+    rate_period_seconds           = 50
+    dispatch_byte_throttling_rate = 2048
+  }
+
+  subscription_dispatch_rate {
+    dispatch_msg_throttling_rate  = 50
+    rate_period_seconds           = 50
+    dispatch_byte_throttling_rate = 2048
+  }
+
+  retention_policies {
+    retention_minutes    = "1600"
+    retention_size_in_mb = "10000"
+  }
+
+  persistence_policies {
+    bookkeeper_ensemble                   = 2
+    bookkeeper_write_quorum               = 2
+    bookkeeper_ack_quorum                 = 2
+    managed_ledger_max_mark_delete_rate   = 0.0
+  }
+
+  backlog_quota {
+    limit_bytes  = "10000000000"
+    limit_seconds = "-1"
+    policy = "producer_request_hold"
+    type = "destination_storage"
+	}
+
+	permission_grant {
+		role 		= "some-role-1"
+		actions = ["produce", "consume", "functions"]
+	}
+
+	permission_grant {
+		role 		= "some-role-2"
+		actions = ["produce", "consume"]
+	}
+
+	topic_auto_creation {
+		enable = true
+		type = "partitioned"
+		partitions = 3
+	}
+}
+`, wsURL, cluster, tenant, ns)
 }
