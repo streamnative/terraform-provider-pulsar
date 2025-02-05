@@ -49,13 +49,13 @@ resource "pulsar_namespace" "test" {
   namespace = "eternals"
 
   namespace_config {
-    anti_affinity                  = "anti-aff"
-    max_consumers_per_subscription = "50"
-    max_consumers_per_topic        = "50"
-    max_producers_per_topic        = "50"
-    message_ttl_seconds            = "86400"
-    replication_clusters = [
-    "standalone"]
+    anti_affinity                         = "anti-aff"
+    max_consumers_per_subscription        = "50"
+    max_consumers_per_topic               = "50"
+    max_producers_per_topic               = "50"
+    message_ttl_seconds                   = "86400"
+    replication_clusters                  = ["standalone"]
+    subscription_expiration_time_minutes  = 90
   }
 
   dispatch_rate {

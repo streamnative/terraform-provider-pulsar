@@ -270,18 +270,19 @@ resource "pulsar_namespace" "test" {
 
 namespace_config nested schema
 
-| Property                         | Description                                    | Required |
-| -------------------------------- | ---------------------------------------------- | -------- |
-| `anti_affinity`                  | Anti-affinity group name                       | No       |
-| `is_allow_auto_update_schema`    | Is schema auto-update allowed                  | No       |
-| `max_consumers_per_subscription` | Sets the max consumers per subscription        | No       |
-| `max_consumers_per_topic`        | Sets the max consumers per topic               | No       |
-| `max_producers_per_topic`        | Sets the max producers per topic               | No       |
-| `message_ttl_seconds`            | Sets the message TTL in seconds                | No       |
-| `replication_clusters`           | List of replication clusters for the namespace | No       |
-| `schema_compatibility_strategy`  | Set schema compatibility strategy              | No       |
-| `schema_validation_enforce`      | Enable or disable schema validation            | No       |
-| `offload_threshold_size_in_mb`   | Set topic offload threshold size in MB         | No       |
+| Property                               | Description                                      | Required |
+|----------------------------------------|--------------------------------------------------|----------|
+| `anti_affinity`                        | Anti-affinity group name                         | No       |
+| `is_allow_auto_update_schema`          | Is schema auto-update allowed                    | No       |
+| `max_consumers_per_subscription`       | Sets the max consumers per subscription          | No       |
+| `max_consumers_per_topic`              | Sets the max consumers per topic                 | No       |
+| `max_producers_per_topic`              | Sets the max producers per topic                 | No       |
+| `message_ttl_seconds`                  | Sets the message TTL in seconds                  | No       |
+| `offload_threshold_size_in_mb`         | Set topic offload threshold size in MB           | No       |
+| `replication_clusters`                 | List of replication clusters for the namespace   | No       |
+| `schema_compatibility_strategy`        | Set schema compatibility strategy                | No       |
+| `schema_validation_enforce`            | Enable or disable schema validation              | No       |
+| `subscription_expiration_time_minutes` | Sets the subscription expiration time in minutes | No       |
 
 The `schema_compatibility_strategy` can take the following values:
 

@@ -623,14 +623,15 @@ resource "pulsar_namespace" "test" {
   enable_deduplication = true
 
   namespace_config {
-    anti_affinity                  = "anti-aff"
-    max_consumers_per_subscription = "50"
-    max_consumers_per_topic        = "50"
-    max_producers_per_topic        = "50"
-    message_ttl_seconds            = "86400"
-    replication_clusters           = ["standalone"]
-    is_allow_auto_update_schema    = false
-	offload_threshold_size_in_mb   = "100"
+    anti_affinity                  			= "anti-aff"
+    is_allow_auto_update_schema    			= false
+	max_consumers_per_subscription 			= "50"
+    max_consumers_per_topic        			= "50"
+    max_producers_per_topic        			= "50"
+    message_ttl_seconds            			= "86400"
+    offload_threshold_size_in_mb   			= "100"
+	replication_clusters           		 	= ["standalone"]
+	subscription_expiration_time_minutes 	= 90
   }
 
   dispatch_rate {
