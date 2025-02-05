@@ -388,10 +388,11 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err))
 		} else {
-			replClusters := schema.NewSet(schema.HashString, make([]interface{}, len(replClustersRaw)))
-			for _, cl := range replClustersRaw {
-				replClusters.Add(cl)
+			replClustersInterface := make([]interface{}, len(replClustersRaw))
+			for i, cl := range replClustersRaw {
+				replClustersInterface[i] = cl
 			}
+			replClusters := schema.NewSet(schema.HashString, replClustersInterface)
 			namespaceConfig["replication_clusters"] = replClusters
 		}
 
