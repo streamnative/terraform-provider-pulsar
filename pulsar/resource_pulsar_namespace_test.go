@@ -821,7 +821,7 @@ resource "pulsar_namespace" "test" {
     max_consumers_per_topic        = "50"
     max_producers_per_topic        = "50"
     message_ttl_seconds            = "86400"
-    replication_clusters           = [pulsar_cluster.test_cluster.cluster, "standalone"]
+    replication_clusters           = [pulsar_cluster.test_cluster.cluster]
     is_allow_auto_update_schema    = false
 	offload_threshold_size_in_mb   = "100"
   }
