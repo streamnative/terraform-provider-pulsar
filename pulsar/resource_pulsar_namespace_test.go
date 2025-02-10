@@ -22,7 +22,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -261,6 +264,80 @@ func TestNamespaceWithPermissionGrantUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "produce"),
+				),
+			},
+		},
+	})
+}
+
+func TestNamespaceWithPermissionGrantRemove(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckNoResourceAttr(resourceName, "permission_grant.#"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithPermissionGrants(testWebServiceURL, cName, tName, nsName,
+					`permission_grant {
+						role 		= "some-role-1"
+						actions = ["produce", "consume", "functions"]
+					}
+
+					permission_grant {
+						role 		= "some-role-2"
+						actions = ["produce", "consume"]
+					}
+
+					permission_grant {
+						role 		= "some-role-3"
+						actions = ["produce", "consume"]
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "3"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1", "functions"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.2", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "some-role-2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.1", "produce"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.2.role", "some-role-3"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.2.actions.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.2.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.2.actions.1", "produce"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithPermissionGrants(testWebServiceURL, cName, tName, nsName,
+					`permission_grant {
+						role 		= "some-role-2"
+						actions = ["produce", "consume"]
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.1", "produce"),
+					testPulsarNamespacePermissionGrantList(resourceName, 1, "some-role-2", 2, []string{"consume", "produce"}),
 				),
 			},
 		},
@@ -517,6 +594,56 @@ func testPulsarNamespaceExists(ns string) resource.TestCheckFunc {
 		}
 
 		return fmt.Errorf(`ERROR_RESOURCE_NAMESPACE_DOES_NOT_EXISTS: "%s"`, ns)
+	}
+}
+
+func testPulsarNamespacePermissionGrantList(ns string, expectedNo int,
+	role string, actionsNo int, actions []string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[ns]
+		if !ok {
+			return fmt.Errorf("NOT_FOUND: %s", ns)
+		}
+
+		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
+
+		if rs.Primary.ID == "" || !strings.Contains(rs.Primary.ID, "/") {
+			return fmt.Errorf(`ERROR_NAMESPACE_ID_INVALID: "%s"`, rs.Primary.ID)
+		}
+
+		// id is the full path of the namespace, tenant-name/namespace-name
+		// split would give us [tenant-name, namespace-name]
+		nsParts := strings.Split(rs.Primary.ID, "/")
+
+		nsname, err := utils.GetNameSpaceName(nsParts[0], nsParts[1])
+		if err != nil || nsname == nil {
+			return fmt.Errorf("ERROR_GETTING_NAMESPACE_NAME: %w", err)
+		}
+
+		permissions, err := client.GetNamespacePermissions(*nsname)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE_PERMISSIONS: %w", err)
+		}
+
+		if len(permissions) != expectedNo {
+			return fmt.Errorf("ERROR_PERMISSIONS_COUNT: expected %d, got %d", expectedNo, len(permissions))
+		}
+
+		if p, has := permissions[role]; !has {
+			return fmt.Errorf("ERROR_PERMISSION_ROLE_NOT_FOUND: %s", role)
+		} else {
+			if len(p) != actionsNo {
+				return fmt.Errorf("ERROR_PERMISSION_ACTIONS_COUNT: expected %d, got %d", actionsNo, len(p))
+			}
+
+			for i, a := range p {
+				if a.String() != actions[i] {
+					return fmt.Errorf("ERROR_PERMISSION_ACTION: expected %s, got %s", actions[i], a)
+				}
+			}
+		}
+
+		return nil
 	}
 }
 
