@@ -73,12 +73,13 @@ func resourcePulsarSubscription() *schema.Resource {
 func TopicNameValidatorDiag(i interface{}, p cty.Path) diag.Diagnostics {
 	_, err := utils.GetTopicName(i.(string))
 	if err != nil {
-		return diag.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err)
+		return diag.Errorf("ERROR_PARSE_TOPIC_NAME: %s", err.Error())
 	}
 	return nil
 }
 
-func resourcePulsarSubscriptionImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourcePulsarSubscriptionImport(ctx context.Context, d *schema.ResourceData,
+	meta interface{}) ([]*schema.ResourceData, error) {
 	// Format is expected to be: {topic}:{subscription_name}
 	parts := strings.Split(d.Id(), ":")
 	if len(parts) != 2 {
@@ -271,14 +272,14 @@ func getSubscriptions(topicName *utils.TopicName, client admin.Client) ([]string
 // createSubscription uses the appropriate REST API endpoint to create a subscription
 func createSubscription(topicName *utils.TopicName, subscriptionName string,
 	position string, client admin.Client) error {
-	var messageId utils.MessageID
+	var messageID utils.MessageID
 	if position == "earliest" {
-		messageId = utils.Earliest
+		messageID = utils.Earliest
 	} else {
-		messageId = utils.Latest
+		messageID = utils.Latest
 	}
 
-	return client.Subscriptions().Create(*topicName, subscriptionName, messageId)
+	return client.Subscriptions().Create(*topicName, subscriptionName, messageID)
 }
 
 // deleteSubscription uses the appropriate REST API endpoint to delete a subscription

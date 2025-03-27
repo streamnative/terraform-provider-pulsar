@@ -112,7 +112,8 @@ func TestImportExistingSubscription(t *testing.T) {
 			createSubscriptionForTest(t, topic, subscriptionName)
 			t.Cleanup(func() {
 				topicName, _ := utils.GetTopicName(topic)
-				if err := getClientFromMeta(testAccProvider.Meta()).Subscriptions().Delete(*topicName, subscriptionName); err != nil {
+				if err := getClientFromMeta(testAccProvider.Meta()).Subscriptions().Delete(*topicName,
+					subscriptionName); err != nil {
 					t.Logf("ERROR_DELETING_TEST_SUBSCRIPTION: %v", err)
 				}
 			})
@@ -200,6 +201,7 @@ func testPulsarSubscriptionDestroy(s *terraform.State) error {
 	return nil
 }
 
+//nolint:unparam
 func testPulsarSubscriptionExists(subscription string, t *testing.T) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[subscription]
