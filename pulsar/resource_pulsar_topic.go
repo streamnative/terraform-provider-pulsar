@@ -179,15 +179,15 @@ func resourcePulsarTopic() *schema.Resource {
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									"enable-delete-while-inactive": {
+									"enable_delete_while_inactive": {
 										Type:     schema.TypeBool,
 										Required: true,
 									},
-									"max-inactive-duration": {
+									"max_inactive_duration": {
 										Type:     schema.TypeString,
 										Required: true,
 									},
-									"delete-mode": {
+									"delete_mode": {
 										Type:         schema.TypeString,
 										Required:     true,
 										ValidateFunc: validiateDeleteMode,
@@ -518,24 +518,24 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		if err == nil && inactiveTopicPolicies.InactiveTopicDeleteMode != nil {
 			topicConfigMap["inactive_topic"] = schema.NewSet(schema.HashResource(&schema.Resource{
 				Schema: map[string]*schema.Schema{
-					"enable-delete-while-inactive": {
+					"enable_delete_while_inactive": {
 						Type:     schema.TypeBool,
 						Required: true,
 					},
-					"max-inactive-duration": {
+					"max_inactive_duration": {
 						Type:     schema.TypeString,
 						Required: true,
 					},
-					"delete-mode": {
+					"delete_mode": {
 						Type:     schema.TypeString,
 						Required: true,
 					},
 				},
 			}), []interface{}{
 				map[string]interface{}{
-					"enable-delete-while-inactive": inactiveTopicPolicies.DeleteWhileInactive,
-					"max-inactive-duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
-					"delete-mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
+					"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
+					"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
+					"delete_mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
 				},
 			})
 		}
@@ -981,9 +981,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		inactiveCfg, ok := inactiveTopicCfg.(*schema.Set)
 		if ok && inactiveCfg.Len() > 0 {
 			data := inactiveCfg.List()[0].(map[string]interface{})
-			enableDelete := data["enable-delete-while-inactive"].(bool)
-			maxInactiveDurationStr := data["max-inactive-duration"].(string)
-			deleteModeStr := data["delete-mode"].(string)
+			enableDelete := data["enable_delete_while_inactive"].(bool)
+			maxInactiveDurationStr := data["max_inactive_duration"].(string)
+			deleteModeStr := data["delete_mode"].(string)
 
 			var maxInactiveDurationSeconds = (int)(0)
 			if len(maxInactiveDurationStr) > 0 {
