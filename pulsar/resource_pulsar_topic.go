@@ -558,11 +558,13 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 			topicConfigMap["message_ttl_seconds"] = messageTTL
 		}
 
-		if maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName); err == nil && maxUnackedMsgPerConsumer > 0 {
+		if maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName); err == nil &&
+			maxUnackedMsgPerConsumer > 0 {
 			topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
 		}
 
-		if maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName); err == nil && maxUnackedMsgPerSubscription > 0 {
+		if maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName); err == nil &&
+			maxUnackedMsgPerSubscription > 0 {
 			topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
 		}
 
@@ -961,7 +963,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			enabled := data["enabled"].(bool)
 			timeStr := data["time"].(string)
 
-			var tickTimeSeconds float64 = 1.0
+			var tickTimeSeconds = (float64)(1.0)
 			if len(timeStr) > 0 {
 				if timeStr[len(timeStr)-1] == 's' {
 					if parsedTime, err := strconv.ParseFloat(timeStr[:len(timeStr)-1], 64); err == nil {
@@ -989,7 +991,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			maxInactiveDurationStr := data["max-inactive-duration"].(string)
 			deleteModeStr := data["delete-mode"].(string)
 
-			var maxInactiveDurationSeconds int = 0
+			var maxInactiveDurationSeconds = (int)(0)
 			if len(maxInactiveDurationStr) > 0 {
 				if maxInactiveDurationStr[len(maxInactiveDurationStr)-1] == 's' {
 					if parsedTime, err := strconv.Atoi(maxInactiveDurationStr[:len(maxInactiveDurationStr)-1]); err == nil {
