@@ -58,7 +58,6 @@ func resourcePulsarSubscription() *schema.Resource {
 			"position": {
 				Type:     schema.TypeString,
 				Optional: true,
-				ForceNew: true,
 				Default:  "latest",
 				ValidateFunc: validation.StringInSlice(
 					[]string{"earliest", "latest"},
