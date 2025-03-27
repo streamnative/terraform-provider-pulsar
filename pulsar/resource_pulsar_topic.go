@@ -106,22 +106,18 @@ func resourcePulsarTopic() *schema.Resource {
 						"msg_dispatch_rate": {
 							Type:     schema.TypeInt,
 							Required: true,
-							Default:  -1,
 						},
 						"byte_dispatch_rate": {
 							Type:     schema.TypeInt,
 							Required: true,
-							Default:  -1,
 						},
 						"dispatch_rate_period": {
 							Type:     schema.TypeInt,
 							Required: true,
-							Default:  1,
 						},
 						"relative_to_publish_rate": {
 							Type:     schema.TypeBool,
 							Required: true,
-							Default:  false,
 						},
 					},
 				},
@@ -173,7 +169,6 @@ func resourcePulsarTopic() *schema.Resource {
 									"time": {
 										Type:     schema.TypeString,
 										Required: true,
-										Default:  "1s",
 									},
 								},
 							},
@@ -191,7 +186,6 @@ func resourcePulsarTopic() *schema.Resource {
 									"max-inactive-duration": {
 										Type:     schema.TypeString,
 										Required: true,
-										Default:  "1s",
 									},
 									"delete-mode": {
 										Type:         schema.TypeString,
