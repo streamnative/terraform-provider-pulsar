@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
+	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
 
 func resourcePulsarTopic() *schema.Resource {
@@ -88,6 +90,41 @@ func resourcePulsarTopic() *schema.Resource {
 					},
 				},
 			},
+			"enable_deduplication": {
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
+			"dispatch_rate": {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Description: descriptions["dispatch_rate"],
+				MaxItems:    1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"msg_dispatch_rate": {
+							Type:     schema.TypeInt,
+							Required: true,
+							Default:  -1,
+						},
+						"byte_dispatch_rate": {
+							Type:     schema.TypeInt,
+							Required: true,
+							Default:  -1,
+						},
+						"dispatch_rate_period": {
+							Type:     schema.TypeInt,
+							Required: true,
+							Default:  1,
+						},
+						"relative_to_publish_rate": {
+							Type:     schema.TypeBool,
+							Required: true,
+							Default:  false,
+						},
+					},
+				},
+				Set: topicDispatchRateToHash,
+			},
 			"retention_policies": {
 				Type:     schema.TypeSet,
 				Optional: true,
@@ -104,6 +141,132 @@ func resourcePulsarTopic() *schema.Resource {
 						},
 					},
 				},
+			},
+			"backlog_quota": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem:     schemaBacklogQuotaSubset(),
+				Set:      hashBacklogQuotaSubset(),
+			},
+			"topic_config": {
+				Type:        schema.TypeList,
+				Optional:    true,
+				Description: descriptions["topic_config"],
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"compaction_threshold": {
+							Type:     schema.TypeInt,
+							Optional: true,
+						},
+						"delayed_delivery": {
+							Type:     schema.TypeSet,
+							Optional: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"enabled": {
+										Type:     schema.TypeBool,
+										Required: true,
+									},
+									"time": {
+										Type:     schema.TypeString,
+										Required: true,
+										Default:  "1s",
+									},
+								},
+							},
+						},
+						"inactive_topic": {
+							Type:     schema.TypeSet,
+							Optional: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"enable-delete-while-inactive": {
+										Type:     schema.TypeBool,
+										Required: true,
+									},
+									"max-inactive-duration": {
+										Type:     schema.TypeString,
+										Required: true,
+										Default:  "1s",
+									},
+									"delete-mode": {
+										Type:         schema.TypeString,
+										Required:     true,
+										ValidateFunc: validiateDeleteMode,
+									},
+								},
+							},
+						},
+						"max_consumers": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      0,
+							ValidateFunc: validateGtEq0,
+						},
+						"max_producers": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      0,
+							ValidateFunc: validateGtEq0,
+						},
+						"message_ttl_seconds": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      0,
+							ValidateFunc: validateGtEq0,
+						},
+						"max_unacked_messages_per_consumer": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      0,
+							ValidateFunc: validateGtEq0,
+						},
+						"max_unacked_messages_per_subscription": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      0,
+							ValidateFunc: validateGtEq0,
+						},
+						"msg_publish_rate": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							ValidateFunc: validateGtEq0,
+						},
+						"byte_publish_rate": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							ValidateFunc: validateGtEq0,
+						},
+					},
+				},
+			},
+			"persistence_policies": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"bookkeeper_ensemble": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+						"bookkeeper_write_quorum": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+						"bookkeeper_ack_quorum": {
+							Type:     schema.TypeInt,
+							Required: true,
+						},
+						"managed_ledger_max_mark_delete_rate": {
+							Type:     schema.TypeFloat,
+							Required: true,
+						},
+					},
+				},
+				Set: persistencePoliciesToHash,
 			},
 		},
 	}
@@ -412,4 +575,16 @@ func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils
 
 func retry(operation func() error) error {
 	return backoff.Retry(operation, backoff.NewExponentialBackOff())
+}
+
+func topicDispatchRateToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%d-", m["msg_dispatch_rate"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["byte_dispatch_rate"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["dispatch_rate_period"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["relative_to_publish_rate"].(int)))
+
+	return hashcode.String(buf.String())
 }
