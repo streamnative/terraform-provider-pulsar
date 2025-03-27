@@ -94,12 +94,476 @@ func TestImportExistingTopic(t *testing.T) {
 	})
 }
 
+func TestImportTopicWithConfig(t *testing.T) {
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+	topicName, err := utils.GetTopicName(fullID)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createTopic(t, fullID, pnum)
+			client := getClientFromMeta(testAccProvider.Meta()).Topics()
+			err := client.SetMaxConsumers(*topicName, 15)
+			if err != nil {
+				t.Fatalf("ERROR_SETTING_MAX_CONSUMERS: %v", err)
+			}
+			err = client.SetMessageTTL(*topicName, 7200)
+			if err != nil {
+				t.Fatalf("ERROR_SETTING_MESSAGE_TTL: %v", err)
+			}
+			t.Cleanup(func() {
+				if err := getClientFromMeta(testAccProvider.Meta()).Topics().Delete(*topicName, true, pnum == 0); err != nil {
+					t.Fatalf("ERROR_DELETING_TEST_TOPIC: %v", err)
+				}
+			})
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  "pulsar_topic.test",
+				ImportState:   true,
+				Config:        testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, ""),
+				ImportStateId: fullID,
+				ImportStateCheck: func(s []*terraform.InstanceState) error {
+					if len(s) != 1 {
+						return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
+					}
+
+					if s[0].Attributes["topic_config.#"] != "1" {
+						return fmt.Errorf("topic_config not found in imported state")
+					}
+
+					maxConsumers := s[0].Attributes["topic_config.0.max_consumers"]
+					if maxConsumers != "15" {
+						return fmt.Errorf("expected max_consumers to be 15, got %s", maxConsumers)
+					}
+
+					messageTTL := s[0].Attributes["topic_config.0.message_ttl_seconds"]
+					if messageTTL != "7200" {
+						return fmt.Errorf("expected message_ttl_seconds to be 7200, got %s", messageTTL)
+					}
+
+					return nil
+				},
+			},
+		},
+	})
+}
+
 func TestNonPartionedTopicWithPermissionGrantUpdate(t *testing.T) {
 	testTopicWithPermissionGrantUpdate(t, 0)
 }
 
 func TestPartionedTopicWithPermissionGrantUpdate(t *testing.T) {
 	testTopicWithPermissionGrantUpdate(t, 10)
+}
+
+func TestTopicWithTopicConfigUpdate(t *testing.T) {
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						max_consumers = 10
+						max_producers = 5
+						message_ttl_seconds = 3600
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "10"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "5"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "3600"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						max_consumers = 20
+						max_producers = 10
+						message_ttl_seconds = 7200
+						max_unacked_messages_per_consumer = 1000
+						max_unacked_messages_per_subscription = 2000
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "20"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "10"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "7200"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_unacked_messages_per_consumer", "1000"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_unacked_messages_per_subscription", "2000"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						msg_publish_rate = 100
+						byte_publish_rate = 1024
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.msg_publish_rate", "100"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.byte_publish_rate", "1024"),
+				),
+			},
+		},
+	})
+}
+
+func TestTopicWithDelayedDeliveryUpdate(t *testing.T) {
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						delayed_delivery {
+							enabled = true
+							time = "2.0s"
+						}
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.enabled", "true"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.time", "2.0s"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						delayed_delivery {
+							enabled = false
+							time = "1.0s"
+						}
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.enabled", "false"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.time", "1.0s"),
+				),
+			},
+		},
+	})
+}
+
+func TestTopicWithInactiveTopicUpdate(t *testing.T) {
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						inactive_topic {
+							enable-delete-while-inactive = true
+							max-inactive-duration = "60s"
+							delete-mode = "delete_when_no_subscriptions"
+						}
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.inactive_topic.#", "1"),
+					resource.TestCheckResourceAttr(resourceName,
+						"topic_config.0.inactive_topic.0.enable-delete-while-inactive", "true"),
+					resource.TestCheckResourceAttr(resourceName,
+						"topic_config.0.inactive_topic.0.max-inactive-duration", "60s"),
+					resource.TestCheckResourceAttr(resourceName,
+						"topic_config.0.inactive_topic.0.delete-mode", "delete_when_no_subscriptions"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						inactive_topic {
+							enable-delete-while-inactive = false
+							max-inactive-duration = "120s"
+							delete-mode = "delete_when_no_subscriptions"
+						}
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.inactive_topic.#", "1"),
+					resource.TestCheckResourceAttr(resourceName,
+						"topic_config.0.inactive_topic.0.enable-delete-while-inactive", "false"),
+					resource.TestCheckResourceAttr(resourceName,
+						"topic_config.0.inactive_topic.0.max-inactive-duration", "120s"),
+					resource.TestCheckResourceAttr(resourceName,
+						"topic_config.0.inactive_topic.0.delete-mode", "delete_when_no_subscriptions"),
+				),
+			},
+		},
+	})
+}
+
+func TestTopicWithCompactionThresholdUpdate(t *testing.T) {
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						compaction_threshold = 1073741824
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.compaction_threshold", "1073741824"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						compaction_threshold = 2147483648
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.compaction_threshold", "2147483648"),
+				),
+			},
+		},
+	})
+}
+
+func TestTopicWithConfigAndOtherFields(t *testing.T) {
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithTopicConfigAndOtherFields(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						max_consumers = 15
+						max_producers = 8
+						message_ttl_seconds = 7200
+					}
+
+					permission_grant {
+						role = "admin"
+						actions = ["produce", "consume"]
+					}
+
+					persistence_policies {
+						bookkeeper_ensemble = 2
+						bookkeeper_write_quorum = 2
+						bookkeeper_ack_quorum = 2
+						managed_ledger_max_mark_delete_rate = 0.5
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "15"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "8"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "7200"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "admin"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "persistence_policies.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "persistence_policies.0.bookkeeper_ensemble", "2"),
+					resource.TestCheckResourceAttr(resourceName, "persistence_policies.0.bookkeeper_write_quorum", "2"),
+					resource.TestCheckResourceAttr(resourceName, "persistence_policies.0.bookkeeper_ack_quorum", "2"),
+					resource.TestCheckResourceAttr(resourceName, "persistence_policies.0.managed_ledger_max_mark_delete_rate", "0.5"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfigAndOtherFields(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						max_consumers = 20
+						message_ttl_seconds = 3600
+						max_unacked_messages_per_consumer = 1000
+						delayed_delivery {
+							enabled = true
+							time = "1.5s"
+						}
+					}
+
+					permission_grant {
+						role = "admin"
+						actions = ["produce", "consume", "functions"]
+					}
+
+					permission_grant {
+						role = "user"
+						actions = ["consume"]
+					}
+
+					persistence_policies {
+						bookkeeper_ensemble = 3
+						bookkeeper_write_quorum = 2
+						bookkeeper_ack_quorum = 2
+						managed_ledger_max_mark_delete_rate = 1.0
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "20"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "3600"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_unacked_messages_per_consumer", "1000"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.enabled", "true"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.time", "1.5s"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "user"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.actions.0", "consume"),
+					resource.TestCheckResourceAttr(resourceName, "persistence_policies.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "persistence_policies.0.bookkeeper_ensemble", "3"),
+				),
+			},
+		},
+	})
+}
+
+func TestTopicConfigRemoval(t *testing.T) {
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						max_consumers = 10
+						max_producers = 5
+						message_ttl_seconds = 3600
+						delayed_delivery {
+							enabled = true
+							time = "2.0s"
+						}
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "10"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "5"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "3600"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.#", "1"),
+				),
+			},
+			{
+				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
+				),
+			},
+			{
+				// Confirm that topic_config can be added back after removal
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						max_consumers = 20
+						inactive_topic {
+							enable-delete-while-inactive = true
+							max-inactive-duration = "60s"
+							delete-mode = "delete_when_no_subscriptions"
+						}
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "20"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.inactive_topic.#", "1"),
+				),
+			},
+		},
+	})
 }
 
 func TestTopicNamespaceExternallyRemoved(t *testing.T) {
@@ -301,8 +765,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 9 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 9, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 10 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 10, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -379,8 +843,75 @@ resource "pulsar_topic" "sample-topic-4" {
 
 
 `, testWebServiceURL)
+
+	testPulsarPartitionTopicWithConfig = fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_topic" "sample-topic-config-1" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "persistent"
+  topic_name = "partitioned-persistent-topic-with-config"
+  partitions = 4
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
+
+  topic_config {
+    message_ttl_seconds = 3600
+    max_consumers = 50
+  }
+}
+
+resource "pulsar_topic" "sample-topic-config-2" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "non-persistent"
+  topic_name = "partitioned-non-persistent-topic-with-config"
+  partitions = 4
+}
+`, testWebServiceURL)
+
+	testPulsarNonPartitionTopicWithConfig = fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_topic" "sample-topic-config-3" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "persistent"
+  topic_name = "non-partitioned-persistent-topic-with-config"
+  partitions = 0
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
+
+  topic_config {
+    delayed_delivery {
+      enabled = true
+      time = "1.5s"
+    }
+  }
+}
+
+resource "pulsar_topic" "sample-topic-config-4" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "non-persistent"
+  topic_name = "non-partitioned-non-persistent-topic-with-config"
+  partitions = 0
+}
+`, testWebServiceURL)
 )
 
+//nolint:unparam
 func testPulsarTopic(url, tname, ttype string, pnum int, permissionGrants string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
@@ -404,6 +935,7 @@ resource "pulsar_topic" "test" {
 `, url, ttype, tname, pnum, permissionGrants)
 }
 
+//nolint:unparam
 func testPulsarNamespaceWithTopic(wsURL, tenant, ns, topicName string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
@@ -440,4 +972,136 @@ resource "pulsar_topic" "test" {
 	]
 }
 `, wsURL, tenant, ns, tenant, ns, topicName)
+}
+
+//nolint:unparam
+func testPulsarTopicWithTopicConfig(url, tname, ttype string, pnum int, topicConfig string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+	web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "%s"
+  topic_name = "%s"
+  partitions = %d
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
+
+  %s
+}
+`, url, ttype, tname, pnum, topicConfig)
+}
+
+func testPulsarTopicWithTopicConfigAndOtherFields(url, tname, ttype string, pnum int, allConfigs string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+	web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "%s"
+  topic_name = "%s"
+  partitions = %d
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb = 20000
+  }
+
+  %s
+}
+`, url, ttype, tname, pnum, allConfigs)
+}
+
+func TestTopicWithConfig(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarPartitionTopicWithConfig,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists("pulsar_topic.sample-topic-config-1", t),
+					resource.TestCheckResourceAttr("pulsar_topic.sample-topic-config-1", "topic_config.#", "1"),
+					resource.TestCheckResourceAttr("pulsar_topic.sample-topic-config-1", "topic_config.0.message_ttl_seconds", "3600"),
+					resource.TestCheckResourceAttr("pulsar_topic.sample-topic-config-1", "topic_config.0.max_consumers", "50"),
+					testPulsarTopicExists("pulsar_topic.sample-topic-config-2", t),
+				),
+			},
+			{
+				Config: testPulsarNonPartitionTopicWithConfig,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists("pulsar_topic.sample-topic-config-3", t),
+					resource.TestCheckResourceAttr("pulsar_topic.sample-topic-config-3", "topic_config.#", "1"),
+					resource.TestCheckResourceAttr("pulsar_topic.sample-topic-config-3", "topic_config.0.delayed_delivery.#", "1"),
+					resource.TestCheckResourceAttr("pulsar_topic.sample-topic-config-3",
+						"topic_config.0.delayed_delivery.0.enabled", "true"),
+					resource.TestCheckResourceAttr("pulsar_topic.sample-topic-config-3",
+						"topic_config.0.delayed_delivery.0.time", "1.5s"),
+					testPulsarTopicExists("pulsar_topic.sample-topic-config-4", t),
+				),
+			},
+		},
+	})
+}
+
+func TestPartitionedTopicWithTopicConfig(t *testing.T) {
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 4 // Number of partitions
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						max_consumers = 10
+						max_producers = 5
+						message_ttl_seconds = 3600
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "partitions", "4"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "10"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "5"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "3600"),
+				),
+			},
+			{
+				// Update topic_config for a partitioned topic
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						max_consumers = 20
+						message_ttl_seconds = 7200
+						max_unacked_messages_per_consumer = 1000
+						max_unacked_messages_per_subscription = 2000
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "partitions", "4"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "20"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "7200"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_unacked_messages_per_consumer", "1000"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_unacked_messages_per_subscription", "2000"),
+				),
+			},
+		},
+	})
 }
