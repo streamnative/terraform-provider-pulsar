@@ -21,6 +21,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -318,6 +320,41 @@ func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err))
 	}
 
+	err = retry(func() error {
+		return updateDeduplicationStatus(d, meta, topicName)
+	})
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DEDUPLICATION_STATUS: %w", err))
+	}
+
+	err = retry(func() error {
+		return updateBacklogQuota(d, meta, topicName)
+	})
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_BACKLOG_QUOTA: %w", err))
+	}
+
+	err = retry(func() error {
+		return updateDispatchRate(d, meta, topicName)
+	})
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DISPATCH_RATE: %w", err))
+	}
+
+	err = retry(func() error {
+		return updatePersistencePolicies(d, meta, topicName)
+	})
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERSISTENCE_POLICIES: %w", err))
+	}
+
+	err = retry(func() error {
+		return updateTopicConfig(d, meta, topicName)
+	})
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_CONFIG: %w", err))
+	}
+
 	return resourcePulsarTopicRead(ctx, d, meta)
 }
 
@@ -378,6 +415,171 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
+	if _, ok := d.GetOk("enable_deduplication"); ok {
+		deduplicationStatus, err := client.GetDeduplicationStatus(*topicName)
+		if err != nil {
+			if !strings.Contains(err.Error(), "404") {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetDeduplicationStatus: %w", err))
+			}
+		} else {
+			_ = d.Set("enable_deduplication", deduplicationStatus)
+		}
+	}
+
+	if backlogQuotaCfg, ok := d.GetOk("backlog_quota"); ok && backlogQuotaCfg.(*schema.Set).Len() > 0 {
+		if topicName.IsPersistent() {
+			qt, err := client.GetBacklogQuotaMap(*topicName, true)
+			if err != nil {
+				if !strings.Contains(err.Error(), "404") {
+					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetBacklogQuotaMap: %w", err))
+				}
+			} else {
+				var backlogQuotas []interface{}
+				for backlogQuotaType, data := range qt {
+					backlogQuotas = append(backlogQuotas, map[string]interface{}{
+						"limit_bytes":   strconv.FormatInt(data.LimitSize, 10),
+						"limit_seconds": strconv.FormatInt(data.LimitTime, 10),
+						"policy":        string(data.Policy),
+						"type":          string(backlogQuotaType),
+					})
+				}
+
+				_ = d.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), backlogQuotas))
+			}
+		} else {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get backlog quota for non-persistent topic"))
+		}
+	}
+
+	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
+		dr, err := client.GetDispatchRate(*topicName)
+		if err != nil {
+			if !strings.Contains(err.Error(), "404") {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetDispatchRate: %w", err))
+			}
+		} else if dr != nil {
+			_ = d.Set("dispatch_rate", schema.NewSet(topicDispatchRateToHash, []interface{}{
+				map[string]interface{}{
+					"msg_dispatch_rate":        int(dr.DispatchThrottlingRateInMsg),
+					"byte_dispatch_rate":       int(dr.DispatchThrottlingRateInByte),
+					"dispatch_rate_period":     int(dr.RatePeriodInSecond),
+					"relative_to_publish_rate": dr.RelativeToPublishRate,
+				},
+			}))
+		}
+	}
+
+	if persPoliciesCfg, ok := d.GetOk("persistence_policies"); ok && persPoliciesCfg.(*schema.Set).Len() > 0 {
+		if topicName.IsPersistent() {
+			persistence, err := client.GetPersistence(*topicName)
+			if err != nil {
+				if !strings.Contains(err.Error(), "404") {
+					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPersistence: %w", err))
+				}
+			} else if persistence != nil {
+				_ = d.Set("persistence_policies", schema.NewSet(persistencePoliciesToHash, []interface{}{
+					map[string]interface{}{
+						"bookkeeper_ensemble":                 int(persistence.BookkeeperEnsemble),
+						"bookkeeper_write_quorum":             int(persistence.BookkeeperWriteQuorum),
+						"bookkeeper_ack_quorum":               int(persistence.BookkeeperAckQuorum),
+						"managed_ledger_max_mark_delete_rate": persistence.ManagedLedgerMaxMarkDeleteRate,
+					},
+				}))
+			}
+		} else {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get persistence policies for non-persistent topic"))
+		}
+	}
+
+	if _, ok := d.GetOk("topic_config"); ok {
+		var topicConfigMap = make(map[string]interface{})
+
+		compactionThreshold, err := client.GetCompactionThreshold(*topicName, true)
+		if err == nil && compactionThreshold > 0 {
+			topicConfigMap["compaction_threshold"] = int(compactionThreshold)
+		}
+
+		delayedDelivery, err := client.GetDelayedDelivery(*topicName)
+		if err == nil && delayedDelivery != nil {
+			topicConfigMap["delayed_delivery"] = schema.NewSet(schema.HashResource(&schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"enabled": {
+						Type:     schema.TypeBool,
+						Required: true,
+					},
+					"time": {
+						Type:     schema.TypeString,
+						Required: true,
+					},
+				},
+			}), []interface{}{
+				map[string]interface{}{
+					"enabled": delayedDelivery.Active,
+					"time":    fmt.Sprintf("%.1fs", delayedDelivery.TickTime),
+				},
+			})
+		}
+
+		inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
+		if err == nil && inactiveTopicPolicies.InactiveTopicDeleteMode != nil {
+			topicConfigMap["inactive_topic"] = schema.NewSet(schema.HashResource(&schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"enable-delete-while-inactive": {
+						Type:     schema.TypeBool,
+						Required: true,
+					},
+					"max-inactive-duration": {
+						Type:     schema.TypeString,
+						Required: true,
+					},
+					"delete-mode": {
+						Type:     schema.TypeString,
+						Required: true,
+					},
+				},
+			}), []interface{}{
+				map[string]interface{}{
+					"enable-delete-while-inactive": inactiveTopicPolicies.DeleteWhileInactive,
+					"max-inactive-duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
+					"delete-mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
+				},
+			})
+		}
+
+		if maxConsumers, err := client.GetMaxConsumers(*topicName); err == nil && maxConsumers > 0 {
+			topicConfigMap["max_consumers"] = maxConsumers
+		}
+
+		if maxProducers, err := client.GetMaxProducers(*topicName); err == nil && maxProducers > 0 {
+			topicConfigMap["max_producers"] = maxProducers
+		}
+
+		if messageTTL, err := client.GetMessageTTL(*topicName); err == nil && messageTTL > 0 {
+			topicConfigMap["message_ttl_seconds"] = messageTTL
+		}
+
+		if maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName); err == nil && maxUnackedMsgPerConsumer > 0 {
+			topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
+		}
+
+		if maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName); err == nil && maxUnackedMsgPerSubscription > 0 {
+			topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
+		}
+
+		if publishRate, err := client.GetPublishRate(*topicName); err == nil && publishRate != nil {
+			if publishRate.PublishThrottlingRateInMsg > 0 {
+				topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
+			}
+			if publishRate.PublishThrottlingRateInByte > 0 {
+				topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
+			}
+		}
+
+		if len(topicConfigMap) > 0 {
+			_ = d.Set("topic_config", []interface{}{topicConfigMap})
+		}
+	}
+
 	return nil
 }
 
@@ -403,6 +605,41 @@ func resourcePulsarTopicUpdate(ctx context.Context, d *schema.ResourceData, meta
 
 	if d.HasChange("retention_policies") {
 		err := updateRetentionPolicies(d, meta, topicName)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("enable_deduplication") {
+		err := updateDeduplicationStatus(d, meta, topicName)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("backlog_quota") {
+		err := updateBacklogQuota(d, meta, topicName)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("dispatch_rate") {
+		err := updateDispatchRate(d, meta, topicName)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("persistence_policies") {
+		err := updatePersistencePolicies(d, meta, topicName)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("topic_config") {
+		err := updateTopicConfig(d, meta, topicName)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -584,7 +821,260 @@ func topicDispatchRateToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%d-", m["msg_dispatch_rate"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["byte_dispatch_rate"].(int)))
 	buf.WriteString(fmt.Sprintf("%d-", m["dispatch_rate_period"].(int)))
-	buf.WriteString(fmt.Sprintf("%d-", m["relative_to_publish_rate"].(int)))
+
+	relativeToPublishRate := m["relative_to_publish_rate"].(bool)
+	relativeToPublishRateInt := 0
+	if relativeToPublishRate {
+		relativeToPublishRateInt = 1
+	}
+	buf.WriteString(fmt.Sprintf("%d-", relativeToPublishRateInt))
 
 	return hashcode.String(buf.String())
+}
+
+func updateDeduplicationStatus(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	client := getClientFromMeta(meta).Topics()
+
+	if enableDeduplication, ok := d.GetOk("enable_deduplication"); ok {
+		enabled := enableDeduplication.(bool)
+		err := client.SetDeduplicationStatus(*topicName, enabled)
+		if err != nil {
+			return fmt.Errorf("ERROR_UPDATE_TOPIC_DEDUPLICATION_STATUS: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func updateBacklogQuota(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	client := getClientFromMeta(meta).Topics()
+
+	backlogQuotaConfig := d.Get("backlog_quota").(*schema.Set)
+	if backlogQuotaConfig.Len() == 0 {
+		return nil
+	}
+
+	if !topicName.IsPersistent() {
+		return errors.New("ERROR_UPDATE_BACKLOG_QUOTA: SetBacklogQuota: " +
+			"unsupported set backlog quota for non-persistent topic")
+	}
+
+	backlogQuotas, err := unmarshalBacklogQuota(backlogQuotaConfig)
+	if err != nil {
+		return fmt.Errorf("ERROR_UPDATE_BACKLOG_QUOTA: unmarshalBacklogQuota: %w", err)
+	}
+
+	for _, item := range backlogQuotas {
+		err = client.SetBacklogQuota(*topicName, item.BacklogQuota, item.backlogQuotaType)
+		if err != nil {
+			return fmt.Errorf("ERROR_UPDATE_BACKLOG_QUOTA: SetBacklogQuota: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func updateDispatchRate(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	client := getClientFromMeta(meta).Topics()
+
+	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
+	if dispatchRateConfig.Len() == 0 {
+		return nil
+	}
+
+	for _, dr := range dispatchRateConfig.List() {
+		data := dr.(map[string]interface{})
+
+		dispatchRateData := utils.DispatchRateData{
+			DispatchThrottlingRateInMsg:  int64(data["msg_dispatch_rate"].(int)),
+			DispatchThrottlingRateInByte: int64(data["byte_dispatch_rate"].(int)),
+			RatePeriodInSecond:           int64(data["dispatch_rate_period"].(int)),
+			RelativeToPublishRate:        data["relative_to_publish_rate"].(bool),
+		}
+
+		err := client.SetDispatchRate(*topicName, dispatchRateData)
+		if err != nil {
+			return fmt.Errorf("ERROR_UPDATE_DISPATCH_RATE: SetDispatchRate: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func updatePersistencePolicies(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	client := getClientFromMeta(meta).Topics()
+
+	persistencePoliciesConfig := d.Get("persistence_policies").(*schema.Set)
+	if persistencePoliciesConfig.Len() == 0 {
+		return nil
+	}
+
+	if !topicName.IsPersistent() {
+		return errors.New("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: " +
+			"unsupported set persistence policies for non-persistent topic")
+	}
+
+	for _, policy := range persistencePoliciesConfig.List() {
+		data := policy.(map[string]interface{})
+
+		persistenceData := utils.PersistenceData{
+			BookkeeperEnsemble:             int64(data["bookkeeper_ensemble"].(int)),
+			BookkeeperWriteQuorum:          int64(data["bookkeeper_write_quorum"].(int)),
+			BookkeeperAckQuorum:            int64(data["bookkeeper_ack_quorum"].(int)),
+			ManagedLedgerMaxMarkDeleteRate: data["managed_ledger_max_mark_delete_rate"].(float64),
+		}
+
+		err := client.SetPersistence(*topicName, persistenceData)
+		if err != nil {
+			return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	client := getClientFromMeta(meta).Topics()
+
+	topicConfigList := d.Get("topic_config").([]interface{})
+	if len(topicConfigList) == 0 {
+		return nil
+	}
+
+	var errs error
+
+	topicConfig := topicConfigList[0].(map[string]interface{})
+
+	if compactionThreshold, ok := topicConfig["compaction_threshold"]; ok && compactionThreshold != nil {
+		threshold := int64(compactionThreshold.(int))
+		if threshold > 0 {
+			if err := client.SetCompactionThreshold(*topicName, threshold); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
+			}
+		}
+	}
+
+	if delayedDeliveryCfg, ok := topicConfig["delayed_delivery"]; ok && delayedDeliveryCfg != nil {
+		delayedCfg, ok := delayedDeliveryCfg.(*schema.Set)
+		if ok && delayedCfg.Len() > 0 {
+			data := delayedCfg.List()[0].(map[string]interface{})
+			enabled := data["enabled"].(bool)
+			timeStr := data["time"].(string)
+
+			var tickTimeSeconds float64 = 1.0
+			if len(timeStr) > 0 {
+				if timeStr[len(timeStr)-1] == 's' {
+					if parsedTime, err := strconv.ParseFloat(timeStr[:len(timeStr)-1], 64); err == nil {
+						tickTimeSeconds = parsedTime
+					}
+				}
+			}
+
+			delayedDeliveryData := utils.DelayedDeliveryData{
+				Active:   enabled,
+				TickTime: tickTimeSeconds,
+			}
+
+			if err := client.SetDelayedDelivery(*topicName, delayedDeliveryData); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
+			}
+		}
+	}
+
+	if inactiveTopicCfg, ok := topicConfig["inactive_topic"]; ok && inactiveTopicCfg != nil {
+		inactiveCfg, ok := inactiveTopicCfg.(*schema.Set)
+		if ok && inactiveCfg.Len() > 0 {
+			data := inactiveCfg.List()[0].(map[string]interface{})
+			enableDelete := data["enable-delete-while-inactive"].(bool)
+			maxInactiveDurationStr := data["max-inactive-duration"].(string)
+			deleteModeStr := data["delete-mode"].(string)
+
+			var maxInactiveDurationSeconds int = 0
+			if len(maxInactiveDurationStr) > 0 {
+				if maxInactiveDurationStr[len(maxInactiveDurationStr)-1] == 's' {
+					if parsedTime, err := strconv.Atoi(maxInactiveDurationStr[:len(maxInactiveDurationStr)-1]); err == nil {
+						maxInactiveDurationSeconds = parsedTime
+					}
+				}
+			}
+
+			deleteMode, err := utils.ParseInactiveTopicDeleteMode(deleteModeStr)
+			if err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("ParseInactiveTopicDeleteMode error: %v", err))
+				return errs
+			}
+
+			inactiveTopicPolicies := utils.NewInactiveTopicPolicies(&deleteMode, maxInactiveDurationSeconds, enableDelete)
+
+			if err := client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
+			}
+		}
+	}
+
+	if maxConsumers, ok := topicConfig["max_consumers"]; ok {
+		maxConsVal := maxConsumers.(int)
+		if maxConsVal > 0 {
+			if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
+			}
+		}
+	}
+
+	if maxProducers, ok := topicConfig["max_producers"]; ok {
+		maxProdVal := maxProducers.(int)
+		if maxProdVal > 0 {
+			if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
+			}
+		}
+	}
+
+	if messageTTL, ok := topicConfig["message_ttl_seconds"]; ok {
+		ttlVal := messageTTL.(int)
+		if ttlVal > 0 {
+			if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
+			}
+		}
+	}
+
+	if maxUnackedMsgPerConsumer, ok := topicConfig["max_unacked_messages_per_consumer"]; ok {
+		maxVal := maxUnackedMsgPerConsumer.(int)
+		if maxVal > 0 {
+			if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
+			}
+		}
+	}
+
+	if maxUnackedMsgPerSubscription, ok := topicConfig["max_unacked_messages_per_subscription"]; ok {
+		maxVal := maxUnackedMsgPerSubscription.(int)
+		if maxVal > 0 {
+			if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
+			}
+		}
+	}
+
+	msgPublishRate, hasMsgRate := topicConfig["msg_publish_rate"]
+	bytePublishRate, hasByteRate := topicConfig["byte_publish_rate"]
+
+	if hasMsgRate || hasByteRate {
+		publishRateData := utils.PublishRateData{}
+
+		if hasMsgRate {
+			publishRateData.PublishThrottlingRateInMsg = int64(msgPublishRate.(int))
+		}
+
+		if hasByteRate {
+			publishRateData.PublishThrottlingRateInByte = int64(bytePublishRate.(int))
+		}
+
+		if err := client.SetPublishRate(*topicName, publishRateData); err != nil {
+			errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
+		}
+	}
+
+	return errs
 }
