@@ -316,9 +316,9 @@ func TestTopicWithInactiveTopicUpdate(t *testing.T) {
 				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
 					topic_config {
 						inactive_topic {
-							enable-delete-while-inactive = true
-							max-inactive-duration = "60s"
-							delete-mode = "delete_when_no_subscriptions"
+							enable_delete_while_inactive = true
+							max_inactive_duration = "60s"
+							delete_mode = "delete_when_no_subscriptions"
 						}
 					}
 				`),
@@ -327,20 +327,20 @@ func TestTopicWithInactiveTopicUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.inactive_topic.#", "1"),
 					resource.TestCheckResourceAttr(resourceName,
-						"topic_config.0.inactive_topic.0.enable-delete-while-inactive", "true"),
+						"topic_config.0.inactive_topic.0.enable_delete_while_inactive", "true"),
 					resource.TestCheckResourceAttr(resourceName,
-						"topic_config.0.inactive_topic.0.max-inactive-duration", "60s"),
+						"topic_config.0.inactive_topic.0.max_inactive_duration", "60s"),
 					resource.TestCheckResourceAttr(resourceName,
-						"topic_config.0.inactive_topic.0.delete-mode", "delete_when_no_subscriptions"),
+						"topic_config.0.inactive_topic.0.delete_mode", "delete_when_no_subscriptions"),
 				),
 			},
 			{
 				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
 					topic_config {
 						inactive_topic {
-							enable-delete-while-inactive = false
-							max-inactive-duration = "120s"
-							delete-mode = "delete_when_no_subscriptions"
+							enable_delete_while_inactive = false
+							max_inactive_duration = "120s"
+							delete_mode = "delete_when_no_subscriptions"
 						}
 					}
 				`),
@@ -349,11 +349,11 @@ func TestTopicWithInactiveTopicUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.inactive_topic.#", "1"),
 					resource.TestCheckResourceAttr(resourceName,
-						"topic_config.0.inactive_topic.0.enable-delete-while-inactive", "false"),
+						"topic_config.0.inactive_topic.0.enable_delete_while_inactive", "false"),
 					resource.TestCheckResourceAttr(resourceName,
-						"topic_config.0.inactive_topic.0.max-inactive-duration", "120s"),
+						"topic_config.0.inactive_topic.0.max_inactive_duration", "120s"),
 					resource.TestCheckResourceAttr(resourceName,
-						"topic_config.0.inactive_topic.0.delete-mode", "delete_when_no_subscriptions"),
+						"topic_config.0.inactive_topic.0.delete_mode", "delete_when_no_subscriptions"),
 				),
 			},
 		},
@@ -549,9 +549,9 @@ func TestTopicConfigRemoval(t *testing.T) {
 					topic_config {
 						max_consumers = 20
 						inactive_topic {
-							enable-delete-while-inactive = true
-							max-inactive-duration = "60s"
-							delete-mode = "delete_when_no_subscriptions"
+							enable_delete_while_inactive = true
+							max_inactive_duration = "60s"
+							delete_mode = "delete_when_no_subscriptions"
 						}
 					}
 				`),
