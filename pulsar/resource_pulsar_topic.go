@@ -485,95 +485,92 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
-	if _, ok := d.GetOk("topic_config"); ok {
-		var topicConfigMap = make(map[string]interface{})
+	var topicConfigMap = make(map[string]interface{})
+	compactionThreshold, err := client.GetCompactionThreshold(*topicName, true)
+	if err == nil && compactionThreshold > 0 {
+		topicConfigMap["compaction_threshold"] = int(compactionThreshold)
+	}
 
-		compactionThreshold, err := client.GetCompactionThreshold(*topicName, true)
-		if err == nil && compactionThreshold > 0 {
-			topicConfigMap["compaction_threshold"] = int(compactionThreshold)
-		}
-
-		delayedDelivery, err := client.GetDelayedDelivery(*topicName)
-		if err == nil && delayedDelivery != nil {
-			topicConfigMap["delayed_delivery"] = schema.NewSet(schema.HashResource(&schema.Resource{
-				Schema: map[string]*schema.Schema{
-					"enabled": {
-						Type:     schema.TypeBool,
-						Required: true,
-					},
-					"time": {
-						Type:     schema.TypeString,
-						Required: true,
-					},
+	delayedDelivery, err := client.GetDelayedDelivery(*topicName)
+	if err == nil && delayedDelivery != nil {
+		topicConfigMap["delayed_delivery"] = schema.NewSet(schema.HashResource(&schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"enabled": {
+					Type:     schema.TypeBool,
+					Required: true,
 				},
-			}), []interface{}{
-				map[string]interface{}{
-					"enabled": delayedDelivery.Active,
-					"time":    fmt.Sprintf("%.1fs", delayedDelivery.TickTime),
+				"time": {
+					Type:     schema.TypeString,
+					Required: true,
 				},
-			})
-		}
+			},
+		}), []interface{}{
+			map[string]interface{}{
+				"enabled": delayedDelivery.Active,
+				"time":    fmt.Sprintf("%.1fs", delayedDelivery.TickTime),
+			},
+		})
+	}
 
-		inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
-		if err == nil && inactiveTopicPolicies.InactiveTopicDeleteMode != nil {
-			topicConfigMap["inactive_topic"] = schema.NewSet(schema.HashResource(&schema.Resource{
-				Schema: map[string]*schema.Schema{
-					"enable_delete_while_inactive": {
-						Type:     schema.TypeBool,
-						Required: true,
-					},
-					"max_inactive_duration": {
-						Type:     schema.TypeString,
-						Required: true,
-					},
-					"delete_mode": {
-						Type:     schema.TypeString,
-						Required: true,
-					},
+	inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
+	if err == nil && inactiveTopicPolicies.InactiveTopicDeleteMode != nil {
+		topicConfigMap["inactive_topic"] = schema.NewSet(schema.HashResource(&schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"enable_delete_while_inactive": {
+					Type:     schema.TypeBool,
+					Required: true,
 				},
-			}), []interface{}{
-				map[string]interface{}{
-					"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
-					"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
-					"delete_mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
+				"max_inactive_duration": {
+					Type:     schema.TypeString,
+					Required: true,
 				},
-			})
-		}
+				"delete_mode": {
+					Type:     schema.TypeString,
+					Required: true,
+				},
+			},
+		}), []interface{}{
+			map[string]interface{}{
+				"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
+				"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
+				"delete_mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
+			},
+		})
+	}
 
-		if maxConsumers, err := client.GetMaxConsumers(*topicName); err == nil && maxConsumers > 0 {
-			topicConfigMap["max_consumers"] = maxConsumers
-		}
+	if maxConsumers, err := client.GetMaxConsumers(*topicName); err == nil && maxConsumers > 0 {
+		topicConfigMap["max_consumers"] = maxConsumers
+	}
 
-		if maxProducers, err := client.GetMaxProducers(*topicName); err == nil && maxProducers > 0 {
-			topicConfigMap["max_producers"] = maxProducers
-		}
+	if maxProducers, err := client.GetMaxProducers(*topicName); err == nil && maxProducers > 0 {
+		topicConfigMap["max_producers"] = maxProducers
+	}
 
-		if messageTTL, err := client.GetMessageTTL(*topicName); err == nil && messageTTL > 0 {
-			topicConfigMap["message_ttl_seconds"] = messageTTL
-		}
+	if messageTTL, err := client.GetMessageTTL(*topicName); err == nil && messageTTL > 0 {
+		topicConfigMap["message_ttl_seconds"] = messageTTL
+	}
 
-		if maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName); err == nil &&
-			maxUnackedMsgPerConsumer > 0 {
-			topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
-		}
+	if maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName); err == nil &&
+		maxUnackedMsgPerConsumer > 0 {
+		topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
+	}
 
-		if maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName); err == nil &&
-			maxUnackedMsgPerSubscription > 0 {
-			topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
-		}
+	if maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName); err == nil &&
+		maxUnackedMsgPerSubscription > 0 {
+		topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
+	}
 
-		if publishRate, err := client.GetPublishRate(*topicName); err == nil && publishRate != nil {
-			if publishRate.PublishThrottlingRateInMsg > 0 {
-				topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
-			}
-			if publishRate.PublishThrottlingRateInByte > 0 {
-				topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
-			}
+	if publishRate, err := client.GetPublishRate(*topicName); err == nil && publishRate != nil {
+		if publishRate.PublishThrottlingRateInMsg > 0 {
+			topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
 		}
+		if publishRate.PublishThrottlingRateInByte > 0 {
+			topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
+		}
+	}
 
-		if len(topicConfigMap) > 0 {
-			_ = d.Set("topic_config", []interface{}{topicConfigMap})
-		}
+	if len(topicConfigMap) > 0 {
+		_ = d.Set("topic_config", []interface{}{topicConfigMap})
 	}
 
 	return nil
