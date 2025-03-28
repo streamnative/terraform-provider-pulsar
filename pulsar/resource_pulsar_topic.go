@@ -493,7 +493,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		if err == nil {
 			topicConfigMap["compaction_threshold"] = int(compactionThreshold)
 		} else {
-
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetCompactionThreshold: " + err.Error()))
 		}
 
 		delayedDelivery, err := client.GetDelayedDelivery(*topicName)
@@ -515,10 +515,12 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 					"time":    fmt.Sprintf("%.1fs", delayedDelivery.TickTime),
 				},
 			})
+		} else if err != nil {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetDelayedDelivery: " + err.Error()))
 		}
 
 		inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
-		if err == nil && inactiveTopicPolicies.InactiveTopicDeleteMode != nil {
+		if err == nil {
 			topicConfigMap["inactive_topic"] = schema.NewSet(schema.HashResource(&schema.Resource{
 				Schema: map[string]*schema.Schema{
 					"enable_delete_while_inactive": {
@@ -543,26 +545,34 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 			})
 		}
 
-		if maxConsumers, err := client.GetMaxConsumers(*topicName); err == nil && maxConsumers >= 0 {
+		if maxConsumers, err := client.GetMaxConsumers(*topicName); err == nil {
 			topicConfigMap["max_consumers"] = maxConsumers
+		} else {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxConsumers: " + err.Error()))
 		}
 
-		if maxProducers, err := client.GetMaxProducers(*topicName); err == nil && maxProducers > 0 {
+		if maxProducers, err := client.GetMaxProducers(*topicName); err == nil {
 			topicConfigMap["max_producers"] = maxProducers
+		} else {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxProducers: " + err.Error()))
 		}
 
-		if messageTTL, err := client.GetMessageTTL(*topicName); err == nil && messageTTL > 0 {
+		if messageTTL, err := client.GetMessageTTL(*topicName); err == nil {
 			topicConfigMap["message_ttl_seconds"] = messageTTL
+		} else {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMessageTTL: " + err.Error()))
 		}
 
-		if maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName); err == nil &&
-			maxUnackedMsgPerConsumer > 0 {
+		if maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName); err == nil {
 			topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
+		} else {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: " + err.Error()))
 		}
 
-		if maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName); err == nil &&
-			maxUnackedMsgPerSubscription > 0 {
+		if maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName); err == nil {
 			topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
+		} else {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: " + err.Error()))
 		}
 
 		if publishRate, err := client.GetPublishRate(*topicName); err == nil && publishRate != nil {
@@ -572,6 +582,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 			if publishRate.PublishThrottlingRateInByte > 0 {
 				topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
 			}
+		} else {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetPublishRate: " + err.Error()))
 		}
 
 		if len(topicConfigMap) > 0 {
