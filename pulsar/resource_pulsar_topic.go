@@ -576,12 +576,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 
 		if publishRate, err := client.GetPublishRate(*topicName); err == nil && publishRate != nil {
-			if publishRate.PublishThrottlingRateInMsg > 0 {
-				topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
-			}
-			if publishRate.PublishThrottlingRateInByte > 0 {
-				topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
-			}
+			topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
+			topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
 		} else {
 			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetPublishRate: " + err.Error()))
 		}
@@ -958,10 +954,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 	if compactionThreshold, ok := topicConfig["compaction_threshold"]; ok && compactionThreshold != nil {
 		threshold := int64(compactionThreshold.(int))
-		if threshold > 0 {
-			if err := client.SetCompactionThreshold(*topicName, threshold); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
-			}
+		if err := client.SetCompactionThreshold(*topicName, threshold); err != nil {
+			errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
 		}
 	}
 
@@ -1025,46 +1019,36 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 	if maxConsumers, ok := topicConfig["max_consumers"]; ok {
 		maxConsVal := maxConsumers.(int)
-		if maxConsVal > 0 {
-			if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
-			}
+		if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
+			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
 		}
 	}
 
 	if maxProducers, ok := topicConfig["max_producers"]; ok {
 		maxProdVal := maxProducers.(int)
-		if maxProdVal > 0 {
-			if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
-			}
+		if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
+			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
 		}
 	}
 
 	if messageTTL, ok := topicConfig["message_ttl_seconds"]; ok {
 		ttlVal := messageTTL.(int)
-		if ttlVal > 0 {
-			if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
-			}
+		if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
+			errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
 		}
 	}
 
 	if maxUnackedMsgPerConsumer, ok := topicConfig["max_unacked_messages_per_consumer"]; ok {
 		maxVal := maxUnackedMsgPerConsumer.(int)
-		if maxVal > 0 {
-			if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
-			}
+		if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
+			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
 		}
 	}
 
 	if maxUnackedMsgPerSubscription, ok := topicConfig["max_unacked_messages_per_subscription"]; ok {
 		maxVal := maxUnackedMsgPerSubscription.(int)
-		if maxVal > 0 {
-			if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
-			}
+		if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
+			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
 		}
 	}
 
