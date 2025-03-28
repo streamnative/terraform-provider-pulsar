@@ -159,6 +159,7 @@ func resourcePulsarTopic() *schema.Resource {
 						"delayed_delivery": {
 							Type:     schema.TypeSet,
 							Optional: true,
+							Computed: true,
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
@@ -176,6 +177,7 @@ func resourcePulsarTopic() *schema.Resource {
 						"inactive_topic": {
 							Type:     schema.TypeSet,
 							Optional: true,
+							Computed: true,
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
@@ -487,104 +489,111 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
-	if _, ok := d.GetOk("topic_config"); ok {
-		var topicConfigMap = make(map[string]interface{})
-		compactionThreshold, err := client.GetCompactionThreshold(*topicName, true)
-		if err == nil {
-			topicConfigMap["compaction_threshold"] = int(compactionThreshold)
-		} else {
-			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetCompactionThreshold: " + err.Error()))
-		}
+	// Always try to read topic_config during import, even if it's not explicitly set
+	var topicConfigMap = make(map[string]interface{})
+	compactionThreshold, err := client.GetCompactionThreshold(*topicName, true)
+	if err == nil {
+		topicConfigMap["compaction_threshold"] = int(compactionThreshold)
+	} else if !strings.Contains(err.Error(), "404") {
+		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetCompactionThreshold: " + err.Error()))
+	}
 
-		delayedDelivery, err := client.GetDelayedDelivery(*topicName)
-		if err == nil && delayedDelivery != nil {
-			topicConfigMap["delayed_delivery"] = schema.NewSet(schema.HashResource(&schema.Resource{
-				Schema: map[string]*schema.Schema{
-					"enabled": {
-						Type:     schema.TypeBool,
-						Required: true,
-					},
-					"time": {
-						Type:     schema.TypeString,
-						Required: true,
-					},
+	delayedDelivery, err := client.GetDelayedDelivery(*topicName)
+	if err == nil && delayedDelivery != nil {
+		topicConfigMap["delayed_delivery"] = schema.NewSet(schema.HashResource(&schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"enabled": {
+					Type:     schema.TypeBool,
+					Required: true,
 				},
-			}), []interface{}{
-				map[string]interface{}{
-					"enabled": delayedDelivery.Active,
-					"time":    fmt.Sprintf("%.1fs", delayedDelivery.TickTime),
+				"time": {
+					Type:     schema.TypeString,
+					Required: true,
 				},
-			})
-		} else if err != nil {
-			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetDelayedDelivery: " + err.Error()))
-		}
+			},
+		}), []interface{}{
+			map[string]interface{}{
+				"enabled": delayedDelivery.Active,
+				"time":    fmt.Sprintf("%.1fs", delayedDelivery.TickTime),
+			},
+		})
+	} else if err != nil && !strings.Contains(err.Error(), "404") {
+		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetDelayedDelivery: " + err.Error()))
+	}
 
-		inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
-		if err == nil {
-			topicConfigMap["inactive_topic"] = schema.NewSet(schema.HashResource(&schema.Resource{
-				Schema: map[string]*schema.Schema{
-					"enable_delete_while_inactive": {
-						Type:     schema.TypeBool,
-						Required: true,
-					},
-					"max_inactive_duration": {
-						Type:     schema.TypeString,
-						Required: true,
-					},
-					"delete_mode": {
-						Type:     schema.TypeString,
-						Required: true,
-					},
+	inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
+	if err == nil {
+		topicConfigMap["inactive_topic"] = schema.NewSet(schema.HashResource(&schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"enable_delete_while_inactive": {
+					Type:     schema.TypeBool,
+					Required: true,
 				},
-			}), []interface{}{
-				map[string]interface{}{
-					"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
-					"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
-					"delete_mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
+				"max_inactive_duration": {
+					Type:     schema.TypeString,
+					Required: true,
 				},
-			})
-		}
+				"delete_mode": {
+					Type:     schema.TypeString,
+					Required: true,
+				},
+			},
+		}), []interface{}{
+			map[string]interface{}{
+				"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
+				"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
+				"delete_mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
+			},
+		})
+	} else if err != nil && !strings.Contains(err.Error(), "404") {
+		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetInactiveTopicPolicies: " + err.Error()))
+	}
 
-		if maxConsumers, err := client.GetMaxConsumers(*topicName); err == nil {
-			topicConfigMap["max_consumers"] = maxConsumers
-		} else {
-			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxConsumers: " + err.Error()))
-		}
+	maxConsumers, err := client.GetMaxConsumers(*topicName)
+	if err == nil {
+		topicConfigMap["max_consumers"] = maxConsumers
+	} else if !strings.Contains(err.Error(), "404") {
+		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxConsumers: " + err.Error()))
+	}
 
-		if maxProducers, err := client.GetMaxProducers(*topicName); err == nil {
-			topicConfigMap["max_producers"] = maxProducers
-		} else {
-			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxProducers: " + err.Error()))
-		}
+	maxProducers, err := client.GetMaxProducers(*topicName)
+	if err == nil {
+		topicConfigMap["max_producers"] = maxProducers
+	} else if !strings.Contains(err.Error(), "404") {
+		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxProducers: " + err.Error()))
+	}
 
-		if messageTTL, err := client.GetMessageTTL(*topicName); err == nil {
-			topicConfigMap["message_ttl_seconds"] = messageTTL
-		} else {
-			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMessageTTL: " + err.Error()))
-		}
+	messageTTL, err := client.GetMessageTTL(*topicName)
+	if err == nil {
+		topicConfigMap["message_ttl_seconds"] = messageTTL
+	} else if !strings.Contains(err.Error(), "404") {
+		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMessageTTL: " + err.Error()))
+	}
 
-		if maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName); err == nil {
-			topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
-		} else {
-			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: " + err.Error()))
-		}
+	maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
+	if err == nil {
+		topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
+	} else if !strings.Contains(err.Error(), "404") {
+		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: " + err.Error()))
+	}
 
-		if maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName); err == nil {
-			topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
-		} else {
-			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: " + err.Error()))
-		}
+	maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
+	if err == nil {
+		topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
+	} else if !strings.Contains(err.Error(), "404") {
+		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: " + err.Error()))
+	}
 
-		if publishRate, err := client.GetPublishRate(*topicName); err == nil && publishRate != nil {
-			topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
-			topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
-		} else {
-			return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetPublishRate: " + err.Error()))
-		}
+	publishRate, err := client.GetPublishRate(*topicName)
+	if err == nil && publishRate != nil {
+		topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
+		topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
+	} else if err != nil && !strings.Contains(err.Error(), "404") {
+		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetPublishRate: " + err.Error()))
+	}
 
-		if len(topicConfigMap) > 0 {
-			_ = d.Set("topic_config", []interface{}{topicConfigMap})
-		}
+	if len(topicConfigMap) > 0 {
+		_ = d.Set("topic_config", []interface{}{topicConfigMap})
 	}
 
 	return nil
