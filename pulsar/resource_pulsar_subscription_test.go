@@ -104,7 +104,7 @@ func TestImportExistingSubscription(t *testing.T) {
 	topic := "test-subscription-import-" + acctest.RandString(10)
 	topicName := "persistent://public/default/" + topic
 	subscriptionName := "sub-import-" + acctest.RandString(10)
-	fullID := fmt.Sprintf("%s:%s", topicName, subscriptionName)
+	fullID := fmt.Sprintf("%s@%s", topicName, subscriptionName)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
