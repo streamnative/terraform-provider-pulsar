@@ -197,7 +197,7 @@ func resourcePulsarSubscriptionRead(ctx context.Context, d *schema.ResourceData,
 		return nil
 	}
 
-	d.SetId(fmt.Sprintf("%s:%s", topicFQN.String(), subscriptionName))
+	d.SetId(fmt.Sprintf("%s@%s", topicFQN.String(), subscriptionName))
 	return nil
 }
 
