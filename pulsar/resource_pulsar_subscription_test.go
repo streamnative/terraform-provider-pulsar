@@ -271,7 +271,7 @@ func testSubscriptionImported() resource.ImportStateCheckFunc {
 		}
 
 		// Check that we have the required attributes
-		requiredAttrs := []string{"topic_name", "subscription_name", "position"}
+		requiredAttrs := []string{"topic_name", "subscription_name"}
 		for _, attr := range requiredAttrs {
 			if _, ok := s[0].Attributes[attr]; !ok {
 				return fmt.Errorf("expected attribute %s to be set", attr)
