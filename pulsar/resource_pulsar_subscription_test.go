@@ -173,7 +173,7 @@ func testPulsarSubscriptionDestroy(s *terraform.State) error {
 			continue
 		}
 
-		idParts := strings.Split(rs.Primary.ID, ":")
+		idParts := strings.Split(rs.Primary.ID, "@")
 		if len(idParts) != 2 {
 			return fmt.Errorf("ERROR_INVALID_RESOURCE_ID: %s", rs.Primary.ID)
 		}
@@ -209,7 +209,7 @@ func testPulsarSubscriptionExists(subscription string, t *testing.T) resource.Te
 			return fmt.Errorf("NOT_FOUND: %s", subscription)
 		}
 
-		idParts := strings.Split(rs.Primary.ID, ":")
+		idParts := strings.Split(rs.Primary.ID, "@")
 		if len(idParts) != 2 {
 			return fmt.Errorf("ERROR_INVALID_RESOURCE_ID: %s", rs.Primary.ID)
 		}

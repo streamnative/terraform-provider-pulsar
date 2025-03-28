@@ -79,8 +79,8 @@ func TopicNameValidatorDiag(i interface{}, p cty.Path) diag.Diagnostics {
 
 func resourcePulsarSubscriptionImport(ctx context.Context, d *schema.ResourceData,
 	meta interface{}) ([]*schema.ResourceData, error) {
-	// Format is expected to be: {topic}:{subscription_name}
-	parts := strings.Split(d.Id(), ":")
+	// Format is expected to be: {topic}@{subscription_name}
+	parts := strings.Split(d.Id(), "@")
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("ERROR_PARSE_SUBSCRIPTION_NAME: invalid import format, expected {topic}:{subscription_name}")
 	}
