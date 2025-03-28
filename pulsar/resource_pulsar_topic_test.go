@@ -138,7 +138,7 @@ func TestImportTopicWithConfig(t *testing.T) {
 					}
 
 					if s[0].Attributes["topic_config.#"] != "1" {
-						return fmt.Errorf("topic_config not found in imported state")
+						return fmt.Errorf("topic_config not found in imported state %v", s[0].Attributes)
 					}
 
 					maxConsumers := s[0].Attributes["topic_config.0.max_consumers"]
@@ -717,6 +717,7 @@ func testPulsarTopicExists(topic string, t *testing.T) resource.TestCheckFunc {
 			return fmt.Errorf("ERROR_READ_TOPIC: %w", err)
 		}
 		t.Logf("topicName: %v", topicName)
+		t.Logf("rs.Primary.Attributes: %v", rs.Primary.Attributes)
 		namespace, err := utils.GetNameSpaceName(topicName.GetTenant(), topicName.GetNamespace())
 		if err != nil {
 			return fmt.Errorf("ERROR_READ_NAMESPACE: %w", err)
@@ -765,7 +766,7 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 10 {
+		if len(s[0].Attributes) != 13 {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", 10, len(s[0].Attributes), s[0].Attributes)
 		}
 
