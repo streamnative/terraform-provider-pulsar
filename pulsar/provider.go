@@ -153,13 +153,14 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"pulsar_cluster":   resourcePulsarCluster(),
-			"pulsar_tenant":    resourcePulsarTenant(),
-			"pulsar_namespace": resourcePulsarNamespace(),
-			"pulsar_topic":     resourcePulsarTopic(),
-			"pulsar_source":    resourcePulsarSource(),
-			"pulsar_sink":      resourcePulsarSink(),
-			"pulsar_function":  resourcePulsarFunction(),
+			"pulsar_cluster":      resourcePulsarCluster(),
+			"pulsar_tenant":       resourcePulsarTenant(),
+			"pulsar_namespace":    resourcePulsarNamespace(),
+			"pulsar_topic":        resourcePulsarTopic(),
+			"pulsar_source":       resourcePulsarSource(),
+			"pulsar_sink":         resourcePulsarSink(),
+			"pulsar_function":     resourcePulsarFunction(),
+			"pulsar_subscription": resourcePulsarSubscription(),
 		},
 	}
 
