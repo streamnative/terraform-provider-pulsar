@@ -363,7 +363,7 @@ func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta
 	}
 
 	err = rt.RetryContext(ctx, d.Timeout(schema.TimeoutCreate), func() *rt.RetryError {
-		//Sleep 10 seconds between checks so we don't overload the API
+		// Sleep 10 seconds between checks so we don't overload the API
 		time.Sleep(time.Second * 10)
 
 		dia := resourcePulsarTopicRead(ctx, d, meta)
@@ -526,6 +526,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	delayedDelivery, err := client.GetDelayedDelivery(*topicName)
 	fmt.Printf("GetDelayedDelivery: %v %v\n", delayedDelivery, err)
+	//nolint:gocritic
 	if err == nil && delayedDelivery != nil {
 		topicConfigMap["delayed_delivery"] = schema.NewSet(delayedDeliveryPoliciesToHash, []interface{}{
 			map[string]interface{}{
@@ -546,6 +547,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
 	fmt.Printf("GetInactiveTopicPolicies: %v %v\n", inactiveTopicPolicies, err)
+	//nolint:gocritic
 	if err == nil {
 		topicConfigMap["inactive_topic"] = schema.NewSet(inactiveTopicPoliciesToHash, []interface{}{
 			map[string]interface{}{
