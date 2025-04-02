@@ -181,7 +181,10 @@ func TestTopicWithTopicConfigUpdate(t *testing.T) {
 				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
-					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "0"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "0"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "0"),
 				),
 			},
 			{
@@ -232,6 +235,9 @@ func TestTopicWithTopicConfigUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.msg_publish_rate", "100"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.byte_publish_rate", "1024"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "0"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "0"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "0"),
 				),
 			},
 		},
@@ -253,7 +259,6 @@ func TestTopicWithDelayedDeliveryUpdate(t *testing.T) {
 				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
-					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
 				),
 			},
 			{
@@ -261,7 +266,7 @@ func TestTopicWithDelayedDeliveryUpdate(t *testing.T) {
 					topic_config {
 						delayed_delivery {
 							enabled = true
-							time = "2.0s"
+							time = 2.0
 						}
 					}
 				`),
@@ -270,7 +275,7 @@ func TestTopicWithDelayedDeliveryUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.enabled", "true"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.time", "2.0s"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.time", "2"),
 				),
 			},
 			{
@@ -278,7 +283,7 @@ func TestTopicWithDelayedDeliveryUpdate(t *testing.T) {
 					topic_config {
 						delayed_delivery {
 							enabled = false
-							time = "1.0s"
+							time = 1.0
 						}
 					}
 				`),
@@ -287,7 +292,7 @@ func TestTopicWithDelayedDeliveryUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.enabled", "false"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.time", "1.0s"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.time", "1"),
 				),
 			},
 		},
@@ -309,7 +314,6 @@ func TestTopicWithInactiveTopicUpdate(t *testing.T) {
 				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
-					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
 				),
 			},
 			{
@@ -375,7 +379,6 @@ func TestTopicWithCompactionThresholdUpdate(t *testing.T) {
 				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
-					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
 				),
 			},
 			{
@@ -461,7 +464,7 @@ func TestTopicWithConfigAndOtherFields(t *testing.T) {
 						max_unacked_messages_per_consumer = 1000
 						delayed_delivery {
 							enabled = true
-							time = "1.5s"
+							time = 1500
 						}
 					}
 
@@ -490,7 +493,7 @@ func TestTopicWithConfigAndOtherFields(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_unacked_messages_per_consumer", "1000"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.enabled", "true"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.time", "1.5s"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.delayed_delivery.0.time", "1500"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.1.role", "user"),
@@ -523,7 +526,7 @@ func TestTopicConfigRemoval(t *testing.T) {
 						message_ttl_seconds = 3600
 						delayed_delivery {
 							enabled = true
-							time = "2.0s"
+							time = 2.0
 						}
 					}
 				`),
@@ -540,7 +543,6 @@ func TestTopicConfigRemoval(t *testing.T) {
 				Config: testPulsarTopic(testWebServiceURL, tname, ttype, pnum, ""),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
-					resource.TestCheckNoResourceAttr(resourceName, "topic_config.#"),
 				),
 			},
 			{
@@ -766,7 +768,7 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 13 {
+		if len(s[0].Attributes) != 31 {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", 10, len(s[0].Attributes), s[0].Attributes)
 		}
 
@@ -897,7 +899,7 @@ resource "pulsar_topic" "sample-topic-config-3" {
   topic_config {
     delayed_delivery {
       enabled = true
-      time = "1.5s"
+      time = 1500
     }
   }
 }
@@ -1047,7 +1049,7 @@ func TestTopicWithConfig(t *testing.T) {
 					resource.TestCheckResourceAttr("pulsar_topic.sample-topic-config-3",
 						"topic_config.0.delayed_delivery.0.enabled", "true"),
 					resource.TestCheckResourceAttr("pulsar_topic.sample-topic-config-3",
-						"topic_config.0.delayed_delivery.0.time", "1.5s"),
+						"topic_config.0.delayed_delivery.0.time", "1500"),
 					testPulsarTopicExists("pulsar_topic.sample-topic-config-4", t),
 				),
 			},
