@@ -23,11 +23,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	rt "github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
@@ -149,6 +151,7 @@ func resourcePulsarTopic() *schema.Resource {
 			"topic_config": {
 				Type:        schema.TypeList,
 				Optional:    true,
+				Computed:    true,
 				Description: descriptions["topic_config"],
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -168,11 +171,12 @@ func resourcePulsarTopic() *schema.Resource {
 										Required: true,
 									},
 									"time": {
-										Type:     schema.TypeString,
+										Type:     schema.TypeInt,
 										Required: true,
 									},
 								},
 							},
+							Set: delayedDeliveryPoliciesToHash,
 						},
 						"inactive_topic": {
 							Type:     schema.TypeSet,
@@ -196,6 +200,7 @@ func resourcePulsarTopic() *schema.Resource {
 									},
 								},
 							},
+							Set: inactiveTopicPoliciesToHash,
 						},
 						"max_consumers": {
 							Type:         schema.TypeInt,
@@ -357,7 +362,22 @@ func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_CONFIG: %w", err))
 	}
 
-	return resourcePulsarTopicRead(ctx, d, meta)
+	err = rt.RetryContext(ctx, d.Timeout(schema.TimeoutCreate), func() *rt.RetryError {
+		//Sleep 10 seconds between checks so we don't overload the API
+		time.Sleep(time.Second * 10)
+
+		dia := resourcePulsarTopicRead(ctx, d, meta)
+		if dia.HasError() {
+			return rt.NonRetryableError(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %s", dia[0].Summary))
+		}
+		return nil
+	})
+
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %w", err))
+	}
+
+	return nil
 }
 
 func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -496,158 +516,109 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	// Only set topic_config if explicitly requested via resource schema or if we find non-default values during import
 	var topicConfigMap = make(map[string]interface{})
 
-	// Check if topic_config is explicitly set in the resource configuration
-	_, configInState := d.GetOk("topic_config")
-
-	// We need to know if we're importing a resource or if this is normal resource lifecycle
-	isImport := d.Id() != "" && !configInState
-
 	compactionThreshold, err := client.GetCompactionThreshold(*topicName, true)
+	fmt.Printf("GetCompactionThreshold: %v %v\n", compactionThreshold, err)
 	if err == nil {
-		// Always add to config if it's an explicit resource config
-		// During import, add if it has a non-default value
-		if configInState || (isImport && compactionThreshold != 0) {
-			topicConfigMap["compaction_threshold"] = int(compactionThreshold)
-		}
+		topicConfigMap["compaction_threshold"] = int(compactionThreshold)
 	} else if !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetCompactionThreshold: " + err.Error()))
 	}
 
 	delayedDelivery, err := client.GetDelayedDelivery(*topicName)
+	fmt.Printf("GetDelayedDelivery: %v %v\n", delayedDelivery, err)
 	if err == nil && delayedDelivery != nil {
-		// Only add if it's explicitly configured or has non-default settings during import
-		isNonDefault := delayedDelivery.Active || delayedDelivery.TickTime != 1.0
-		if configInState || (isImport && isNonDefault) {
-			topicConfigMap["delayed_delivery"] = schema.NewSet(schema.HashResource(&schema.Resource{
-				Schema: map[string]*schema.Schema{
-					"enabled": {
-						Type:     schema.TypeBool,
-						Required: true,
-					},
-					"time": {
-						Type:     schema.TypeString,
-						Required: true,
-					},
-				},
-			}), []interface{}{
-				map[string]interface{}{
-					"enabled": delayedDelivery.Active,
-					"time":    fmt.Sprintf("%.1fs", delayedDelivery.TickTime),
-				},
-			})
-		}
+		topicConfigMap["delayed_delivery"] = schema.NewSet(delayedDeliveryPoliciesToHash, []interface{}{
+			map[string]interface{}{
+				"enabled": delayedDelivery.Active,
+				"time":    int(delayedDelivery.TickTime),
+			},
+		})
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetDelayedDelivery: " + err.Error()))
+	} else {
+		topicConfigMap["delayed_delivery"] = schema.NewSet(delayedDeliveryPoliciesToHash, []interface{}{
+			map[string]interface{}{
+				"enabled": false,
+				"time":    0,
+			},
+		})
 	}
 
 	inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
+	fmt.Printf("GetInactiveTopicPolicies: %v %v\n", inactiveTopicPolicies, err)
 	if err == nil {
-		// Check if it's explicitly configured or has non-default values
-		isNonDefault := isImport && (inactiveTopicPolicies.DeleteWhileInactive ||
-			inactiveTopicPolicies.MaxInactiveDurationSeconds != 0)
-
-		if configInState || isNonDefault {
-			topicConfigMap["inactive_topic"] = schema.NewSet(schema.HashResource(&schema.Resource{
-				Schema: map[string]*schema.Schema{
-					"enable_delete_while_inactive": {
-						Type:     schema.TypeBool,
-						Required: true,
-					},
-					"max_inactive_duration": {
-						Type:     schema.TypeString,
-						Required: true,
-					},
-					"delete_mode": {
-						Type:     schema.TypeString,
-						Required: true,
-					},
-				},
-			}), []interface{}{
-				map[string]interface{}{
-					"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
-					"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
-					"delete_mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
-				},
-			})
-		}
+		topicConfigMap["inactive_topic"] = schema.NewSet(inactiveTopicPoliciesToHash, []interface{}{
+			map[string]interface{}{
+				"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
+				"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
+				"delete_mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
+			},
+		})
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetInactiveTopicPolicies: " + err.Error()))
+	} else {
+		topicConfigMap["inactive_topic"] = schema.NewSet(inactiveTopicPoliciesToHash, []interface{}{
+			map[string]interface{}{
+				"enable_delete_while_inactive": false,
+				"max_inactive_duration":        "0s",
+				"delete_mode":                  "delete_when_no_subscriptions",
+			},
+		})
 	}
 
 	maxConsumers, err := client.GetMaxConsumers(*topicName)
+	fmt.Printf("GetMaxConsumers: %v %v\n", maxConsumers, err)
 	if err == nil {
-		// Always add to config if it's an explicit resource config
-		// During import, add if it has a non-default value
-		if configInState || (isImport && maxConsumers != 0) {
-			topicConfigMap["max_consumers"] = maxConsumers
-		}
+		topicConfigMap["max_consumers"] = maxConsumers
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxConsumers: " + err.Error()))
 	}
 
 	maxProducers, err := client.GetMaxProducers(*topicName)
+	fmt.Printf("GetMaxProducers: %v %v\n", maxProducers, err)
 	if err == nil {
-		// Always add to config if it's an explicit resource config
-		// During import, add if it has a non-default value
-		if configInState || (isImport && maxProducers != 0) {
-			topicConfigMap["max_producers"] = maxProducers
-		}
+		topicConfigMap["max_producers"] = maxProducers
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxProducers: " + err.Error()))
 	}
 
 	messageTTL, err := client.GetMessageTTL(*topicName)
+	fmt.Printf("GetMessageTTL: %v %v\n", messageTTL, err)
 	if err == nil {
-		// Always add to config if it's an explicit resource config
-		// During import, add if it has a non-default value
-		if configInState || (isImport && messageTTL != 0) {
-			topicConfigMap["message_ttl_seconds"] = messageTTL
-		}
+		topicConfigMap["message_ttl_seconds"] = messageTTL
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMessageTTL: " + err.Error()))
 	}
 
 	maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
+	fmt.Printf("GetMaxUnackMessagesPerConsumer: %v %v\n", maxUnackedMsgPerConsumer, err)
 	if err == nil {
-		// Always add to config if it's an explicit resource config
-		// During import, add if it has a non-default value
-		if configInState || (isImport && maxUnackedMsgPerConsumer != 0) {
-			topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
-		}
+		topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: " + err.Error()))
 	}
 
 	maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
+	fmt.Printf("GetMaxUnackMessagesPerSubscription: %v %v\n", maxUnackedMsgPerSubscription, err)
 	if err == nil {
-		// Always add to config if it's an explicit resource config
-		// During import, add if it has a non-default value
-		if configInState || (isImport && maxUnackedMsgPerSubscription != 0) {
-			topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
-		}
+		topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: " + err.Error()))
 	}
 
 	publishRate, err := client.GetPublishRate(*topicName)
+	fmt.Printf("GetPublishRate: %v %v\n", publishRate, err)
 	if err == nil && publishRate != nil {
-		// For publish rate, check if it's non-default (not 0 or -1)
-		msgRateNonDefault := publishRate.PublishThrottlingRateInMsg != 0 && publishRate.PublishThrottlingRateInMsg != -1
-		byteRateNonDefault := publishRate.PublishThrottlingRateInByte != 0 && publishRate.PublishThrottlingRateInByte != -1
 
-		if msgRateNonDefault || configInState {
-			topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
-		}
-
-		if byteRateNonDefault || configInState {
-			topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
-		}
+		topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
+		topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetPublishRate: " + err.Error()))
 	}
 
 	// Only set topic_config if there are configuration values or it's explicitly requested in schema
-	if len(topicConfigMap) > 0 || configInState {
+	fmt.Printf("topicConfigMap: %v", topicConfigMap)
+	if len(topicConfigMap) > 0 {
 		err := d.Set("topic_config", []interface{}{topicConfigMap})
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_CONFIG: %w", err))
@@ -884,8 +855,26 @@ func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils
 	return nil
 }
 
+type testTimer struct {
+	timer *time.Timer
+}
+
+func (t *testTimer) Start(duration time.Duration) {
+	t.timer = time.NewTimer(600 * time.Second)
+}
+
+func (t *testTimer) Stop() {
+	if t.timer != nil {
+		t.timer.Stop()
+	}
+}
+
+func (t *testTimer) C() <-chan time.Time {
+	return t.timer.C
+}
+
 func retry(operation func() error) error {
-	return backoff.Retry(operation, backoff.NewExponentialBackOff())
+	return backoff.RetryNotifyWithTimer(operation, backoff.NewExponentialBackOff(), nil, &testTimer{})
 }
 
 func topicDispatchRateToHash(v interface{}) int {
@@ -1021,7 +1010,10 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 	// Set compaction threshold
 	if val, ok := topicConfig["compaction_threshold"]; ok {
-		if err := client.SetCompactionThreshold(*topicName, int64(val.(int))); err != nil {
+		if err := retry(func() error {
+			fmt.Printf("SetCompactionThreshold val: %v \n", val)
+			return client.SetCompactionThreshold(*topicName, int64(val.(int)))
+		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
 		}
 	}
@@ -1032,23 +1024,22 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		if ok && delayedCfg.Len() > 0 {
 			data := delayedCfg.List()[0].(map[string]interface{})
 			enabled := data["enabled"].(bool)
-			timeStr := data["time"].(string)
-
-			var tickTimeSeconds = (float64)(1.0)
-			if len(timeStr) > 0 {
-				if timeStr[len(timeStr)-1] == 's' {
-					if parsedTime, err := strconv.ParseFloat(timeStr[:len(timeStr)-1], 64); err == nil {
-						tickTimeSeconds = parsedTime
-					}
-				}
-			}
+			tickTime := data["time"].(int)
 
 			delayedDeliveryData := utils.DelayedDeliveryData{
 				Active:   enabled,
-				TickTime: tickTimeSeconds,
+				TickTime: float64(tickTime),
 			}
 
-			if err := client.SetDelayedDelivery(*topicName, delayedDeliveryData); err != nil {
+			fmt.Printf("delayedDeliveryData: %v \n", delayedDeliveryData)
+
+			if err := retry(func() error {
+				e := client.SetDelayedDelivery(*topicName, delayedDeliveryData)
+				fmt.Printf("delayedDeliveryData e: %v \n", e)
+				delayedDelivery, _ := client.GetDelayedDelivery(*topicName)
+				fmt.Printf("delayedDeliveryData delayedDelivery: %v \n", delayedDelivery)
+				return e
+			}); err != nil {
 				errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
 			}
 		}
@@ -1080,7 +1071,10 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 			inactiveTopicPolicies := utils.NewInactiveTopicPolicies(&deleteMode, maxInactiveDurationSeconds, enableDelete)
 
-			if err := client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies); err != nil {
+			if err := retry(func() error {
+				fmt.Printf("SetInactiveTopicPolicies val: %v \n", inactiveTopicPolicies)
+				return client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies)
+			}); err != nil {
 				errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
 			}
 		}
@@ -1089,7 +1083,10 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	// Set max consumers
 	if val, ok := topicConfig["max_consumers"]; ok {
 		maxConsVal := val.(int)
-		if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
+		if err := retry(func() error {
+			fmt.Printf("SetMaxConsumers val: %v \n", maxConsVal)
+			return client.SetMaxConsumers(*topicName, maxConsVal)
+		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
 		}
 	}
@@ -1097,7 +1094,10 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	// Set max producers
 	if val, ok := topicConfig["max_producers"]; ok {
 		maxProdVal := val.(int)
-		if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
+		if err := retry(func() error {
+			fmt.Printf("SetMaxProducers val: %v \n", maxProdVal)
+			return client.SetMaxProducers(*topicName, maxProdVal)
+		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
 		}
 	}
@@ -1105,21 +1105,30 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	// Set message TTL (in seconds)
 	if val, ok := topicConfig["message_ttl_seconds"]; ok {
 		ttlVal := val.(int)
-		if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
+		if err := retry(func() error {
+			fmt.Printf("SetMessageTTL val: %v \n", ttlVal)
+			return client.SetMessageTTL(*topicName, ttlVal)
+		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
 		}
 	}
 
 	if maxUnackedMsgPerConsumer, ok := topicConfig["max_unacked_messages_per_consumer"]; ok {
 		maxVal := maxUnackedMsgPerConsumer.(int)
-		if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
+		if err := retry(func() error {
+			fmt.Printf("SetMaxUnackMessagesPerConsumer val: %v \n", maxVal)
+			return client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal)
+		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
 		}
 	}
 
 	if maxUnackedMsgPerSubscription, ok := topicConfig["max_unacked_messages_per_subscription"]; ok {
 		maxVal := maxUnackedMsgPerSubscription.(int)
-		if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
+		if err := retry(func() error {
+			fmt.Printf("SetMaxUnackMessagesPerSubscription val: %v \n", maxVal)
+			return client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal)
+		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
 		}
 	}
@@ -1138,10 +1147,34 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			publishRateData.PublishThrottlingRateInByte = int64(bytePublishRate.(int))
 		}
 
-		if err := client.SetPublishRate(*topicName, publishRateData); err != nil {
+		if err := retry(func() error {
+			fmt.Printf("SetPublishRate val: %v \n", publishRateData)
+			return client.SetPublishRate(*topicName, publishRateData)
+		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
 		}
 	}
 
 	return errs
+}
+
+func delayedDeliveryPoliciesToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%t-", m["enabled"].(bool)))
+	buf.WriteString(fmt.Sprintf("%d-", m["time"].(int)))
+
+	return hashcode.String(buf.String())
+}
+
+func inactiveTopicPoliciesToHash(v interface{}) int {
+	var buf bytes.Buffer
+	m := v.(map[string]interface{})
+
+	buf.WriteString(fmt.Sprintf("%t-", m["enable_delete_while_inactive"].(bool)))
+	buf.WriteString(fmt.Sprintf("%s-", m["max_inactive_duration"].(string)))
+	buf.WriteString(fmt.Sprintf("%s-", m["delete_mode"].(string)))
+
+	return hashcode.String(buf.String())
 }
