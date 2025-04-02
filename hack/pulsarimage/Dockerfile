@@ -1,4 +1,4 @@
-FROM apachepulsar/pulsar:2.10.4
+FROM apachepulsar/pulsar:4.0.3
 
 ENV PULSAR_PREFIX_systemTopicEnabled=true
 ENV PULSAR_PREFIX_topicLevelPoliciesEnabled=true
