@@ -10,8 +10,8 @@ CONTAINER=terraform-provider-pulsar-dev
 
 case $1 in
 run)
-  docker build -t ${IMAGE} -f hack/pulsarimage/Dockerfile hack/pulsarimage
-  docker run -d -p 6650:6650 -p 8080:8080 --name ${CONTAINER} ${IMAGE}
+  docker build --platform=linux/amd64 -t ${IMAGE} -f hack/pulsarimage/Dockerfile hack/pulsarimage
+  docker run --platform=linux/amd64 -d -p 6650:6650 -p 8080:8080 --name ${CONTAINER} ${IMAGE}
   until curl http://localhost:8080/admin/v2/tenants >/dev/null 2>&1; do
     sleep 5
     echo "Wait for pulsar service to be ready...$(date +%H:%M:%S)"

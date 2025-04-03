@@ -170,7 +170,7 @@ func testSourceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		count := 19
+		count := 20
 		if len(s[0].Attributes) != count {
 			return fmt.Errorf("expected %d attrs, got %d: %#v", count, len(s[0].Attributes), s[0].Attributes)
 		}

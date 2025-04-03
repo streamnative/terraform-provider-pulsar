@@ -576,7 +576,7 @@ resource "pulsar_cluster" "test_cluster" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
+    broker_service_url = "pulsar://localhost:6050"
     peer_clusters      = ["standalone"]
   }
 
@@ -605,7 +605,7 @@ resource "pulsar_cluster" "test_cluster" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
+    broker_service_url = "pulsar://localhost:6050"
     peer_clusters      = ["standalone"]
   }
 
@@ -695,7 +695,7 @@ resource "pulsar_cluster" "test_cluster" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
+    broker_service_url = "pulsar://localhost:6050"
     peer_clusters      = ["standalone"]
   }
 
@@ -743,7 +743,7 @@ resource "pulsar_cluster" "test_cluster" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
+    broker_service_url = "pulsar://localhost:6050"
     peer_clusters      = ["standalone"]
   }
 
@@ -774,7 +774,7 @@ resource "pulsar_cluster" "test_cluster" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
+    broker_service_url = "pulsar://localhost:6050"
     peer_clusters      = ["standalone"]
   }
 
@@ -805,7 +805,7 @@ resource "pulsar_cluster" "test_cluster" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
+    broker_service_url = "pulsar://localhost:6050"
     peer_clusters      = ["standalone"]
   }
 

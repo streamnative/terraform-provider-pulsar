@@ -67,6 +67,9 @@ func init() {
 		"client_id":                      "The OAuth 2.0 client identifier",
 		"scope":                          "The OAuth 2.0 scope(s) to request",
 		"key_file_path":                  "The path of the private key file",
+		"message_ttl":                    "The message time to live in seconds",
+		"namespace_config":               "The namespace configuration",
+		"topic_config":                   "The topic configuration",
 	}
 }
 

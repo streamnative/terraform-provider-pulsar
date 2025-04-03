@@ -22,8 +22,8 @@ provider "pulsar" {
 resource "pulsar_source" "source-1" {
   provider = pulsar
 
-  name = "source-1"
-  tenant = "public"
+  name      = "source-1"
+  tenant    = "public"
   namespace = "default"
 
   archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-file-2.10.4.nar"
@@ -32,12 +32,12 @@ resource "pulsar_source" "source-1" {
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
-  max_pending_messages = 202
+  max_pending_messages                   = 202
   max_pending_messages_across_partitions = 1000
-  use_thread_local_producers = true
-  batch_builder = "KEY_BASED"
+  use_thread_local_producers             = true
+  batch_builder                          = "KEY_BASED"
 
-  cpu = 2
+  cpu     = 2
   disk_mb = 20480
-  ram_mb = 2048
+  ram_mb  = 2048
 }

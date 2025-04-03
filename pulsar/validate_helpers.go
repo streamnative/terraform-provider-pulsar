@@ -59,3 +59,12 @@ func validatePartitionedTopicType(val interface{}, key string) (warns []string, 
 	}
 	return
 }
+
+func validiateDeleteMode(val interface{}, key string) (warns []string, errs []error) {
+	v := val.(string)
+	if v != "delete_when_no_subscriptions" && v != "delete_when_subscriptions_caught_up" {
+		errs = append(errs, fmt.Errorf("%q must be one of delete_when_no_subscriptions"+
+			" or delete_when_subscriptions_caught_up (got: %s)", key, v))
+	}
+	return
+}
