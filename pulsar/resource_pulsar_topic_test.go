@@ -114,9 +114,23 @@ func TestImportTopicWithConfig(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ERROR_SETTING_MAX_CONSUMERS: %v", err)
 			}
+			maxConValue, err := client.GetMaxConsumers(*topicName)
+			if err != nil {
+				t.Fatalf("ERROR_GETTING_MAX_CONSUMERS: %v", err)
+			}
+			if maxConValue != 15 {
+				t.Fatalf("expected max_consumers to be 15, got %d", maxConValue)
+			}
 			err = client.SetMessageTTL(*topicName, 7200)
 			if err != nil {
 				t.Fatalf("ERROR_SETTING_MESSAGE_TTL: %v", err)
+			}
+			msgTTLValue, err := client.GetMessageTTL(*topicName)
+			if err != nil {
+				t.Fatalf("ERROR_GETTING_MESSAGE_TTL: %v", err)
+			}
+			if msgTTLValue != 7200 {
+				t.Fatalf("expected message_ttl_seconds to be 7200, got %d", msgTTLValue)
 			}
 			t.Cleanup(func() {
 				if err := getClientFromMeta(testAccProvider.Meta()).Topics().Delete(*topicName, true, pnum == 0); err != nil {
