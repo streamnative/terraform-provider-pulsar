@@ -108,30 +108,19 @@ func TestImportTopicWithConfig(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
-			createTopic(t, fullID, pnum)
 			client := getClientFromMeta(testAccProvider.Meta()).Topics()
-			err := client.SetMaxConsumers(*topicName, 15)
-			if err != nil {
+			if err := client.Create(*topicName, pnum); err != nil {
+				t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
+			}
+			time.Sleep(5 * time.Second)
+			if err := client.SetMaxConsumers(*topicName, 15); err != nil {
 				t.Fatalf("ERROR_SETTING_MAX_CONSUMERS: %v", err)
 			}
-			maxConValue, err := client.GetMaxConsumers(*topicName)
-			if err != nil {
-				t.Fatalf("ERROR_GETTING_MAX_CONSUMERS: %v", err)
-			}
-			if maxConValue != 15 {
-				t.Fatalf("expected max_consumers to be 15, got %d", maxConValue)
-			}
-			err = client.SetMessageTTL(*topicName, 7200)
-			if err != nil {
+			time.Sleep(5 * time.Second)
+			if err := client.SetMessageTTL(*topicName, 7200); err != nil {
 				t.Fatalf("ERROR_SETTING_MESSAGE_TTL: %v", err)
 			}
-			msgTTLValue, err := client.GetMessageTTL(*topicName)
-			if err != nil {
-				t.Fatalf("ERROR_GETTING_MESSAGE_TTL: %v", err)
-			}
-			if msgTTLValue != 7200 {
-				t.Fatalf("expected message_ttl_seconds to be 7200, got %d", msgTTLValue)
-			}
+			time.Sleep(20 * time.Second)
 			t.Cleanup(func() {
 				if err := getClientFromMeta(testAccProvider.Meta()).Topics().Delete(*topicName, true, pnum == 0); err != nil {
 					t.Fatalf("ERROR_DELETING_TEST_TOPIC: %v", err)

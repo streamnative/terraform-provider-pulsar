@@ -268,6 +268,7 @@ func resourcePulsarSource() *schema.Resource {
 			resourceSourcePCCompressionTypeKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceSourceDescriptions[resourceSourcePCCompressionTypeKey],
 			},
 			resourceSourcePCCryptoKeyReaderClassNameKey: {

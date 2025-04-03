@@ -517,15 +517,14 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	var topicConfigMap = make(map[string]interface{})
 
 	compactionThreshold, err := client.GetCompactionThreshold(*topicName, true)
-	fmt.Printf("GetCompactionThreshold: %v %v\n", compactionThreshold, err)
 	if err == nil {
 		topicConfigMap["compaction_threshold"] = int(compactionThreshold)
 	} else if !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetCompactionThreshold: " + err.Error()))
 	}
 
+	time.Sleep(time.Millisecond * 1000)
 	delayedDelivery, err := client.GetDelayedDelivery(*topicName)
-	fmt.Printf("GetDelayedDelivery: %v %v\n", delayedDelivery, err)
 	//nolint:gocritic
 	if err == nil && delayedDelivery != nil {
 		topicConfigMap["delayed_delivery"] = schema.NewSet(delayedDeliveryPoliciesToHash, []interface{}{
@@ -545,8 +544,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		})
 	}
 
+	time.Sleep(time.Millisecond * 1000)
 	inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
-	fmt.Printf("GetInactiveTopicPolicies: %v %v\n", inactiveTopicPolicies, err)
 	//nolint:gocritic
 	if err == nil {
 		topicConfigMap["inactive_topic"] = schema.NewSet(inactiveTopicPoliciesToHash, []interface{}{
@@ -568,50 +567,49 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		})
 	}
 
+	time.Sleep(time.Millisecond * 1000)
 	maxConsumers, err := client.GetMaxConsumers(*topicName)
-	fmt.Printf("GetMaxConsumers: %v %v\n", maxConsumers, err)
 	if err == nil {
 		topicConfigMap["max_consumers"] = maxConsumers
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxConsumers: " + err.Error()))
 	}
 
+	time.Sleep(time.Millisecond * 1000)
 	maxProducers, err := client.GetMaxProducers(*topicName)
-	fmt.Printf("GetMaxProducers: %v %v\n", maxProducers, err)
 	if err == nil {
 		topicConfigMap["max_producers"] = maxProducers
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxProducers: " + err.Error()))
 	}
 
+	time.Sleep(time.Millisecond * 1000)
 	messageTTL, err := client.GetMessageTTL(*topicName)
-	fmt.Printf("GetMessageTTL: %v %v\n", messageTTL, err)
 	if err == nil {
 		topicConfigMap["message_ttl_seconds"] = messageTTL
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMessageTTL: " + err.Error()))
 	}
 
+	time.Sleep(time.Millisecond * 1000)
 	maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
-	fmt.Printf("GetMaxUnackMessagesPerConsumer: %v %v\n", maxUnackedMsgPerConsumer, err)
 	if err == nil {
 		topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: " + err.Error()))
 	}
 
+	time.Sleep(time.Millisecond * 1000)
 	maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
-	fmt.Printf("GetMaxUnackMessagesPerSubscription: %v %v\n", maxUnackedMsgPerSubscription, err)
 	if err == nil {
 		topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: " + err.Error()))
 	}
 
+	time.Sleep(time.Millisecond * 1000)
 	publishRate, err := client.GetPublishRate(*topicName)
-	fmt.Printf("GetPublishRate: %v %v\n", publishRate, err)
 	if err == nil && publishRate != nil {
-
 		topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
 		topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
 	} else if err != nil && !strings.Contains(err.Error(), "404") {
@@ -619,7 +617,6 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	}
 
 	// Only set topic_config if there are configuration values or it's explicitly requested in schema
-	fmt.Printf("topicConfigMap: %v", topicConfigMap)
 	if len(topicConfigMap) > 0 {
 		err := d.Set("topic_config", []interface{}{topicConfigMap})
 		if err != nil {
@@ -862,7 +859,7 @@ type testTimer struct {
 }
 
 func (t *testTimer) Start(duration time.Duration) {
-	t.timer = time.NewTimer(600 * time.Second)
+	t.timer = time.NewTimer(6 * time.Second)
 }
 
 func (t *testTimer) Stop() {
@@ -1013,8 +1010,18 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	// Set compaction threshold
 	if val, ok := topicConfig["compaction_threshold"]; ok {
 		if err := retry(func() error {
-			fmt.Printf("SetCompactionThreshold val: %v \n", val)
-			return client.SetCompactionThreshold(*topicName, int64(val.(int)))
+			e := client.SetCompactionThreshold(*topicName, int64(val.(int)))
+			if e != nil {
+				return e
+			}
+			compactionThreshold, err := client.GetCompactionThreshold(*topicName, false)
+			if err != nil {
+				return err
+			}
+			if compactionThreshold != int64(val.(int)) {
+				return fmt.Errorf("ERROR_UPDATE_COMPACTION_THRESHOLD: GetCompactionThreshold: compactionThreshold is not updated")
+			}
+			return nil
 		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
 		}
@@ -1033,14 +1040,19 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 				TickTime: float64(tickTime),
 			}
 
-			fmt.Printf("delayedDeliveryData: %v \n", delayedDeliveryData)
-
 			if err := retry(func() error {
-				e := client.SetDelayedDelivery(*topicName, delayedDeliveryData)
-				fmt.Printf("delayedDeliveryData e: %v \n", e)
+				err := client.SetDelayedDelivery(*topicName, delayedDeliveryData)
+				if err != nil {
+					return err
+				}
 				delayedDelivery, _ := client.GetDelayedDelivery(*topicName)
-				fmt.Printf("delayedDeliveryData delayedDelivery: %v \n", delayedDelivery)
-				return e
+				if delayedDelivery.Active != enabled {
+					return fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: GetDelayedDelivery: active is not updated")
+				}
+				if delayedDelivery.TickTime != float64(tickTime) {
+					return fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: GetDelayedDelivery: tickTime is not updated")
+				}
+				return nil
 			}); err != nil {
 				errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
 			}
@@ -1074,8 +1086,27 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			inactiveTopicPolicies := utils.NewInactiveTopicPolicies(&deleteMode, maxInactiveDurationSeconds, enableDelete)
 
 			if err := retry(func() error {
-				fmt.Printf("SetInactiveTopicPolicies val: %v \n", inactiveTopicPolicies)
-				return client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies)
+				e := client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies)
+				if e != nil {
+					return e
+				}
+				inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, false)
+				if err != nil {
+					return err
+				}
+				if inactiveTopicPolicies.InactiveTopicDeleteMode == nil ||
+					*inactiveTopicPolicies.InactiveTopicDeleteMode != deleteMode {
+					return fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: GetInactiveTopicPolicies: deleteMode is not updated")
+				}
+				if inactiveTopicPolicies.MaxInactiveDurationSeconds != maxInactiveDurationSeconds {
+					return fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: " +
+						"GetInactiveTopicPolicies: maxInactiveDurationSeconds is not updated")
+				}
+				if inactiveTopicPolicies.DeleteWhileInactive != enableDelete {
+					return fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: " +
+						"GetInactiveTopicPolicies: enableDelete is not updated")
+				}
+				return nil
 			}); err != nil {
 				errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
 			}
@@ -1086,8 +1117,18 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["max_consumers"]; ok {
 		maxConsVal := val.(int)
 		if err := retry(func() error {
-			fmt.Printf("SetMaxConsumers val: %v \n", maxConsVal)
-			return client.SetMaxConsumers(*topicName, maxConsVal)
+			err := client.SetMaxConsumers(*topicName, maxConsVal)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: SetMaxConsumers: %w", err)
+			}
+			maxConsValue, err := client.GetMaxConsumers(*topicName)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: GetMaxConsumers: %w", err)
+			}
+			if maxConsValue != maxConsVal {
+				return fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: GetMaxConsumers: maxConsValue is not updated")
+			}
+			return nil
 		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
 		}
@@ -1097,8 +1138,18 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["max_producers"]; ok {
 		maxProdVal := val.(int)
 		if err := retry(func() error {
-			fmt.Printf("SetMaxProducers val: %v \n", maxProdVal)
-			return client.SetMaxProducers(*topicName, maxProdVal)
+			err := client.SetMaxProducers(*topicName, maxProdVal)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: SetMaxProducers: %w", err)
+			}
+			maxProdValue, err := client.GetMaxProducers(*topicName)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: GetMaxProducers: %w", err)
+			}
+			if maxProdValue != maxProdVal {
+				return fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: GetMaxProducers: maxProdValue is not updated")
+			}
+			return nil
 		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
 		}
@@ -1108,8 +1159,18 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["message_ttl_seconds"]; ok {
 		ttlVal := val.(int)
 		if err := retry(func() error {
-			fmt.Printf("SetMessageTTL val: %v \n", ttlVal)
-			return client.SetMessageTTL(*topicName, ttlVal)
+			err := client.SetMessageTTL(*topicName, ttlVal)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: SetMessageTTL: %w", err)
+			}
+			ttlValue, err := client.GetMessageTTL(*topicName)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: GetMessageTTL: %w", err)
+			}
+			if ttlValue != ttlVal {
+				return fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: GetMessageTTL: ttlValue is not updated")
+			}
+			return nil
 		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
 		}
@@ -1118,8 +1179,19 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if maxUnackedMsgPerConsumer, ok := topicConfig["max_unacked_messages_per_consumer"]; ok {
 		maxVal := maxUnackedMsgPerConsumer.(int)
 		if err := retry(func() error {
-			fmt.Printf("SetMaxUnackMessagesPerConsumer val: %v \n", maxVal)
-			return client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal)
+			err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: SetMaxUnackMessagesPerConsumer: %w", err)
+			}
+			maxUnackedMsgPerConsumerValue, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: GetMaxUnackMessagesPerConsumer: %w", err)
+			}
+			if maxUnackedMsgPerConsumerValue != maxVal {
+				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: " +
+					"GetMaxUnackMessagesPerConsumer: maxUnackedMsgPerConsumerValue is not updated")
+			}
+			return nil
 		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
 		}
@@ -1128,8 +1200,19 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if maxUnackedMsgPerSubscription, ok := topicConfig["max_unacked_messages_per_subscription"]; ok {
 		maxVal := maxUnackedMsgPerSubscription.(int)
 		if err := retry(func() error {
-			fmt.Printf("SetMaxUnackMessagesPerSubscription val: %v \n", maxVal)
-			return client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal)
+			e := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal)
+			if e != nil {
+				return e
+			}
+			maxUnackedMsgPerSubscriptionValue, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: GetMaxUnackMessagesPerSubscription: %w", err)
+			}
+			if maxUnackedMsgPerSubscriptionValue != maxVal {
+				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: " +
+					"GetMaxUnackMessagesPerSubscription: maxUnackedMsgPerSubscriptionValue is not updated")
+			}
+			return nil
 		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
 		}
@@ -1150,8 +1233,21 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		}
 
 		if err := retry(func() error {
-			fmt.Printf("SetPublishRate val: %v \n", publishRateData)
-			return client.SetPublishRate(*topicName, publishRateData)
+			err := client.SetPublishRate(*topicName, publishRateData)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: SetPublishRate: %w", err)
+			}
+			publishRateValue, err := client.GetPublishRate(*topicName)
+			if err != nil {
+				return fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: %w", err)
+			}
+			if hasMsgRate && publishRateValue.PublishThrottlingRateInMsg != int64(msgPublishRate.(int)) {
+				return fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: publishRateValue is not updated")
+			}
+			if hasByteRate && publishRateValue.PublishThrottlingRateInByte != int64(bytePublishRate.(int)) {
+				return fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: publishRateValue is not updated")
+			}
+			return nil
 		}); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
 		}
