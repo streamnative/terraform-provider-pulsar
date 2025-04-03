@@ -22,18 +22,18 @@ provider "pulsar" {
 resource "pulsar_sink" "sink-1" {
   provider = pulsar
 
-  name = "sink-1"
-  tenant = "public"
-  namespace = "default"
-  inputs = ["sink-1-topic"]
+  name                  = "sink-1"
+  tenant                = "public"
+  namespace             = "default"
+  inputs                = ["sink-1-topic"]
   subscription_position = "Latest"
-  cleanup_subscription = false
-  parallelism = 1
-  auto_ack = true
+  cleanup_subscription  = false
+  parallelism           = 1
+  auto_ack              = true
 
   processing_guarantees = "ATLEAST_ONCE"
-  retain_ordering = false
+  retain_ordering       = false
 
-  archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-jdbc-postgres-2.10.4.nar"
+  archive = "function://public/default/api-examples@v1"
   configs = "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
 }

@@ -186,7 +186,7 @@ resource "pulsar_cluster" "test" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    web_service_url_tls    = "http://localhost:8443"
+    web_service_url_tls    = "https://localhost:8443"
     broker_service_url = "pulsar://localhost:6050"
     broker_service_url_tls = "pulsar+ssl://localhost:6051"
     peer_clusters      = ["skrulls", "krees"]
