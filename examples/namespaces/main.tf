@@ -19,7 +19,7 @@ terraform {
   required_providers {
     pulsar = {
       version = "0.1.3"
-      source = "registry.terraform.io/streamnative/pulsar"
+      source  = "registry.terraform.io/streamnative/pulsar"
     }
   }
 }
@@ -31,7 +31,7 @@ resource "pulsar_cluster" "test_cluster" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
+    broker_service_url = "pulsar://localhost:6050"
     peer_clusters = [
     "standalone"]
   }
@@ -49,13 +49,13 @@ resource "pulsar_namespace" "test" {
   namespace = "eternals"
 
   namespace_config {
-    anti_affinity                         = "anti-aff"
-    max_consumers_per_subscription        = "50"
-    max_consumers_per_topic               = "50"
-    max_producers_per_topic               = "50"
-    message_ttl_seconds                   = "86400"
-    replication_clusters                  = ["standalone"]
-    subscription_expiration_time_minutes  = 90
+    anti_affinity                        = "anti-aff"
+    max_consumers_per_subscription       = "50"
+    max_consumers_per_topic              = "50"
+    max_producers_per_topic              = "50"
+    message_ttl_seconds                  = "86400"
+    replication_clusters                 = ["standalone"]
+    subscription_expiration_time_minutes = 90
   }
 
   dispatch_rate {
@@ -70,13 +70,13 @@ resource "pulsar_namespace" "test" {
   }
 
   backlog_quota {
-    limit_bytes  = "10000000000"
-    policy = "producer_request_hold"
+    limit_bytes = "10000000000"
+    policy      = "producer_request_hold"
   }
 
   topic_auto_creation {
-    enable = true
-    type = "partitioned"
+    enable     = true
+    type       = "partitioned"
     partitions = 3
   }
 }
