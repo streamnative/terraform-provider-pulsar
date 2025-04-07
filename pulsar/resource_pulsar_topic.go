@@ -368,8 +368,8 @@ func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta
 	}
 
 	err = rt.RetryContext(ctx, d.Timeout(schema.TimeoutCreate), func() *rt.RetryError {
-		// Sleep 10 seconds between checks so we don't overload the API
-		time.Sleep(time.Second * 10)
+		// Sleep 1 seconds between checks so we don't overload the API
+		time.Sleep(time.Second * 1)
 
 		dia := resourcePulsarTopicRead(ctx, d, meta)
 		if dia.HasError() {
@@ -528,7 +528,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetCompactionThreshold: " + err.Error()))
 	}
 
-	time.Sleep(time.Millisecond * 1000)
+	time.Sleep(time.Millisecond * 100)
 	delayedDelivery, err := client.GetDelayedDelivery(*topicName)
 	//nolint:gocritic
 	if err == nil && delayedDelivery != nil {
@@ -549,7 +549,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		})
 	}
 
-	time.Sleep(time.Millisecond * 1000)
+	time.Sleep(time.Millisecond * 100)
 	inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, true)
 	//nolint:gocritic
 	if err == nil {
@@ -572,7 +572,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		})
 	}
 
-	time.Sleep(time.Millisecond * 1000)
+	time.Sleep(time.Millisecond * 100)
 	maxConsumers, err := client.GetMaxConsumers(*topicName)
 	if err == nil {
 		topicConfigMap["max_consumers"] = maxConsumers
@@ -580,7 +580,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxConsumers: " + err.Error()))
 	}
 
-	time.Sleep(time.Millisecond * 1000)
+	time.Sleep(time.Millisecond * 100)
 	maxProducers, err := client.GetMaxProducers(*topicName)
 	if err == nil {
 		topicConfigMap["max_producers"] = maxProducers
@@ -588,7 +588,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxProducers: " + err.Error()))
 	}
 
-	time.Sleep(time.Millisecond * 1000)
+	time.Sleep(time.Millisecond * 100)
 	messageTTL, err := client.GetMessageTTL(*topicName)
 	if err == nil {
 		topicConfigMap["message_ttl_seconds"] = messageTTL
@@ -596,7 +596,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMessageTTL: " + err.Error()))
 	}
 
-	time.Sleep(time.Millisecond * 1000)
+	time.Sleep(time.Millisecond * 100)
 	maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
 	if err == nil {
 		topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
@@ -604,7 +604,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: " + err.Error()))
 	}
 
-	time.Sleep(time.Millisecond * 1000)
+	time.Sleep(time.Millisecond * 100)
 	maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
 	if err == nil {
 		topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
@@ -612,7 +612,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: " + err.Error()))
 	}
 
-	time.Sleep(time.Millisecond * 1000)
+	time.Sleep(time.Millisecond * 100)
 	publishRate, err := client.GetPublishRate(*topicName)
 	if err == nil && publishRate != nil {
 		topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
