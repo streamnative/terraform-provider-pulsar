@@ -29,6 +29,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	rt "github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
@@ -273,6 +274,11 @@ func resourcePulsarTopic() *schema.Resource {
 				},
 				Set: persistencePoliciesToHash,
 			},
+		},
+		Timeouts: &schema.ResourceTimeout{
+			Create: schema.DefaultTimeout(5 * time.Minute),
+			Update: schema.DefaultTimeout(5 * time.Minute),
+			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 	}
 }
@@ -808,6 +814,47 @@ func updatePermissionGrant(d *schema.ResourceData, meta interface{}, topicName *
 	return nil
 }
 
+// waitForTopicConfigUpdate implements a polling mechanism to verify topic configuration has been applied
+// It uses StateChangeConf to handle retries with increasing backoff and proper timeout handling
+func waitForTopicConfigUpdate(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName,
+	configType string, checkFunc func() (bool, error)) error {
+	// Determine appropriate timeout - default to 1 minute if not specified
+	timeout := 1 * time.Minute
+	if timeouts, ok := d.GetOk("timeouts"); ok {
+		if t, ok := timeouts.(map[string]interface{})["update"]; ok {
+			if dur, err := time.ParseDuration(t.(string)); err == nil {
+				timeout = dur
+			}
+		}
+	}
+
+	stateConf := &resource.StateChangeConf{
+		Pending: []string{"pending", "updating"},
+		Target:  []string{"success"},
+		Refresh: func() (interface{}, string, error) {
+			ok, err := checkFunc()
+			if err != nil {
+				return nil, "", err
+			}
+			if ok {
+				return topicName, "success", nil
+			}
+			return nil, "updating", nil
+		},
+		Timeout:      timeout,
+		Delay:        2 * time.Second,
+		MinTimeout:   1 * time.Second,
+		PollInterval: 3 * time.Second,
+	}
+
+	_, err := stateConf.WaitForState()
+	if err != nil {
+		return fmt.Errorf("ERROR_UPDATE_TOPIC_%s: timed out waiting for config update: %w", configType, err)
+	}
+
+	return nil
+}
+
 func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
 	client := getClientFromMeta(meta).Topics()
 
@@ -826,9 +873,27 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 		data := retentionPoliciesConfig.List()[0].(map[string]interface{})
 		policies.RetentionTimeInMinutes = data["retention_time_minutes"].(int)
 		policies.RetentionSizeInMB = int64(data["retention_size_mb"].(int))
+
+		// First apply the retention policy
 		if err := client.SetRetention(*topicName, policies); err != nil {
 			return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
 		}
+
+		// Then verify it was successfully applied using the new polling mechanism
+		return waitForTopicConfigUpdate(d, meta, topicName, "RETENTION_POLICIES", func() (bool, error) {
+			// Get the current retention policy and check if it matches what we set
+			ret, err := client.GetRetention(*topicName, true)
+			if err != nil {
+				return false, fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: GetRetention: %w", err)
+			}
+
+			// Check if the values match what we expect
+			if ret.RetentionTimeInMinutes != policies.RetentionTimeInMinutes ||
+				ret.RetentionSizeInMB != policies.RetentionSizeInMB {
+				return false, nil
+			}
+			return true, nil
+		})
 	}
 
 	return nil
@@ -986,10 +1051,28 @@ func updatePersistencePolicies(d *schema.ResourceData, meta interface{}, topicNa
 			ManagedLedgerMaxMarkDeleteRate: data["managed_ledger_max_mark_delete_rate"].(float64),
 		}
 
-		err := client.SetPersistence(*topicName, persistenceData)
-		if err != nil {
+		// First apply the persistence policy
+		if err := client.SetPersistence(*topicName, persistenceData); err != nil {
 			return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
 		}
+
+		// Then verify it was successfully applied using the new polling mechanism
+		return waitForTopicConfigUpdate(d, meta, topicName, "PERSISTENCE_POLICIES", func() (bool, error) {
+			// Get the current persistence policy and check if it matches what we set
+			persistence, err := client.GetPersistence(*topicName)
+			if err != nil {
+				return false, fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: GetPersistence: %w", err)
+			}
+
+			// Check if the values match what we expect
+			if persistence.BookkeeperEnsemble != persistenceData.BookkeeperEnsemble ||
+				persistence.BookkeeperWriteQuorum != persistenceData.BookkeeperWriteQuorum ||
+				persistence.BookkeeperAckQuorum != persistenceData.BookkeeperAckQuorum ||
+				persistence.ManagedLedgerMaxMarkDeleteRate != persistenceData.ManagedLedgerMaxMarkDeleteRate {
+				return false, nil
+			}
+			return true, nil
+		})
 	}
 
 	return nil
@@ -1009,21 +1092,23 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 	// Set compaction threshold
 	if val, ok := topicConfig["compaction_threshold"]; ok {
-		if err := retry(func() error {
-			e := client.SetCompactionThreshold(*topicName, int64(val.(int)))
-			if e != nil {
-				return e
-			}
-			compactionThreshold, err := client.GetCompactionThreshold(*topicName, false)
-			if err != nil {
-				return err
-			}
-			if compactionThreshold != int64(val.(int)) {
-				return fmt.Errorf("ERROR_UPDATE_COMPACTION_THRESHOLD: GetCompactionThreshold: compactionThreshold is not updated")
-			}
-			return nil
-		}); err != nil {
+		compactionThresholdVal := int64(val.(int))
+		if err := client.SetCompactionThreshold(*topicName, compactionThresholdVal); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
+		} else {
+			// Verify the configuration was applied
+			if err := waitForTopicConfigUpdate(d, meta, topicName, "COMPACTION_THRESHOLD", func() (bool, error) {
+				compactionThreshold, err := client.GetCompactionThreshold(*topicName, false)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_COMPACTION_THRESHOLD: GetCompactionThreshold: %w", err)
+				}
+				if compactionThreshold != compactionThresholdVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold verification error: %v", err))
+			}
 		}
 	}
 
@@ -1040,21 +1125,22 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 				TickTime: float64(tickTime),
 			}
 
-			if err := retry(func() error {
-				err := client.SetDelayedDelivery(*topicName, delayedDeliveryData)
-				if err != nil {
-					return err
-				}
-				delayedDelivery, _ := client.GetDelayedDelivery(*topicName)
-				if delayedDelivery.Active != enabled {
-					return fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: GetDelayedDelivery: active is not updated")
-				}
-				if delayedDelivery.TickTime != float64(tickTime) {
-					return fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: GetDelayedDelivery: tickTime is not updated")
-				}
-				return nil
-			}); err != nil {
+			if err := client.SetDelayedDelivery(*topicName, delayedDeliveryData); err != nil {
 				errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
+			} else {
+				// Verify the configuration was applied
+				if err := waitForTopicConfigUpdate(d, meta, topicName, "DELAYED_DELIVERY", func() (bool, error) {
+					delayedDelivery, err := client.GetDelayedDelivery(*topicName)
+					if err != nil {
+						return false, fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: GetDelayedDelivery: %w", err)
+					}
+					if delayedDelivery.Active != enabled || delayedDelivery.TickTime != float64(tickTime) {
+						return false, nil
+					}
+					return true, nil
+				}); err != nil {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery verification error: %v", err))
+				}
 			}
 		}
 	}
@@ -1085,30 +1171,29 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 			inactiveTopicPolicies := utils.NewInactiveTopicPolicies(&deleteMode, maxInactiveDurationSeconds, enableDelete)
 
-			if err := retry(func() error {
-				e := client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies)
-				if e != nil {
-					return e
-				}
-				inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*topicName, false)
-				if err != nil {
-					return err
-				}
-				if inactiveTopicPolicies.InactiveTopicDeleteMode == nil ||
-					*inactiveTopicPolicies.InactiveTopicDeleteMode != deleteMode {
-					return fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: GetInactiveTopicPolicies: deleteMode is not updated")
-				}
-				if inactiveTopicPolicies.MaxInactiveDurationSeconds != maxInactiveDurationSeconds {
-					return fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: " +
-						"GetInactiveTopicPolicies: maxInactiveDurationSeconds is not updated")
-				}
-				if inactiveTopicPolicies.DeleteWhileInactive != enableDelete {
-					return fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: " +
-						"GetInactiveTopicPolicies: enableDelete is not updated")
-				}
-				return nil
-			}); err != nil {
+			if err := client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies); err != nil {
 				errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
+			} else {
+				// Verify the configuration was applied
+				if err := waitForTopicConfigUpdate(d, meta, topicName, "INACTIVE_TOPIC_POLICIES", func() (bool, error) {
+					inactiveTopicPoliciesResult, err := client.GetInactiveTopicPolicies(*topicName, false)
+					if err != nil {
+						return false, fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: GetInactiveTopicPolicies: %w", err)
+					}
+					if inactiveTopicPoliciesResult.InactiveTopicDeleteMode == nil ||
+						*inactiveTopicPoliciesResult.InactiveTopicDeleteMode != deleteMode {
+						return false, nil
+					}
+					if inactiveTopicPoliciesResult.MaxInactiveDurationSeconds != maxInactiveDurationSeconds {
+						return false, nil
+					}
+					if inactiveTopicPoliciesResult.DeleteWhileInactive != enableDelete {
+						return false, nil
+					}
+					return true, nil
+				}); err != nil {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies verification error: %v", err))
+				}
 			}
 		}
 	}
@@ -1116,105 +1201,108 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	// Set max consumers
 	if val, ok := topicConfig["max_consumers"]; ok {
 		maxConsVal := val.(int)
-		if err := retry(func() error {
-			err := client.SetMaxConsumers(*topicName, maxConsVal)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: SetMaxConsumers: %w", err)
-			}
-			maxConsValue, err := client.GetMaxConsumers(*topicName)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: GetMaxConsumers: %w", err)
-			}
-			if maxConsValue != maxConsVal {
-				return fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: GetMaxConsumers: maxConsValue is not updated")
-			}
-			return nil
-		}); err != nil {
+		if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
+		} else {
+			// Verify the configuration was applied
+			if err := waitForTopicConfigUpdate(d, meta, topicName, "MAX_CONSUMERS", func() (bool, error) {
+				maxConsValue, err := client.GetMaxConsumers(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: GetMaxConsumers: %w", err)
+				}
+				if maxConsValue != maxConsVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers verification error: %v", err))
+			}
 		}
 	}
 
 	// Set max producers
 	if val, ok := topicConfig["max_producers"]; ok {
 		maxProdVal := val.(int)
-		if err := retry(func() error {
-			err := client.SetMaxProducers(*topicName, maxProdVal)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: SetMaxProducers: %w", err)
-			}
-			maxProdValue, err := client.GetMaxProducers(*topicName)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: GetMaxProducers: %w", err)
-			}
-			if maxProdValue != maxProdVal {
-				return fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: GetMaxProducers: maxProdValue is not updated")
-			}
-			return nil
-		}); err != nil {
+		if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
+		} else {
+			// Verify the configuration was applied
+			if err := waitForTopicConfigUpdate(d, meta, topicName, "MAX_PRODUCERS", func() (bool, error) {
+				maxProdValue, err := client.GetMaxProducers(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: GetMaxProducers: %w", err)
+				}
+				if maxProdValue != maxProdVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers verification error: %v", err))
+			}
 		}
 	}
 
 	// Set message TTL (in seconds)
 	if val, ok := topicConfig["message_ttl_seconds"]; ok {
 		ttlVal := val.(int)
-		if err := retry(func() error {
-			err := client.SetMessageTTL(*topicName, ttlVal)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: SetMessageTTL: %w", err)
-			}
-			ttlValue, err := client.GetMessageTTL(*topicName)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: GetMessageTTL: %w", err)
-			}
-			if ttlValue != ttlVal {
-				return fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: GetMessageTTL: ttlValue is not updated")
-			}
-			return nil
-		}); err != nil {
+		if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
+		} else {
+			// Verify the configuration was applied
+			if err := waitForTopicConfigUpdate(d, meta, topicName, "MESSAGE_TTL", func() (bool, error) {
+				ttlValue, err := client.GetMessageTTL(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: GetMessageTTL: %w", err)
+				}
+				if ttlValue != ttlVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL verification error: %v", err))
+			}
 		}
 	}
 
 	if maxUnackedMsgPerConsumer, ok := topicConfig["max_unacked_messages_per_consumer"]; ok {
 		maxVal := maxUnackedMsgPerConsumer.(int)
-		if err := retry(func() error {
-			err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: SetMaxUnackMessagesPerConsumer: %w", err)
-			}
-			maxUnackedMsgPerConsumerValue, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: GetMaxUnackMessagesPerConsumer: %w", err)
-			}
-			if maxUnackedMsgPerConsumerValue != maxVal {
-				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: " +
-					"GetMaxUnackMessagesPerConsumer: maxUnackedMsgPerConsumerValue is not updated")
-			}
-			return nil
-		}); err != nil {
+		if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
+		} else {
+			// Verify the configuration was applied
+			if err := waitForTopicConfigUpdate(d, meta, topicName, "MAX_UNACK_MESSAGES_PER_CONSUMER", func() (bool, error) {
+				maxUnackedMsgPerConsumerValue, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: GetMaxUnackMessagesPerConsumer: %w", err)
+				}
+				if maxUnackedMsgPerConsumerValue != maxVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer verification error: %v", err))
+			}
 		}
 	}
 
 	if maxUnackedMsgPerSubscription, ok := topicConfig["max_unacked_messages_per_subscription"]; ok {
 		maxVal := maxUnackedMsgPerSubscription.(int)
-		if err := retry(func() error {
-			e := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal)
-			if e != nil {
-				return e
-			}
-			maxUnackedMsgPerSubscriptionValue, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: GetMaxUnackMessagesPerSubscription: %w", err)
-			}
-			if maxUnackedMsgPerSubscriptionValue != maxVal {
-				return fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: " +
-					"GetMaxUnackMessagesPerSubscription: maxUnackedMsgPerSubscriptionValue is not updated")
-			}
-			return nil
-		}); err != nil {
+		if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
+		} else {
+			// Verify the configuration was applied
+			if err := waitForTopicConfigUpdate(d, meta, topicName, "MAX_UNACK_MESSAGES_PER_SUBSCRIPTION", func() (bool, error) {
+				maxUnackedMsgPerSubscriptionValue, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: GetMaxUnackMessagesPerSubscription: %w", err)
+				}
+				if maxUnackedMsgPerSubscriptionValue != maxVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription verification error: %v", err))
+			}
 		}
 	}
 
@@ -1232,24 +1320,25 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			publishRateData.PublishThrottlingRateInByte = int64(bytePublishRate.(int))
 		}
 
-		if err := retry(func() error {
-			err := client.SetPublishRate(*topicName, publishRateData)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: SetPublishRate: %w", err)
-			}
-			publishRateValue, err := client.GetPublishRate(*topicName)
-			if err != nil {
-				return fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: %w", err)
-			}
-			if hasMsgRate && publishRateValue.PublishThrottlingRateInMsg != int64(msgPublishRate.(int)) {
-				return fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: publishRateValue is not updated")
-			}
-			if hasByteRate && publishRateValue.PublishThrottlingRateInByte != int64(bytePublishRate.(int)) {
-				return fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: publishRateValue is not updated")
-			}
-			return nil
-		}); err != nil {
+		if err := client.SetPublishRate(*topicName, publishRateData); err != nil {
 			errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
+		} else {
+			// Verify the configuration was applied
+			if err := waitForTopicConfigUpdate(d, meta, topicName, "PUBLISH_RATE", func() (bool, error) {
+				publishRateValue, err := client.GetPublishRate(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: %w", err)
+				}
+				if hasMsgRate && publishRateValue.PublishThrottlingRateInMsg != int64(msgPublishRate.(int)) {
+					return false, nil
+				}
+				if hasByteRate && publishRateValue.PublishThrottlingRateInByte != int64(bytePublishRate.(int)) {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate verification error: %v", err))
+			}
 		}
 	}
 
