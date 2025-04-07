@@ -29,7 +29,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	rt "github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
@@ -816,7 +815,7 @@ func updatePermissionGrant(d *schema.ResourceData, meta interface{}, topicName *
 
 // waitForTopicConfigUpdate implements a polling mechanism to verify topic configuration has been applied
 // It uses StateChangeConf to handle retries with increasing backoff and proper timeout handling
-func waitForTopicConfigUpdate(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName,
+func waitForTopicConfigUpdate(d *schema.ResourceData, topicName *utils.TopicName,
 	configType string, checkFunc func() (bool, error)) error {
 	// Determine appropriate timeout - default to 1 minute if not specified
 	timeout := 1 * time.Minute
@@ -828,7 +827,7 @@ func waitForTopicConfigUpdate(d *schema.ResourceData, meta interface{}, topicNam
 		}
 	}
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &rt.StateChangeConf{
 		Pending: []string{"pending", "updating"},
 		Target:  []string{"success"},
 		Refresh: func() (interface{}, string, error) {
@@ -847,7 +846,7 @@ func waitForTopicConfigUpdate(d *schema.ResourceData, meta interface{}, topicNam
 		PollInterval: 3 * time.Second,
 	}
 
-	_, err := stateConf.WaitForState()
+	_, err := stateConf.WaitForStateContext(context.Background())
 	if err != nil {
 		return fmt.Errorf("ERROR_UPDATE_TOPIC_%s: timed out waiting for config update: %w", configType, err)
 	}
@@ -880,7 +879,7 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 		}
 
 		// Then verify it was successfully applied using the new polling mechanism
-		return waitForTopicConfigUpdate(d, meta, topicName, "RETENTION_POLICIES", func() (bool, error) {
+		return waitForTopicConfigUpdate(d, topicName, "RETENTION_POLICIES", func() (bool, error) {
 			// Get the current retention policy and check if it matches what we set
 			ret, err := client.GetRetention(*topicName, true)
 			if err != nil {
@@ -1041,41 +1040,38 @@ func updatePersistencePolicies(d *schema.ResourceData, meta interface{}, topicNa
 			"unsupported set persistence policies for non-persistent topic")
 	}
 
-	for _, policy := range persistencePoliciesConfig.List() {
-		data := policy.(map[string]interface{})
+	data := persistencePoliciesConfig.List()[0].(map[string]interface{})
 
-		persistenceData := utils.PersistenceData{
-			BookkeeperEnsemble:             int64(data["bookkeeper_ensemble"].(int)),
-			BookkeeperWriteQuorum:          int64(data["bookkeeper_write_quorum"].(int)),
-			BookkeeperAckQuorum:            int64(data["bookkeeper_ack_quorum"].(int)),
-			ManagedLedgerMaxMarkDeleteRate: data["managed_ledger_max_mark_delete_rate"].(float64),
-		}
-
-		// First apply the persistence policy
-		if err := client.SetPersistence(*topicName, persistenceData); err != nil {
-			return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
-		}
-
-		// Then verify it was successfully applied using the new polling mechanism
-		return waitForTopicConfigUpdate(d, meta, topicName, "PERSISTENCE_POLICIES", func() (bool, error) {
-			// Get the current persistence policy and check if it matches what we set
-			persistence, err := client.GetPersistence(*topicName)
-			if err != nil {
-				return false, fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: GetPersistence: %w", err)
-			}
-
-			// Check if the values match what we expect
-			if persistence.BookkeeperEnsemble != persistenceData.BookkeeperEnsemble ||
-				persistence.BookkeeperWriteQuorum != persistenceData.BookkeeperWriteQuorum ||
-				persistence.BookkeeperAckQuorum != persistenceData.BookkeeperAckQuorum ||
-				persistence.ManagedLedgerMaxMarkDeleteRate != persistenceData.ManagedLedgerMaxMarkDeleteRate {
-				return false, nil
-			}
-			return true, nil
-		})
+	persistenceData := utils.PersistenceData{
+		BookkeeperEnsemble:             int64(data["bookkeeper_ensemble"].(int)),
+		BookkeeperWriteQuorum:          int64(data["bookkeeper_write_quorum"].(int)),
+		BookkeeperAckQuorum:            int64(data["bookkeeper_ack_quorum"].(int)),
+		ManagedLedgerMaxMarkDeleteRate: data["managed_ledger_max_mark_delete_rate"].(float64),
 	}
 
-	return nil
+	// First apply the persistence policy
+	if err := client.SetPersistence(*topicName, persistenceData); err != nil {
+		return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
+	}
+
+	// Then verify it was successfully applied using the new polling mechanism
+	return waitForTopicConfigUpdate(d, topicName, "PERSISTENCE_POLICIES", func() (bool, error) {
+		// Get the current persistence policy and check if it matches what we set
+		persistence, err := client.GetPersistence(*topicName)
+		if err != nil {
+			return false, fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: GetPersistence: %w", err)
+		}
+
+		// Check if the values match what we expect
+		if persistence.BookkeeperEnsemble != persistenceData.BookkeeperEnsemble ||
+			persistence.BookkeeperWriteQuorum != persistenceData.BookkeeperWriteQuorum ||
+			persistence.BookkeeperAckQuorum != persistenceData.BookkeeperAckQuorum ||
+			persistence.ManagedLedgerMaxMarkDeleteRate != persistenceData.ManagedLedgerMaxMarkDeleteRate {
+			return false, nil
+		}
+		return true, nil
+	})
+
 }
 
 func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
@@ -1097,7 +1093,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
 		} else {
 			// Verify the configuration was applied
-			if err := waitForTopicConfigUpdate(d, meta, topicName, "COMPACTION_THRESHOLD", func() (bool, error) {
+			if err := waitForTopicConfigUpdate(d, topicName, "COMPACTION_THRESHOLD", func() (bool, error) {
 				compactionThreshold, err := client.GetCompactionThreshold(*topicName, false)
 				if err != nil {
 					return false, fmt.Errorf("ERROR_UPDATE_COMPACTION_THRESHOLD: GetCompactionThreshold: %w", err)
@@ -1129,7 +1125,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 				errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
 			} else {
 				// Verify the configuration was applied
-				if err := waitForTopicConfigUpdate(d, meta, topicName, "DELAYED_DELIVERY", func() (bool, error) {
+				if err := waitForTopicConfigUpdate(d, topicName, "DELAYED_DELIVERY", func() (bool, error) {
 					delayedDelivery, err := client.GetDelayedDelivery(*topicName)
 					if err != nil {
 						return false, fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: GetDelayedDelivery: %w", err)
@@ -1175,7 +1171,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 				errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
 			} else {
 				// Verify the configuration was applied
-				if err := waitForTopicConfigUpdate(d, meta, topicName, "INACTIVE_TOPIC_POLICIES", func() (bool, error) {
+				if err := waitForTopicConfigUpdate(d, topicName, "INACTIVE_TOPIC_POLICIES", func() (bool, error) {
 					inactiveTopicPoliciesResult, err := client.GetInactiveTopicPolicies(*topicName, false)
 					if err != nil {
 						return false, fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: GetInactiveTopicPolicies: %w", err)
@@ -1205,7 +1201,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
 		} else {
 			// Verify the configuration was applied
-			if err := waitForTopicConfigUpdate(d, meta, topicName, "MAX_CONSUMERS", func() (bool, error) {
+			if err := waitForTopicConfigUpdate(d, topicName, "MAX_CONSUMERS", func() (bool, error) {
 				maxConsValue, err := client.GetMaxConsumers(*topicName)
 				if err != nil {
 					return false, fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: GetMaxConsumers: %w", err)
@@ -1227,7 +1223,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
 		} else {
 			// Verify the configuration was applied
-			if err := waitForTopicConfigUpdate(d, meta, topicName, "MAX_PRODUCERS", func() (bool, error) {
+			if err := waitForTopicConfigUpdate(d, topicName, "MAX_PRODUCERS", func() (bool, error) {
 				maxProdValue, err := client.GetMaxProducers(*topicName)
 				if err != nil {
 					return false, fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: GetMaxProducers: %w", err)
@@ -1249,7 +1245,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
 		} else {
 			// Verify the configuration was applied
-			if err := waitForTopicConfigUpdate(d, meta, topicName, "MESSAGE_TTL", func() (bool, error) {
+			if err := waitForTopicConfigUpdate(d, topicName, "MESSAGE_TTL", func() (bool, error) {
 				ttlValue, err := client.GetMessageTTL(*topicName)
 				if err != nil {
 					return false, fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: GetMessageTTL: %w", err)
@@ -1270,7 +1266,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
 		} else {
 			// Verify the configuration was applied
-			if err := waitForTopicConfigUpdate(d, meta, topicName, "MAX_UNACK_MESSAGES_PER_CONSUMER", func() (bool, error) {
+			if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_CONSUMER", func() (bool, error) {
 				maxUnackedMsgPerConsumerValue, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
 				if err != nil {
 					return false, fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: GetMaxUnackMessagesPerConsumer: %w", err)
@@ -1291,10 +1287,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
 		} else {
 			// Verify the configuration was applied
-			if err := waitForTopicConfigUpdate(d, meta, topicName, "MAX_UNACK_MESSAGES_PER_SUBSCRIPTION", func() (bool, error) {
+			if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_SUBSCRIPTION", func() (bool, error) {
 				maxUnackedMsgPerSubscriptionValue, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
 				if err != nil {
-					return false, fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: GetMaxUnackMessagesPerSubscription: %w", err)
+					return false, fmt.Errorf(
+						"ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: GetMaxUnackMessagesPerSubscription: %w", err)
 				}
 				if maxUnackedMsgPerSubscriptionValue != maxVal {
 					return false, nil
@@ -1324,7 +1321,7 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
 		} else {
 			// Verify the configuration was applied
-			if err := waitForTopicConfigUpdate(d, meta, topicName, "PUBLISH_RATE", func() (bool, error) {
+			if err := waitForTopicConfigUpdate(d, topicName, "PUBLISH_RATE", func() (bool, error) {
 				publishRateValue, err := client.GetPublishRate(*topicName)
 				if err != nil {
 					return false, fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: %w", err)
