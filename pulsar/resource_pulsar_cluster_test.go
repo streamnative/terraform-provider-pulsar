@@ -110,7 +110,7 @@ func createCluster(t *testing.T, cname string) {
 	if err = conn.Clusters().Create(utils.ClusterData{
 		Name:             cname,
 		ServiceURL:       "http://localhost:8080",
-		BrokerServiceURL: "http://localhost:6050",
+		BrokerServiceURL: "pulsar://localhost:6050",
 		PeerClusterNames: []string{"standalone"},
 	}); err != nil {
 		t.Log("createCluster", err)
@@ -186,8 +186,8 @@ resource "pulsar_cluster" "test" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    web_service_url_tls    = "http://localhost:8443"
-    broker_service_url = "http://localhost:6050"
+    web_service_url_tls    = "https://localhost:8443"
+    broker_service_url = "pulsar://localhost:6050"
     broker_service_url_tls = "pulsar+ssl://localhost:6051"
     peer_clusters      = ["skrulls", "krees"]
   }
@@ -205,7 +205,7 @@ resource "pulsar_cluster" "test" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
+    broker_service_url = "pulsar://localhost:6050"
 	peer_clusters      = ["standalone"]
   }
 }`, url, cname)

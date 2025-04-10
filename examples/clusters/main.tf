@@ -19,7 +19,7 @@ terraform {
   required_providers {
     pulsar = {
       version = "0.1.3"
-      source = "registry.terraform.io/streamnative/pulsar"
+      source  = "registry.terraform.io/streamnative/pulsar"
     }
   }
 }
@@ -31,7 +31,7 @@ resource "pulsar_cluster" "my_cluster" {
 
   cluster_data {
     web_service_url    = "http://localhost:8080"
-    broker_service_url = "http://localhost:6050"
+    broker_service_url = "pulsar://localhost:6050"
     peer_clusters = [
       "skrulls",
       "krees"
