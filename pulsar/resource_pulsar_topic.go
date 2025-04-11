@@ -235,13 +235,13 @@ func resourcePulsarTopic() *schema.Resource {
 						"msg_publish_rate": {
 							Type:         schema.TypeInt,
 							Optional:     true,
-							Default:      -1,
+							Default:      0,
 							ValidateFunc: validateGtEq0,
 						},
 						"byte_publish_rate": {
 							Type:         schema.TypeInt,
 							Optional:     true,
-							Default:      -1,
+							Default:      0,
 							ValidateFunc: validateGtEq0,
 						},
 					},
