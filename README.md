@@ -340,6 +340,51 @@ resource "pulsar_topic" "sample-topic-2" {
     retention_time_minutes = 1600
     retention_size_mb = 20000
   }
+
+  enable_deduplication = true
+
+  dispatch_rate {
+    msg_dispatch_rate = 0
+    byte_dispatch_rate = 0
+    dispatch_rate_period = 0
+    relative_to_publish_rate = true
+  }
+
+  backlog_quota = {
+    limit_bytes  = "10000000000"
+    limit_seconds = "-1"
+    policy = "consumer_backlog_eviction"
+    type = "destination_storage" 
+  }
+
+   persistence_policies {
+    bookkeeper_ensemble                   = 1   // Number of bookies to use for a topic, default: 0
+    bookkeeper_write_quorum               = 1   // How many writes to make of each entry, default: 0
+    bookkeeper_ack_quorum                 = 1   // Number of acks (guaranteed copies) to wait for each entry, default: 0
+    managed_ledger_max_mark_delete_rate   = 0.0 // Throttling rate of mark-delete operation (0 means no throttle), default: 0.0
+  }
+
+  topic_config {
+    delayed_delivery {
+      enabled = true
+      time = 1500
+    }
+    max_consumers = 10
+    max_producers = 5
+    message_ttl_seconds = 3600
+    max_unacked_messages_per_consumer = 1000
+    max_unacked_messages_per_subscription = 2000
+    msg_publish_rate = 100
+    byte_publish_rate = 1024
+    inactive_topic {
+      enable_delete_while_inactive = true
+      max_inactive_duration = "60s"
+      delete_mode = "delete_when_no_subscriptions"
+    }
+    compaction_threshold = 1073741824
+  }
+
+
 }
 ```
 
@@ -354,6 +399,68 @@ resource "pulsar_topic" "sample-topic-2" {
 | `partitions`         | Number of [partitions](https://pulsar.apache.org/docs/en/concepts-messaging/#partitioned-topics) (`0` for non-partitioned topic, `> 1` for partitioned topic)                                                           | Yes      |
 | `permission_grant`   | [Permission grants](https://pulsar.apache.org/docs/en/admin-api-permissions/) on a topic. This block can be repeated for each grant you'd like to add. Permission grants are also inherited from the topic's namespace. | No       |
 | `retention_policies` | Data retention policies                                                                                                                                                                                                 | No       |
+| `enable_deduplication` | Enable message deduplication for the topic                                                                                                                                                                            | No       |
+| `dispatch_rate` | Configure message dispatch rate for the topic                                                                                                                                                                              | No       |
+| `backlog_quota` | Configure [Backlog Quota](https://pulsar.apache.org/api/admin/4.0.x/org/apache/pulsar/common/policies/data/BacklogQuota.html) for the topic                                                                                                | No       |
+| `persistence_policies` | Set [Persistence Policies](https://pulsar.apache.org/api/admin/4.0.x/org/apache/pulsar/common/policies/data/PersistencePolicies.html) for the topic                                                                                            | No       |
+| `topic_config` | Additional configuration for the topic                                                                                                                                                                                      | No       |
+
+##### Nested Schema for `dispatch_rate`
+
+| Property                 | Description                                                                               | Required |
+| ------------------------ | ----------------------------------------------------------------------------------------- | -------- |
+| `msg_dispatch_rate`      | Maximum number of messages per second                                                     | Yes      |
+| `byte_dispatch_rate`     | Maximum number of bytes per second                                                        | Yes      |
+| `dispatch_rate_period`   | The time period in seconds                                                                | Yes      |
+| `relative_to_publish_rate` | Whether dispatch rate should be relative to publish rate                                | Yes      |
+
+##### Nested Schema for `backlog_quota`
+
+| Property                 | Description                                                                               | Required |
+| ------------------------ | ----------------------------------------------------------------------------------------- | -------- |
+| `limit_bytes`            | Maximum size of backlog in bytes                                                          | Yes      |
+| `limit_seconds`          | Maximum time of backlog (in seconds). -1 means no time limit                              | Yes      |
+| `policy`                 | Action to take when quota is exceeded (e.g., `consumer_backlog_eviction`)                 | Yes      |
+| `type`                   | Backlog quota type (e.g., `destination_storage`)                                          | Yes      |
+
+##### Nested Schema for `persistence_policies`
+
+| Property                           | Description                                                                      | Required |
+| ---------------------------------- | -------------------------------------------------------------------------------- | -------- |
+| `bookkeeper_ensemble`              | Number of bookies to use for a topic                                             | Yes      |
+| `bookkeeper_write_quorum`          | How many writes to make of each entry                                            | Yes      |
+| `bookkeeper_ack_quorum`            | Number of acks (guaranteed copies) to wait for each entry                        | Yes      |
+| `managed_ledger_max_mark_delete_rate` | Throttling rate of mark-delete operation (0 means no throttle)                | Yes      |
+
+##### Nested Schema for `topic_config`
+
+| Property                            | Description                                                                      | Optional |
+| ----------------------------------- | -------------------------------------------------------------------------------- | -------- |
+| `max_consumers`                     | Maximum number of consumers for the topic                                        | Yes      |
+| `max_producers`                     | Maximum number of producers for the topic                                        | Yes      |
+| `message_ttl_seconds`               | Time-to-live (in seconds) for messages                                           | Yes      |
+| `max_unacked_messages_per_consumer` | Maximum number of unacknowledged messages per consumer                           | Yes      |
+| `max_unacked_messages_per_subscription` | Maximum number of unacknowledged messages per subscription                   | Yes      |
+| `msg_publish_rate`                  | Maximum message publish rate (per second)                                        | Yes      |
+| `byte_publish_rate`                 | Maximum byte publish rate (per second)                                           | Yes      |
+| `compaction_threshold`              | The threshold (in bytes) to trigger compaction                                   | Yes      |
+| `delayed_delivery`                  | Configuration for delayed message delivery                                       | Yes      |
+| `inactive_topic`                    | Configuration for inactive topic handling                                        | Yes      |
+
+##### Nested Schema for `delayed_delivery`
+
+| Property                 | Description                                                                               | Required |
+| ------------------------ | ----------------------------------------------------------------------------------------- | -------- |
+| `enabled`                | Whether to enable delayed delivery for messages                                           | Yes      |
+| `time`                   | The tick time for delayed delivery messages                                               | Yes      |
+
+##### Nested Schema for `inactive_topic`
+
+| Property                      | Description                                                                           | Required |
+| ----------------------------- | ------------------------------------------------------------------------------------- | -------- |
+| `enable_delete_while_inactive` | Whether to delete the inactive topic                                                  | Yes      |
+| `max_inactive_duration`       | Max duration of inactivity (e.g., "60s") after which topic will be deleted            | Yes      |
+| `delete_mode`                 | Mode of deletion (`delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`) | Yes      |
 
 ### `pulsar_function`
 
@@ -560,6 +667,32 @@ resource "pulsar_sink" "sample-sink-1" {
 | `custom_schema_inputs`   | The map of input topics to Schema types or class names (as a JSON string)                                                                                                                     | False    |
 | `custom_serde_inputs`    | The map of input topics to SerDe class names (as a JSON string)                                                                                                                               | False    |
 | `custom_runtime_options` | A string that encodes options to customize the runtime                                                                                                                                        | False    |
+
+### `pulsar_subscription`
+
+A resource for creating and managing Apache Pulsar Subscriptions.
+
+#### Example
+
+```hcl
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+}
+
+resource "pulsar_subscription" "example" {
+  topic_name        = "persistent://public/default/example-topic"
+  subscription_name = "example-subscription"
+  position          = "latest"
+}
+```
+
+#### Properties
+
+| Property             | Description                                                                                                                                | Required |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| `topic_name`         | The topic in the format of `{topic_type}://{tenant}/{namespace}/{topic_name}`                                                              | Yes      |
+| `subscription_name`  | The subscription name                                                                                                                      | Yes      |
+| `position`           | The initial position (`earliest` or `latest`). Default is "latest"                                                                          | No       |
 
 ## Importing existing resources
 
