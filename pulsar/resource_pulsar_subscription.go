@@ -79,10 +79,11 @@ func TopicNameValidatorDiag(i interface{}, p cty.Path) diag.Diagnostics {
 
 func resourcePulsarSubscriptionImport(ctx context.Context, d *schema.ResourceData,
 	meta interface{}) ([]*schema.ResourceData, error) {
+	subID := d.Id()
 	// Format is expected to be: {topic}@{subscription_name}
-	parts := strings.Split(d.Id(), "@")
+	parts := strings.Split(subID, "@")
 	if len(parts) != 2 {
-		return nil, fmt.Errorf("ERROR_PARSE_SUBSCRIPTION_NAME: invalid import format, expected {topic}:{subscription_name}")
+		return nil, fmt.Errorf("ERROR_PARSE_SUBSCRIPTION_NAME: invalid import format, expected {topic}@{subscription_name}")
 	}
 
 	topic := parts[0]
@@ -99,7 +100,10 @@ func resourcePulsarSubscriptionImport(ctx context.Context, d *schema.ResourceDat
 
 	diags := resourcePulsarSubscriptionRead(ctx, d, meta)
 	if diags.HasError() {
-		return nil, fmt.Errorf("import %q: %s", d.Id(), diags[0].Summary)
+		return nil, fmt.Errorf("import %q: %s", subID, diags[0].Summary)
+	}
+	if d.Id() == "" {
+		return nil, fmt.Errorf("ERROR_SUBSCRIPTION_NOT_FOUND: %s", subID)
 	}
 	return []*schema.ResourceData{d}, nil
 }
