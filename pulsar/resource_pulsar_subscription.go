@@ -82,7 +82,7 @@ func resourcePulsarSubscriptionImport(ctx context.Context, d *schema.ResourceDat
 	// Format is expected to be: {topic}@{subscription_name}
 	parts := strings.Split(d.Id(), "@")
 	if len(parts) != 2 {
-		return nil, fmt.Errorf("ERROR_PARSE_SUBSCRIPTION_NAME: invalid import format, expected {topic}:{subscription_name}")
+		return nil, fmt.Errorf("ERROR_PARSE_SUBSCRIPTION_NAME: invalid import format, expected {topic}@{subscription_name}")
 	}
 
 	topic := parts[0]
