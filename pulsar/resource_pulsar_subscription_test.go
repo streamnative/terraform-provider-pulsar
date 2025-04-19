@@ -166,6 +166,39 @@ func TestImportExistingSubscriptionWithIncorrectId(t *testing.T) {
 	})
 }
 
+func TestImportNonExistingSubscription(t *testing.T) {
+	topic := "test-subscription-import-" + acctest.RandString(10)
+	topicName := "persistent://public/default/" + topic
+	subscriptionName := "sub-import-" + acctest.RandString(10)
+	nonExistingSubscriptionName := "non-existing-" + acctest.RandString(10)
+	subscriptionID := fmt.Sprintf("%s@%s", topicName, nonExistingSubscriptionName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createSubscriptionForTest(t, topic, subscriptionName)
+			t.Cleanup(func() {
+				topicName, _ := utils.GetTopicName(topic)
+				if err := getClientFromMeta(testAccProvider.Meta()).Subscriptions().Delete(*topicName,
+					subscriptionName); err != nil {
+					t.Logf("ERROR_DELETING_TEST_SUBSCRIPTION: %v", err)
+				}
+			})
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarSubscriptionDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  "pulsar_subscription.test",
+				ImportState:   true,
+				Config:        testPulsarSubscription(testWebServiceURL, topic, topicName, subscriptionName, "latest"),
+				ImportStateId: subscriptionID,
+				ExpectError:   regexp.MustCompile("ERROR_SUBSCRIPTION_NOT_FOUND"),
+			},
+		},
+	})
+}
+
 func TestSubscriptionExternallyRemoved(t *testing.T) {
 	resourceName := "pulsar_subscription.test"
 	topic := "test-subscription-external-" + acctest.RandString(10)
