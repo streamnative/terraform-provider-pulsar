@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -127,6 +128,72 @@ func TestImportExistingSubscription(t *testing.T) {
 				Config:           testPulsarSubscription(testWebServiceURL, topic, topicName, subscriptionName, "latest"),
 				ImportStateId:    fullID,
 				ImportStateCheck: testSubscriptionImported(),
+			},
+		},
+	})
+}
+
+func TestImportExistingSubscriptionWithIncorrectId(t *testing.T) {
+	topic := "test-subscription-import-" + acctest.RandString(10)
+	topicName := "persistent://public/default/" + topic
+	subscriptionName := "sub-import-" + acctest.RandString(10)
+	incorrectID := fmt.Sprintf("%s:%s", topicName, subscriptionName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createSubscriptionForTest(t, topic, subscriptionName)
+			t.Cleanup(func() {
+				topicName, _ := utils.GetTopicName(topic)
+				if err := getClientFromMeta(testAccProvider.Meta()).Subscriptions().Delete(*topicName,
+					subscriptionName); err != nil {
+					t.Logf("ERROR_DELETING_TEST_SUBSCRIPTION: %v", err)
+				}
+			})
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarSubscriptionDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  "pulsar_subscription.test",
+				ImportState:   true,
+				Config:        testPulsarSubscription(testWebServiceURL, topic, topicName, subscriptionName, "latest"),
+				ImportStateId: incorrectID,
+				ExpectError: regexp.MustCompile(
+					"ERROR_PARSE_SUBSCRIPTION_NAME: invalid import format, expected {topic}@{subscription_name}"),
+			},
+		},
+	})
+}
+
+func TestImportNonExistingSubscription(t *testing.T) {
+	topic := "test-subscription-import-" + acctest.RandString(10)
+	topicName := "persistent://public/default/" + topic
+	subscriptionName := "sub-import-" + acctest.RandString(10)
+	nonExistingSubscriptionName := "non-existing-" + acctest.RandString(10)
+	subscriptionID := fmt.Sprintf("%s@%s", topicName, nonExistingSubscriptionName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			createSubscriptionForTest(t, topic, subscriptionName)
+			t.Cleanup(func() {
+				topicName, _ := utils.GetTopicName(topic)
+				if err := getClientFromMeta(testAccProvider.Meta()).Subscriptions().Delete(*topicName,
+					subscriptionName); err != nil {
+					t.Logf("ERROR_DELETING_TEST_SUBSCRIPTION: %v", err)
+				}
+			})
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarSubscriptionDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  "pulsar_subscription.test",
+				ImportState:   true,
+				Config:        testPulsarSubscription(testWebServiceURL, topic, topicName, subscriptionName, "latest"),
+				ImportStateId: subscriptionID,
+				ExpectError:   regexp.MustCompile("ERROR_SUBSCRIPTION_NOT_FOUND"),
 			},
 		},
 	})
