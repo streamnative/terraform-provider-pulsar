@@ -35,6 +35,26 @@ import (
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
 
+// isIgnorableTopicPolicyError checks if an error indicates that a topic policy was not found
+// or is disabled at the cluster level. This includes HTTP 404 errors, or specific
+// HTTP 405 errors when topic-level policies are disabled.
+func isIgnorableTopicPolicyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var cliErr rest.Error
+	if errors.As(err, &cliErr) { // Use errors.As to get the underlying rest.Error
+		if cliErr.Code == 404 {
+			return true
+		}
+		// Check for the specific 405 error reason: "Topic level policies is disabled"
+		if cliErr.Code == 405 && strings.Contains(cliErr.Reason, "Topic level policies is disabled") {
+			return true
+		}
+	}
+	return false
+}
+
 func resourcePulsarTopic() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourcePulsarTopicCreate,
@@ -428,15 +448,17 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 			ret, err := client.GetRetention(*topicName, true)
 			if err != nil {
-				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err))
+				if !isIgnorableTopicPolicyError(err) {
+					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err))
+				}
+			} else {
+				_ = d.Set("retention_policies", []interface{}{
+					map[string]interface{}{
+						"retention_time_minutes": ret.RetentionTimeInMinutes,
+						"retention_size_mb":      int(ret.RetentionSizeInMB),
+					},
+				})
 			}
-
-			_ = d.Set("retention_policies", []interface{}{
-				map[string]interface{}{
-					"retention_time_minutes": ret.RetentionTimeInMinutes,
-					"retention_size_mb":      int(ret.RetentionSizeInMB),
-				},
-			})
 		} else {
 			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get retention policies for non-persistent topic"))
 		}
@@ -445,7 +467,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	if _, ok := d.GetOk("enable_deduplication"); ok {
 		deduplicationStatus, err := client.GetDeduplicationStatus(*topicName)
 		if err != nil {
-			if !strings.Contains(err.Error(), "404") {
+			if !isIgnorableTopicPolicyError(err) {
 				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetDeduplicationStatus: %w", err))
 			}
 		} else {
@@ -457,7 +479,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		if topicName.IsPersistent() {
 			qt, err := client.GetBacklogQuotaMap(*topicName, true)
 			if err != nil {
-				if !strings.Contains(err.Error(), "404") {
+				if !isIgnorableTopicPolicyError(err) {
 					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetBacklogQuotaMap: %w", err))
 				}
 			} else {
@@ -481,7 +503,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
 		dr, err := client.GetDispatchRate(*topicName)
 		if err != nil {
-			if !strings.Contains(err.Error(), "404") {
+			if !isIgnorableTopicPolicyError(err) {
 				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetDispatchRate: %w", err))
 			}
 		} else if dr != nil {
@@ -500,7 +522,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		if topicName.IsPersistent() {
 			persistence, err := client.GetPersistence(*topicName)
 			if err != nil {
-				if !strings.Contains(err.Error(), "404") {
+				if !isIgnorableTopicPolicyError(err) {
 					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPersistence: %w", err))
 				}
 			} else if persistence != nil {
@@ -524,8 +546,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	compactionThreshold, err := client.GetCompactionThreshold(*topicName, true)
 	if err == nil {
 		topicConfigMap["compaction_threshold"] = int(compactionThreshold)
-	} else if !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetCompactionThreshold: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetCompactionThreshold: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
@@ -538,8 +560,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 				"time":    int(delayedDelivery.TickTime),
 			},
 		})
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetDelayedDelivery: " + err.Error()))
+	} else if err != nil && !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetDelayedDelivery: %w", err))
 	} else {
 		topicConfigMap["delayed_delivery"] = schema.NewSet(delayedDeliveryPoliciesToHash, []interface{}{
 			map[string]interface{}{
@@ -560,8 +582,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 				"delete_mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
 			},
 		})
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetInactiveTopicPolicies: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetInactiveTopicPolicies: %w", err))
 	} else {
 		topicConfigMap["inactive_topic"] = schema.NewSet(inactiveTopicPoliciesToHash, []interface{}{
 			map[string]interface{}{
@@ -576,40 +598,40 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	maxConsumers, err := client.GetMaxConsumers(*topicName)
 	if err == nil {
 		topicConfigMap["max_consumers"] = maxConsumers
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxConsumers: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMaxConsumers: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
 	maxProducers, err := client.GetMaxProducers(*topicName)
 	if err == nil {
 		topicConfigMap["max_producers"] = maxProducers
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxProducers: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMaxProducers: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
 	messageTTL, err := client.GetMessageTTL(*topicName)
 	if err == nil {
 		topicConfigMap["message_ttl_seconds"] = messageTTL
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMessageTTL: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMessageTTL: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
 	maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
 	if err == nil {
 		topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
 	maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
 	if err == nil {
 		topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
@@ -617,8 +639,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	if err == nil && publishRate != nil {
 		topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
 		topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetPublishRate: " + err.Error()))
+	} else if err != nil && !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPublishRate: %w", err))
 	}
 
 	// Only set topic_config if there are configuration values or it's explicitly requested in schema
