@@ -897,7 +897,11 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 
 		// First apply the retention policy
 		if err := client.SetRetention(*topicName, policies); err != nil {
-			return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
+			if !isIgnorableTopicPolicyError(err) {
+				return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err))
+			}
 		}
 
 		// Then verify it was successfully applied using the new polling mechanism
@@ -1073,7 +1077,11 @@ func updatePersistencePolicies(d *schema.ResourceData, meta interface{}, topicNa
 
 	// First apply the persistence policy
 	if err := client.SetPersistence(*topicName, persistenceData); err != nil {
-		return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
+		if !isIgnorableTopicPolicyError(err) {
+			return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
+		} else {
+			return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err))
+		}
 	}
 
 	// Then verify it was successfully applied using the new polling mechanism
@@ -1112,7 +1120,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["compaction_threshold"]; ok {
 		compactionThresholdVal := int64(val.(int))
 		if err := client.SetCompactionThreshold(*topicName, compactionThresholdVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_COMPACTION_THRESHOLD: SetCompactionThreshold: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "COMPACTION_THRESHOLD", func() (bool, error) {
@@ -1144,7 +1156,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			}
 
 			if err := client.SetDelayedDelivery(*topicName, delayedDeliveryData); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
+				if !isIgnorableTopicPolicyError(err) {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
+				} else {
+					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: SetDelayedDelivery: %w", err))
+				}
 			} else {
 				// Verify the configuration was applied
 				if err := waitForTopicConfigUpdate(d, topicName, "DELAYED_DELIVERY", func() (bool, error) {
@@ -1190,7 +1206,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			inactiveTopicPolicies := utils.NewInactiveTopicPolicies(&deleteMode, maxInactiveDurationSeconds, enableDelete)
 
 			if err := client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
+				if !isIgnorableTopicPolicyError(err) {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
+				} else {
+					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: SetInactiveTopicPolicies: %w", err))
+				}
 			} else {
 				// Verify the configuration was applied
 				if err := waitForTopicConfigUpdate(d, topicName, "INACTIVE_TOPIC_POLICIES", func() (bool, error) {
@@ -1220,7 +1240,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["max_consumers"]; ok {
 		maxConsVal := val.(int)
 		if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: SetMaxConsumers: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MAX_CONSUMERS", func() (bool, error) {
@@ -1242,7 +1266,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["max_producers"]; ok {
 		maxProdVal := val.(int)
 		if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: SetMaxProducers: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MAX_PRODUCERS", func() (bool, error) {
@@ -1264,7 +1292,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["message_ttl_seconds"]; ok {
 		ttlVal := val.(int)
 		if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: SetMessageTTL: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MESSAGE_TTL", func() (bool, error) {
@@ -1285,7 +1317,12 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if maxUnackedMsgPerConsumer, ok := topicConfig["max_unacked_messages_per_consumer"]; ok {
 		maxVal := maxUnackedMsgPerConsumer.(int)
 		if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
+			} else {
+				return backoff.Permanent(
+					fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: SetMaxUnackMessagesPerConsumer: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_CONSUMER", func() (bool, error) {
@@ -1306,7 +1343,12 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if maxUnackedMsgPerSubscription, ok := topicConfig["max_unacked_messages_per_subscription"]; ok {
 		maxVal := maxUnackedMsgPerSubscription.(int)
 		if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
+			} else {
+				return backoff.Permanent(
+					fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: SetMaxUnackMessagesPerSubscription: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_SUBSCRIPTION", func() (bool, error) {
@@ -1340,7 +1382,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		}
 
 		if err := client.SetPublishRate(*topicName, publishRateData); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: SetPublishRate: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "PUBLISH_RATE", func() (bool, error) {
