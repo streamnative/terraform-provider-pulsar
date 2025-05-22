@@ -57,3 +57,40 @@ jobs:
       - name: Setup tmate session
         if: ${{ failure() }}
         uses: mxschmitt/action-tmate@v3
+  acctest-no-topic-policies:
+    name: Run acceptance tests with topic-level policies disabled
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.22
+        id: go
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.2.7
+          terraform_wrapper: false
+
+      - name: Run pulsar standalone in Docker
+        run: make run-pulsar-in-docker-no-topic-policies
+
+      - name: Build the terraform-provider-pulsar
+        run: |
+          make build
+          mkdir -p $HOME/.terraform.d/plugins/linux_amd64
+          sudo mv terraform-provider-pulsar $HOME/.terraform.d/plugins/linux_amd64/
+          echo "The terraform-provider-pulsar location:" `readlink -f $HOME/.terraform.d/plugins/linux_amd64/`
+
+      - name: Run Acceptance Tests for the Provider on Standalone Instance
+        run: |
+          docker ps
+          make testacc-no-topic-policies
+
+      - name: Setup tmate session
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3
