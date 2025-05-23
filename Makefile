@@ -41,8 +41,14 @@ test: fmtcheck
 testacc: fmtcheck
 	TF_ACC=1 go test $(TEST) -v -count 3 $(TESTARGS) -timeout 120m
 
+testacc-no-topic-policies: fmtcheck
+	TF_ACC=1 PULSAR_TEST_CONFIG=no_topic_policies go test $(TEST) -v -count 3 $(TESTARGS) -timeout 120m
+
 run-pulsar-in-docker: fmtcheck
 	hack/pulsar-docker.sh run
+
+run-pulsar-in-docker-no-topic-policies: fmtcheck
+	hack/pulsar-docker.sh run --no-topic-policies
 
 remove-pulsar-from-docker:
 	hack/pulsar-docker.sh remove

@@ -10,7 +10,15 @@ CONTAINER=terraform-provider-pulsar-dev
 
 case $1 in
 run)
-  docker build --platform=linux/amd64 -t ${IMAGE} -f hack/pulsarimage/Dockerfile hack/pulsarimage
+  IMAGE_TO_RUN=$PULSAR_IMAGE_TAG
+  if [ "$2" == "--no-topic-policies" ]; then
+    docker build --platform=linux/amd64 -t ${IMAGE} -f hack/pulsarimage/topicLevelPoliciesDisabled.Dockerfile hack/pulsarimage
+    echo "Running Pulsar with topic-level policies disabled using image $IMAGE_TO_RUN"
+  else
+    docker build --platform=linux/amd64 -t ${IMAGE} -f hack/pulsarimage/Dockerfile hack/pulsarimage
+    echo "Running Pulsar with default configuration using image $IMAGE_TO_RUN"
+  fi
+  
   docker run --platform=linux/amd64 -d -p 6650:6650 -p 8080:8080 --name ${CONTAINER} ${IMAGE}
   until curl http://localhost:8080/admin/v2/tenants >/dev/null 2>&1; do
     sleep 5
