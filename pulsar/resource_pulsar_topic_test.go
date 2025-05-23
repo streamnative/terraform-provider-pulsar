@@ -63,9 +63,7 @@ func TestSimpleTopic(t *testing.T) {
 }
 
 func TestTopic(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: testAccProviderFactories,
@@ -142,9 +140,7 @@ func TestImportExistingTopic(t *testing.T) {
 }
 
 func TestImportTopicWithConfig(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	tname := acctest.RandString(10)
 	ttype := "persistent"
 	pnum := 0
@@ -212,23 +208,17 @@ func TestImportTopicWithConfig(t *testing.T) {
 }
 
 func TestNonPartionedTopicWithPermissionGrantUpdate(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	testTopicWithPermissionGrantUpdate(t, 0)
 }
 
 func TestPartionedTopicWithPermissionGrantUpdate(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	testTopicWithPermissionGrantUpdate(t, 10)
 }
 
 func TestTopicWithTopicConfigUpdate(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
 	ttype := "persistent"
@@ -307,9 +297,7 @@ func TestTopicWithTopicConfigUpdate(t *testing.T) {
 }
 
 func TestTopicWithDelayedDeliveryUpdate(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
 	ttype := "persistent"
@@ -365,9 +353,7 @@ func TestTopicWithDelayedDeliveryUpdate(t *testing.T) {
 }
 
 func TestTopicWithInactiveTopicUpdate(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
 	ttype := "persistent"
@@ -433,9 +419,7 @@ func TestTopicWithInactiveTopicUpdate(t *testing.T) {
 }
 
 func TestTopicWithCompactionThresholdUpdate(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
 	ttype := "persistent"
@@ -481,9 +465,7 @@ func TestTopicWithCompactionThresholdUpdate(t *testing.T) {
 }
 
 func TestTopicWithConfigAndOtherFields(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
 	ttype := "persistent"
@@ -582,9 +564,7 @@ func TestTopicWithConfigAndOtherFields(t *testing.T) {
 }
 
 func TestTopicConfigRemoval(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
 	ttype := "persistent"
@@ -646,9 +626,7 @@ func TestTopicConfigRemoval(t *testing.T) {
 }
 
 func TestTopicNamespaceExternallyRemoved(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tName := acctest.RandString(10)
 	nsName := acctest.RandString(10)
@@ -1142,9 +1120,7 @@ resource "pulsar_topic" "test" {
 }
 
 func TestTopicWithConfig(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: testAccProviderFactories,
@@ -1178,9 +1154,7 @@ func TestTopicWithConfig(t *testing.T) {
 }
 
 func TestPartitionedTopicWithTopicConfig(t *testing.T) {
-	if pulsarTestConfig == "no_topic_policies" {
-		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
-	}
+	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
 	ttype := "persistent"
@@ -1230,4 +1204,10 @@ func TestPartitionedTopicWithTopicConfig(t *testing.T) {
 			},
 		},
 	})
+}
+
+func skipIfNoTopicPolicies(t *testing.T) {
+	if pulsarTestConfig == "no_topic_policies" {
+		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
+	}
 }

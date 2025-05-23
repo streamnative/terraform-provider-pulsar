@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -327,6 +328,7 @@ func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
 
 func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Topics()
+	var diags diag.Diagnostics
 
 	topicName, partitions, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
@@ -338,71 +340,103 @@ func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC: %w", err))
 	}
 
+	// Rollback topic creation if any error occurs after this point
+	defer func() {
+		log.Printf("[INFO] Attempting to roll back creation of topic %s due to subsequent error.", topicName.String())
+		forceDelete := true
+		isTopicPartitioned := partitions > 0
+		if err := client.Delete(*topicName, forceDelete, !isTopicPartitioned); err != nil {
+			log.Printf("[WARN] Failed to delete topic %s during rollback: %v", topicName.String(), err)
+		} else {
+			log.Printf("[INFO] Successfully rolled back topic %s.", topicName.String())
+		}
+	}()
+
+	diags = internalPulsarTopicPoliciesCreate(d, meta, topicName)
+	if !diags.HasError() {
+		d.SetId(topicName.String())
+		err = rt.RetryContext(ctx, d.Timeout(schema.TimeoutCreate), func() *rt.RetryError {
+			// Sleep 1 seconds between checks so we don't overload the API
+			time.Sleep(time.Second * 1)
+
+			dia := resourcePulsarTopicRead(ctx, d, meta)
+			if dia.HasError() {
+				return rt.NonRetryableError(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %s", dia[0].Summary))
+			}
+			return nil
+		})
+
+		if err != nil {
+			diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %w", err))...)
+			return diags
+		}
+	}
+
+	return diags
+}
+
+func internalPulsarTopicPoliciesCreate(d *schema.ResourceData, meta interface{},
+	topicName *utils.TopicName) diag.Diagnostics {
+	var diags diag.Diagnostics
+	var err error
+
 	err = retry(func() error {
 		return updatePermissionGrant(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateRetentionPolicies(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateDeduplicationStatus(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DEDUPLICATION_STATUS: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DEDUPLICATION_STATUS: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateBacklogQuota(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_BACKLOG_QUOTA: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_BACKLOG_QUOTA: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateDispatchRate(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DISPATCH_RATE: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DISPATCH_RATE: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updatePersistencePolicies(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERSISTENCE_POLICIES: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERSISTENCE_POLICIES: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateTopicConfig(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_CONFIG: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_CONFIG: %w", err))...)
+		return diags
 	}
 
-	err = rt.RetryContext(ctx, d.Timeout(schema.TimeoutCreate), func() *rt.RetryError {
-		// Sleep 1 seconds between checks so we don't overload the API
-		time.Sleep(time.Second * 1)
-
-		dia := resourcePulsarTopicRead(ctx, d, meta)
-		if dia.HasError() {
-			return rt.NonRetryableError(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %s", dia[0].Summary))
-		}
-		return nil
-	})
-
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %w", err))
-	}
-
-	return nil
+	return diags
 }
 
 func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
