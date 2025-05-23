@@ -342,13 +342,15 @@ func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta
 
 	// Rollback topic creation if any error occurs after this point
 	defer func() {
-		log.Printf("[INFO] Attempting to roll back creation of topic %s due to subsequent error.", topicName.String())
-		forceDelete := true
-		isTopicPartitioned := partitions > 0
-		if err := client.Delete(*topicName, forceDelete, !isTopicPartitioned); err != nil {
-			log.Printf("[WARN] Failed to delete topic %s during rollback: %v", topicName.String(), err)
-		} else {
-			log.Printf("[INFO] Successfully rolled back topic %s.", topicName.String())
+		if diags.HasError() && d.Id() == "" {
+			log.Printf("[INFO] Attempting to roll back creation of topic %s due to subsequent error.", topicName.String())
+			forceDelete := true
+			isTopicPartitioned := partitions > 0
+			if err := client.Delete(*topicName, forceDelete, !isTopicPartitioned); err != nil {
+				log.Printf("[WARN] Failed to delete topic %s during rollback: %v", topicName.String(), err)
+			} else {
+				log.Printf("[INFO] Successfully rolled back topic %s.", topicName.String())
+			}
 		}
 	}()
 
