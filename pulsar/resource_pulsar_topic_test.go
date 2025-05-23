@@ -880,6 +880,7 @@ resource "pulsar_topic" "sample-topic-1" {
   namespace  = "default"
   topic_type = "persistent"
   topic_name = "simple-persistent-topic"
+	partitions = 0
 }
 
 resource "pulsar_topic" "sample-topic-2" {
@@ -887,6 +888,7 @@ resource "pulsar_topic" "sample-topic-2" {
   namespace  = "default"
   topic_type = "non-persistent"
   topic_name = "simple-non-persistent-topic"
+	partitions = 0
 }
 
 resource "pulsar_topic" "sample-topic-3" {
