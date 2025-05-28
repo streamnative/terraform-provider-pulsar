@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,26 @@ import (
 	"github.com/pkg/errors"
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
+
+// isIgnorableTopicPolicyError checks if an error indicates that a topic policy was not found
+// or is disabled at the cluster level. This includes HTTP 404 errors, or specific
+// HTTP 405 errors when topic-level policies are disabled.
+func isIgnorableTopicPolicyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var cliErr rest.Error
+	if errors.As(err, &cliErr) { // Use errors.As to get the underlying rest.Error
+		if cliErr.Code == 404 {
+			return true
+		}
+		// Check for the specific 405 error reason: "Topic level policies is disabled"
+		if cliErr.Code == 405 && strings.Contains(cliErr.Reason, "Topic level policies is disabled") {
+			return true
+		}
+	}
+	return false
+}
 
 func resourcePulsarTopic() *schema.Resource {
 	return &schema.Resource{
@@ -307,6 +328,7 @@ func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
 
 func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Topics()
+	var diags diag.Diagnostics
 
 	topicName, partitions, err := unmarshalTopicNameAndPartitions(d)
 	if err != nil {
@@ -318,71 +340,105 @@ func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC: %w", err))
 	}
 
+	// Rollback topic creation if any error occurs after this point
+	defer func() {
+		if diags.HasError() && d.Id() == "" {
+			log.Printf("[INFO] Attempting to roll back creation of topic %s due to subsequent error.", topicName.String())
+			forceDelete := true
+			isTopicPartitioned := partitions > 0
+			if err := client.Delete(*topicName, forceDelete, !isTopicPartitioned); err != nil {
+				log.Printf("[WARN] Failed to delete topic %s during rollback: %v", topicName.String(), err)
+			} else {
+				log.Printf("[INFO] Successfully rolled back topic %s.", topicName.String())
+			}
+		}
+	}()
+
+	diags = internalPulsarTopicPoliciesCreate(d, meta, topicName)
+	if !diags.HasError() {
+		d.SetId(topicName.String())
+		err = rt.RetryContext(ctx, d.Timeout(schema.TimeoutCreate), func() *rt.RetryError {
+			// Sleep 1 seconds between checks so we don't overload the API
+			time.Sleep(time.Second * 1)
+
+			dia := resourcePulsarTopicRead(ctx, d, meta)
+			if dia.HasError() {
+				return rt.NonRetryableError(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %s", dia[0].Summary))
+			}
+			return nil
+		})
+
+		if err != nil {
+			diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %w", err))...)
+			return diags
+		}
+	}
+
+	return diags
+}
+
+func internalPulsarTopicPoliciesCreate(d *schema.ResourceData, meta interface{},
+	topicName *utils.TopicName) diag.Diagnostics {
+	var diags diag.Diagnostics
+	var err error
+
 	err = retry(func() error {
 		return updatePermissionGrant(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERMISSION_GRANT: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateRetentionPolicies(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_RETENTION_POLICIES: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateDeduplicationStatus(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DEDUPLICATION_STATUS: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DEDUPLICATION_STATUS: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateBacklogQuota(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_BACKLOG_QUOTA: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_BACKLOG_QUOTA: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateDispatchRate(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DISPATCH_RATE: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_DISPATCH_RATE: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updatePersistencePolicies(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERSISTENCE_POLICIES: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PERSISTENCE_POLICIES: %w", err))...)
+		return diags
 	}
 
 	err = retry(func() error {
 		return updateTopicConfig(d, meta, topicName)
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_CONFIG: %w", err))
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_CONFIG: %w", err))...)
+		return diags
 	}
 
-	err = rt.RetryContext(ctx, d.Timeout(schema.TimeoutCreate), func() *rt.RetryError {
-		// Sleep 1 seconds between checks so we don't overload the API
-		time.Sleep(time.Second * 1)
-
-		dia := resourcePulsarTopicRead(ctx, d, meta)
-		if dia.HasError() {
-			return rt.NonRetryableError(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %s", dia[0].Summary))
-		}
-		return nil
-	})
-
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_RETRY_READ_TOPIC: %w", err))
-	}
-
-	return nil
+	return diags
 }
 
 func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -428,15 +484,17 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 			ret, err := client.GetRetention(*topicName, true)
 			if err != nil {
-				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err))
+				if !isIgnorableTopicPolicyError(err) {
+					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err))
+				}
+			} else {
+				_ = d.Set("retention_policies", []interface{}{
+					map[string]interface{}{
+						"retention_time_minutes": ret.RetentionTimeInMinutes,
+						"retention_size_mb":      int(ret.RetentionSizeInMB),
+					},
+				})
 			}
-
-			_ = d.Set("retention_policies", []interface{}{
-				map[string]interface{}{
-					"retention_time_minutes": ret.RetentionTimeInMinutes,
-					"retention_size_mb":      int(ret.RetentionSizeInMB),
-				},
-			})
 		} else {
 			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get retention policies for non-persistent topic"))
 		}
@@ -445,7 +503,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	if _, ok := d.GetOk("enable_deduplication"); ok {
 		deduplicationStatus, err := client.GetDeduplicationStatus(*topicName)
 		if err != nil {
-			if !strings.Contains(err.Error(), "404") {
+			if !isIgnorableTopicPolicyError(err) {
 				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetDeduplicationStatus: %w", err))
 			}
 		} else {
@@ -457,7 +515,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		if topicName.IsPersistent() {
 			qt, err := client.GetBacklogQuotaMap(*topicName, true)
 			if err != nil {
-				if !strings.Contains(err.Error(), "404") {
+				if !isIgnorableTopicPolicyError(err) {
 					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetBacklogQuotaMap: %w", err))
 				}
 			} else {
@@ -481,7 +539,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
 		dr, err := client.GetDispatchRate(*topicName)
 		if err != nil {
-			if !strings.Contains(err.Error(), "404") {
+			if !isIgnorableTopicPolicyError(err) {
 				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetDispatchRate: %w", err))
 			}
 		} else if dr != nil {
@@ -500,7 +558,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		if topicName.IsPersistent() {
 			persistence, err := client.GetPersistence(*topicName)
 			if err != nil {
-				if !strings.Contains(err.Error(), "404") {
+				if !isIgnorableTopicPolicyError(err) {
 					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPersistence: %w", err))
 				}
 			} else if persistence != nil {
@@ -524,8 +582,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	compactionThreshold, err := client.GetCompactionThreshold(*topicName, true)
 	if err == nil {
 		topicConfigMap["compaction_threshold"] = int(compactionThreshold)
-	} else if !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetCompactionThreshold: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetCompactionThreshold: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
@@ -538,8 +596,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 				"time":    int(delayedDelivery.TickTime),
 			},
 		})
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetDelayedDelivery: " + err.Error()))
+	} else if err != nil && !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetDelayedDelivery: %w", err))
 	} else {
 		topicConfigMap["delayed_delivery"] = schema.NewSet(delayedDeliveryPoliciesToHash, []interface{}{
 			map[string]interface{}{
@@ -560,8 +618,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 				"delete_mode":                  inactiveTopicPolicies.InactiveTopicDeleteMode.String(),
 			},
 		})
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetInactiveTopicPolicies: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetInactiveTopicPolicies: %w", err))
 	} else {
 		topicConfigMap["inactive_topic"] = schema.NewSet(inactiveTopicPoliciesToHash, []interface{}{
 			map[string]interface{}{
@@ -576,40 +634,40 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	maxConsumers, err := client.GetMaxConsumers(*topicName)
 	if err == nil {
 		topicConfigMap["max_consumers"] = maxConsumers
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxConsumers: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMaxConsumers: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
 	maxProducers, err := client.GetMaxProducers(*topicName)
 	if err == nil {
 		topicConfigMap["max_producers"] = maxProducers
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxProducers: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMaxProducers: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
 	messageTTL, err := client.GetMessageTTL(*topicName)
 	if err == nil {
 		topicConfigMap["message_ttl_seconds"] = messageTTL
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMessageTTL: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMessageTTL: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
 	maxUnackedMsgPerConsumer, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
 	if err == nil {
 		topicConfigMap["max_unacked_messages_per_consumer"] = maxUnackedMsgPerConsumer
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMaxUnackMessagesPerConsumer: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
 	maxUnackedMsgPerSubscription, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
 	if err == nil {
 		topicConfigMap["max_unacked_messages_per_subscription"] = maxUnackedMsgPerSubscription
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: " + err.Error()))
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetMaxUnackMessagesPerSubscription: %w", err))
 	}
 
 	time.Sleep(time.Millisecond * 100)
@@ -617,8 +675,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	if err == nil && publishRate != nil {
 		topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
 		topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
-	} else if err != nil && !strings.Contains(err.Error(), "404") {
-		return diag.FromErr(errors.New("ERROR_READ_TOPIC: GetPublishRate: " + err.Error()))
+	} else if err != nil && !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPublishRate: %w", err))
 	}
 
 	// Only set topic_config if there are configuration values or it's explicitly requested in schema
@@ -875,7 +933,11 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 
 		// First apply the retention policy
 		if err := client.SetRetention(*topicName, policies); err != nil {
-			return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
+			if !isIgnorableTopicPolicyError(err) {
+				return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err))
+			}
 		}
 
 		// Then verify it was successfully applied using the new polling mechanism
@@ -1051,7 +1113,11 @@ func updatePersistencePolicies(d *schema.ResourceData, meta interface{}, topicNa
 
 	// First apply the persistence policy
 	if err := client.SetPersistence(*topicName, persistenceData); err != nil {
-		return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
+		if !isIgnorableTopicPolicyError(err) {
+			return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
+		} else {
+			return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err))
+		}
 	}
 
 	// Then verify it was successfully applied using the new polling mechanism
@@ -1090,7 +1156,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["compaction_threshold"]; ok {
 		compactionThresholdVal := int64(val.(int))
 		if err := client.SetCompactionThreshold(*topicName, compactionThresholdVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_COMPACTION_THRESHOLD: SetCompactionThreshold: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "COMPACTION_THRESHOLD", func() (bool, error) {
@@ -1122,7 +1192,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			}
 
 			if err := client.SetDelayedDelivery(*topicName, delayedDeliveryData); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
+				if !isIgnorableTopicPolicyError(err) {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
+				} else {
+					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: SetDelayedDelivery: %w", err))
+				}
 			} else {
 				// Verify the configuration was applied
 				if err := waitForTopicConfigUpdate(d, topicName, "DELAYED_DELIVERY", func() (bool, error) {
@@ -1168,7 +1242,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			inactiveTopicPolicies := utils.NewInactiveTopicPolicies(&deleteMode, maxInactiveDurationSeconds, enableDelete)
 
 			if err := client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies); err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
+				if !isIgnorableTopicPolicyError(err) {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
+				} else {
+					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: SetInactiveTopicPolicies: %w", err))
+				}
 			} else {
 				// Verify the configuration was applied
 				if err := waitForTopicConfigUpdate(d, topicName, "INACTIVE_TOPIC_POLICIES", func() (bool, error) {
@@ -1198,7 +1276,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["max_consumers"]; ok {
 		maxConsVal := val.(int)
 		if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: SetMaxConsumers: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MAX_CONSUMERS", func() (bool, error) {
@@ -1220,7 +1302,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["max_producers"]; ok {
 		maxProdVal := val.(int)
 		if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: SetMaxProducers: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MAX_PRODUCERS", func() (bool, error) {
@@ -1242,7 +1328,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["message_ttl_seconds"]; ok {
 		ttlVal := val.(int)
 		if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: SetMessageTTL: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MESSAGE_TTL", func() (bool, error) {
@@ -1263,7 +1353,12 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if maxUnackedMsgPerConsumer, ok := topicConfig["max_unacked_messages_per_consumer"]; ok {
 		maxVal := maxUnackedMsgPerConsumer.(int)
 		if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
+			} else {
+				return backoff.Permanent(
+					fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: SetMaxUnackMessagesPerConsumer: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_CONSUMER", func() (bool, error) {
@@ -1284,7 +1379,12 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if maxUnackedMsgPerSubscription, ok := topicConfig["max_unacked_messages_per_subscription"]; ok {
 		maxVal := maxUnackedMsgPerSubscription.(int)
 		if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
+			} else {
+				return backoff.Permanent(
+					fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: SetMaxUnackMessagesPerSubscription: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_SUBSCRIPTION", func() (bool, error) {
@@ -1318,7 +1418,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		}
 
 		if err := client.SetPublishRate(*topicName, publishRateData); err != nil {
-			errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
+			if !isIgnorableTopicPolicyError(err) {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
+			} else {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: SetPublishRate: %w", err))
+			}
 		} else {
 			// Verify the configuration was applied
 			if err := waitForTopicConfigUpdate(d, topicName, "PUBLISH_RATE", func() (bool, error) {
