@@ -1,6 +1,7 @@
 module github.com/streamnative/terraform-provider-pulsar
 
 go 1.24.4
+toolchain go1.24.4
 
 require (
 	github.com/apache/pulsar-client-go v0.15.2-0.20250710023731-c587b5cefb04
