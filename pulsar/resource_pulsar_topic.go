@@ -294,6 +294,14 @@ func resourcePulsarTopic() *schema.Resource {
 				},
 				Set: persistencePoliciesToHash,
 			},
+			"topic_properties": {
+				Type:        schema.TypeMap,
+				Optional:    true,
+				Description: "Custom properties for the topic",
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(5 * time.Minute),
@@ -435,6 +443,14 @@ func internalPulsarTopicPoliciesCreate(d *schema.ResourceData, meta interface{},
 	})
 	if err != nil {
 		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_CONFIG: %w", err))...)
+		return diags
+	}
+
+	err = retry(func() error {
+		return updateTopicProperties(d, meta, topicName)
+	})
+	if err != nil {
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PROPERTIES: %w", err))...)
 		return diags
 	}
 
@@ -687,6 +703,21 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
+	// Read topic properties if they are configured
+	if _, ok := d.GetOk("topic_properties"); ok {
+		time.Sleep(time.Millisecond * 100)
+		properties, err := client.GetProperties(*topicName)
+		if err != nil {
+			if !isIgnorableTopicPolicyError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetProperties: %w", err))
+			}
+		} else {
+			if err := d.Set("topic_properties", properties); err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -747,6 +778,13 @@ func resourcePulsarTopicUpdate(ctx context.Context, d *schema.ResourceData, meta
 
 	if d.HasChange("topic_config") {
 		err := updateTopicConfig(d, meta, topicName)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("topic_properties") {
+		err := updateTopicProperties(d, meta, topicName)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -1465,4 +1503,20 @@ func inactiveTopicPoliciesToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%s-", m["delete_mode"].(string)))
 
 	return hashcode.String(buf.String())
+}
+
+func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	client := getClientFromMeta(meta).Topics()
+
+	if properties, ok := d.GetOk("topic_properties"); ok {
+		propMap := make(map[string]string)
+		for k, v := range properties.(map[string]interface{}) {
+			propMap[k] = v.(string)
+		}
+		if err := client.UpdateProperties(*topicName, propMap); err != nil {
+			return fmt.Errorf("UpdateProperties failed: %w", err)
+		}
+	}
+
+	return nil
 }

@@ -32,6 +32,7 @@ description: |-
 - `backlog_quota` (Block Set) (see [below for nested schema](#nestedblock--backlog_quota))
 - `topic_config` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_config))
 - `persistence_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--persistence_policies))
+- `topic_properties` (Map of String) Custom properties for the topic
 
 
 ### Read-Only
@@ -119,3 +120,20 @@ Required:
 - `enable_delete_while_inactive` (Boolean)
 - `max_inactive_duration` (String)
 - `delete_mode` (String) `delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`
+
+## Example Usage
+
+```hcl
+resource "pulsar_topic" "my_topic" {
+  tenant     = "my-tenant"
+  namespace  = "my-namespace"
+  topic_name = "my-topic"
+  topic_type = "persistent"
+  partitions = 1
+
+  topic_properties = {
+    "owner" = "data-engineering"
+    "env"   = "production"
+  }
+}
+```
