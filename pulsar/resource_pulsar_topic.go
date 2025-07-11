@@ -705,7 +705,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	// Read topic properties if they are configured
 	time.Sleep(time.Millisecond * 100)
-	if propertiesCfg, ok := d.GetOk("topic_properties"); ok && propertiesCfg.(*schema.Set).Len() > 0 {
+	if propertiesCfg, ok := d.GetOk("topic_properties"); ok && len(propertiesCfg.(map[string]interface{})) > 0 {
 		if topicName.IsPersistent() {
 			properties, err := client.GetProperties(*topicName)
 			if err != nil {
