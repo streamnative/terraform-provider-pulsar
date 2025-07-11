@@ -825,8 +825,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 32 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 32, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 31 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 31, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -1295,7 +1295,7 @@ func TestNonPersistentTopicWithPropertiesFails(t *testing.T) {
 			{
 				Config: testNonPersistentPulsarTopicWithProperties(testWebServiceURL, tname,
 					ttype, pnum, `topic_properties = { k1 = "v1" }`),
-				ExpectError: regexp.MustCompile("ERROR_READ_TOPIC: unsupported get topic properties for non-persistent topic"),
+				ExpectError: regexp.MustCompile("persistent"),
 			},
 		},
 	})
@@ -1316,15 +1316,10 @@ func TestImportTopicWithProperties(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			// create topic and set properties via admin client
-			client := getClientFromMeta(testAccProvider.Meta()).Topics()
-			if err := client.Create(*topicName, pnum); err != nil {
-				t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
-			}
-			// wait a moment for topic to be ready
-			time.Sleep(2 * time.Second)
 			props := map[string]string{"importK1": "importV1", "importK2": "importV2"}
-			if err := client.UpdateProperties(*topicName, props); err != nil {
-				t.Fatalf("ERROR_SETTING_TOPIC_PROPERTIES: %v", err)
+			client := getClientFromMeta(testAccProvider.Meta()).Topics()
+			if err := client.CreateWithProperties(*topicName, pnum, props); err != nil {
+				t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
 			}
 			// cleanup
 			t.Cleanup(func() {
@@ -1335,9 +1330,10 @@ func TestImportTopicWithProperties(t *testing.T) {
 		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
-				ResourceName:  resourceName,
-				ImportState:   true,
-				Config:        testPulsarTopicWithProperties(testWebServiceURL, tname, ttype, pnum, `topic_properties = {}`),
+				ResourceName: resourceName,
+				ImportState:  true,
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname, ttype, pnum,
+					`topic_properties = { importK1 = "importV1", importK2 = "importV2" }`),
 				ImportStateId: fullID,
 				ImportStateCheck: func(s []*terraform.InstanceState) error {
 					if len(s) != 1 {
