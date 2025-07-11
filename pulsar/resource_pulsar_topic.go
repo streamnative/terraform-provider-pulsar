@@ -705,24 +705,28 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	// Read topic properties if they are configured
 	time.Sleep(time.Millisecond * 100)
-	if topicName.IsPersistent() {
-		properties, err := client.GetProperties(*topicName)
-		if err != nil {
-			if !isIgnorableTopicPolicyError(err) {
-				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetProperties: %w", err))
+	if propertiesCfg, ok := d.GetOk("topic_properties"); ok && propertiesCfg.(*schema.Set).Len() > 0 {
+		if topicName.IsPersistent() {
+			properties, err := client.GetProperties(*topicName)
+			if err != nil {
+				if !isIgnorableTopicPolicyError(err) {
+					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetProperties: %w", err))
+				}
+				// When the error is ignorable, it means no properties are set.
+				// We set an empty map to clear any existing state.
+				properties = make(map[string]string)
 			}
-			// When the error is ignorable, it means no properties are set.
-			// We set an empty map to clear any existing state.
-			properties = make(map[string]string)
-		}
 
-		if properties == nil {
-			// If the API returns a nil map without an error, treat it as empty.
-			properties = make(map[string]string)
-		}
+			if properties == nil {
+				// If the API returns a nil map without an error, treat it as empty.
+				properties = make(map[string]string)
+			}
 
-		if err := d.Set("topic_properties", properties); err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
+			if err := d.Set("topic_properties", properties); err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
+			}
+		} else {
+			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get topic properties for non-persistent topic"))
 		}
 	}
 
