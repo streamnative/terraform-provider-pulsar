@@ -825,8 +825,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 31 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 10, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 32 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 32, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -1119,6 +1119,24 @@ resource "pulsar_topic" "test" {
 `, url, ttype, tname, pnum, propertiesHCL)
 }
 
+func testNonPersistentPulsarTopicWithProperties(url, tname, ttype string, pnum int, propertiesHCL string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "%s"
+  topic_name = "%s"
+  partitions = %d
+
+  %s
+}
+`, url, ttype, tname, pnum, propertiesHCL)
+}
+
 func testPulsarTopicWithTopicConfigAndOtherFields(url, tname, ttype string, pnum int, allConfigs string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
@@ -1275,9 +1293,9 @@ func TestNonPersistentTopicWithPropertiesFails(t *testing.T) {
 		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
+				Config: testNonPersistentPulsarTopicWithProperties(testWebServiceURL, tname,
 					ttype, pnum, `topic_properties = { k1 = "v1" }`),
-				ExpectError: regexp.MustCompile("topic_properties can only be set on persistent topics"),
+				ExpectError: regexp.MustCompile("ERROR_READ_TOPIC: unsupported get topic properties for non-persistent topic"),
 			},
 		},
 	})
