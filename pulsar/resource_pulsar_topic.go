@@ -705,28 +705,29 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	// Read topic properties if they are configured
 	time.Sleep(time.Millisecond * 100)
-	if propertiesCfg, ok := d.GetOk("topic_properties"); ok && len(propertiesCfg.(map[string]interface{})) > 0 {
-		if topicName.IsPersistent() {
-			properties, err := client.GetProperties(*topicName)
-			if err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetProperties: %w", err))
-				}
-				// When the error is ignorable, it means no properties are set.
-				// We set an empty map to clear any existing state.
-				properties = make(map[string]string)
+	if topicName.IsPersistent() {
+		properties, err := client.GetProperties(*topicName)
+		if err != nil {
+			if !isIgnorableTopicPolicyError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetProperties: %w", err))
 			}
+			// When the error is ignorable, it means no properties are set.
+			// We set an empty map to clear any existing state.
+			properties = make(map[string]string)
+		}
 
-			if properties == nil {
-				// If the API returns a nil map without an error, treat it as empty.
-				properties = make(map[string]string)
-			}
+		if properties == nil {
+			// If the API returns a nil map without an error, treat it as empty.
+			properties = make(map[string]string)
+		}
 
-			if err := d.Set("topic_properties", properties); err != nil {
-				return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
-			}
-		} else {
-			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get topic properties for non-persistent topic"))
+		if err := d.Set("topic_properties", properties); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
+		}
+	} else {
+		// For non-persistent topics, ensure properties are cleared from state if they exist
+		if err := d.Set("topic_properties", make(map[string]string)); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_CLEARING_TOPIC_PROPERTIES: %w", err))
 		}
 	}
 
