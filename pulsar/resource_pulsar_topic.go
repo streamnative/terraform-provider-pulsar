@@ -705,23 +705,25 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	// Read topic properties if they are configured
 	time.Sleep(time.Millisecond * 100)
-	properties, err := client.GetProperties(*topicName)
-	if err != nil {
-		if !isIgnorableTopicPolicyError(err) {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetProperties: %w", err))
+	if topicName.IsPersistent() {
+		properties, err := client.GetProperties(*topicName)
+		if err != nil {
+			if !isIgnorableTopicPolicyError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetProperties: %w", err))
+			}
+			// When the error is ignorable, it means no properties are set.
+			// We set an empty map to clear any existing state.
+			properties = make(map[string]string)
 		}
-		// When the error is ignorable, it means no properties are set.
-		// We set an empty map to clear any existing state.
-		properties = make(map[string]string)
-	}
 
-	if properties == nil {
-		// If the API returns a nil map without an error, treat it as empty.
-		properties = make(map[string]string)
-	}
+		if properties == nil {
+			// If the API returns a nil map without an error, treat it as empty.
+			properties = make(map[string]string)
+		}
 
-	if err := d.Set("topic_properties", properties); err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
+		if err := d.Set("topic_properties", properties); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
+		}
 	}
 
 	return nil
@@ -1513,6 +1515,15 @@ func inactiveTopicPoliciesToHash(v interface{}) int {
 
 func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
 	client := getClientFromMeta(meta).Topics()
+
+	if !topicName.IsPersistent() {
+		if props, ok := d.GetOk("topic_properties"); ok {
+			if len(props.(map[string]interface{})) > 0 {
+				return fmt.Errorf("topic_properties can only be set on persistent topics")
+			}
+		}
+		return nil
+	}
 
 	o, n := d.GetChange("topic_properties")
 	if o == nil {

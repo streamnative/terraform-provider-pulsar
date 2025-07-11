@@ -1264,6 +1264,25 @@ func TestTopicWithPropertiesUpdate(t *testing.T) {
 	})
 }
 
+func TestNonPersistentTopicWithPropertiesFails(t *testing.T) {
+	tname := acctest.RandString(10)
+	ttype := "non-persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
+					ttype, pnum, `topic_properties = { k1 = "v1" }`),
+				ExpectError: regexp.MustCompile("topic_properties can only be set on persistent topics"),
+			},
+		},
+	})
+}
+
 func TestImportTopicWithProperties(t *testing.T) {
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
