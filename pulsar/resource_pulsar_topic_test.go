@@ -1248,6 +1248,7 @@ func TestPartitionedTopicWithTopicConfig(t *testing.T) {
 }
 
 func TestTopicWithPropertiesUpdate(t *testing.T) {
+	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
 	ttype := "persistent"
