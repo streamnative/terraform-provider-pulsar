@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -881,4 +882,163 @@ resource "pulsar_namespace" "test" {
 	}
 }
 `, wsURL, cluster, tenant, ns)
+}
+
+func TestNamespaceDoesNotInterfereWithExternalPermissions(t *testing.T) {
+	resourceName := "pulsar_namespace.test_namespace"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	externalRole := acctest.RandString(10) + "-external"
+	namespaceRole := acctest.RandString(10) + "-ns-role"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				// Step 1: Create basic namespace, then manually add external permission via API
+				Config: testPulsarBasicNamespace(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists("pulsar_namespace.test_namespace"),
+					// After namespace is created, add external permission via API
+					func(s *terraform.State) error {
+						// Simulate external team adding permission via API (not Terraform)
+						client, err := sharedClient(testWebServiceURL)
+						if err != nil {
+							return fmt.Errorf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
+						}
+
+						conn := client.(admin.Client)
+						nsFullName := tName + "/" + nsName
+
+						nsName, err := utils.GetNamespaceName(nsFullName)
+						if err != nil {
+							return fmt.Errorf("ERROR_PARSING_NAMESPACE: %v", err)
+						}
+
+						// Add external permission (simulating standalone permission resource)
+						externalActions := []utils.AuthAction{utils.AuthAction("produce")}
+						if err = conn.Namespaces().GrantNamespacePermission(*nsName, externalRole, externalActions); err != nil {
+							return fmt.Errorf("ERROR_GRANTING_EXTERNAL_PERMISSION: %v", err)
+						}
+						return nil
+					},
+					// Verify the external permission was created
+					testPermissionExists(tName+"/"+nsName, externalRole),
+				),
+			},
+			{
+				// Step 2: Add namespace resource with its own permissions
+				// External permission should NOT be removed
+				Config: testPulsarNamespaceWithOwnPermissions(testWebServiceURL, cName, tName, nsName, namespaceRole, `["produce", "consume"]`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					// Namespace should only show its managed permission
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", namespaceRole),
+					// External permission should still exist in Pulsar
+					testPermissionExists(tName+"/"+nsName, externalRole),
+				),
+			},
+			{
+				// Step 3: Update namespace permission - external permission should remain untouched
+				Config: testPulsarNamespaceWithOwnPermissions(testWebServiceURL, cName, tName, nsName, namespaceRole, `["produce", "consume", "functions"]`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					// Namespace permission should be updated
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", namespaceRole),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
+					// External permission should still exist and be unchanged
+					testPermissionExists(tName+"/"+nsName, externalRole),
+				),
+			},
+		},
+	})
+}
+
+func testPulsarBasicNamespace(wsURL, cluster, tenant, namespace string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+  cluster = "%s"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "pulsar://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "%s"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test_namespace" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+  namespace = "%s"
+}
+`, wsURL, cluster, tenant, namespace)
+}
+
+func testPulsarNamespaceWithOwnPermissions(wsURL, cluster, tenant, namespace, role string, actions string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+  cluster = "%s"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "pulsar://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "%s"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test_namespace" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+  namespace = "%s"
+
+  permission_grant {
+    role    = "%s"
+    actions = %s
+  }
+}
+`, wsURL, cluster, tenant, namespace, role, actions)
+}
+
+func testPermissionExists(namespace, role string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
+
+		nsName, err := utils.GetNamespaceName(namespace)
+		if err != nil {
+			return fmt.Errorf("ERROR_PARSING_NAMESPACE: %w", err)
+		}
+
+		permissions, err := client.GetNamespacePermissions(*nsName)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_NAMESPACE_PERMISSIONS: %w", err)
+		}
+
+		if _, exists := permissions[role]; !exists {
+			return fmt.Errorf("permission for role %s should exist", role)
+		}
+
+		return nil
+	}
 }

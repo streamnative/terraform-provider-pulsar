@@ -513,7 +513,7 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err))
 		}
 
-		setPermissionGrant(d, grants)
+		setPermissionGrantFiltered(d, grants)
 	}
 
 	if topicAutoCreation, ok := d.GetOk("topic_auto_creation"); ok && topicAutoCreation.(*schema.Set).Len() > 0 {
