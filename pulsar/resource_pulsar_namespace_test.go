@@ -933,7 +933,8 @@ func TestNamespaceDoesNotInterfereWithExternalPermissions(t *testing.T) {
 			{
 				// Step 2: Add namespace resource with its own permissions
 				// External permission should NOT be removed
-				Config: testPulsarNamespaceWithOwnPermissions(testWebServiceURL, cName, tName, nsName, namespaceRole, `["produce", "consume"]`),
+				Config: testPulsarNamespaceWithOwnPermissions(testWebServiceURL, cName, tName, nsName,
+					namespaceRole, `["produce", "consume"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
 					// Namespace should only show its managed permission
@@ -945,7 +946,8 @@ func TestNamespaceDoesNotInterfereWithExternalPermissions(t *testing.T) {
 			},
 			{
 				// Step 3: Update namespace permission - external permission should remain untouched
-				Config: testPulsarNamespaceWithOwnPermissions(testWebServiceURL, cName, tName, nsName, namespaceRole, `["produce", "consume", "functions"]`),
+				Config: testPulsarNamespaceWithOwnPermissions(testWebServiceURL, cName, tName, nsName,
+					namespaceRole, `["produce", "consume", "functions"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
 					// Namespace permission should be updated
