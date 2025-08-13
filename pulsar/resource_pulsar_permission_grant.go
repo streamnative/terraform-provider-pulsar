@@ -60,7 +60,8 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 	}
 }
 
-func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
@@ -122,7 +123,8 @@ func resourcePulsarPermissionGrantRead(ctx context.Context, d *schema.ResourceDa
 	return nil
 }
 
-func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
@@ -153,7 +155,8 @@ func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.Resource
 	return resourcePulsarPermissionGrantRead(ctx, d, meta)
 }
 
-func resourcePulsarPermissionGrantDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourcePulsarPermissionGrantDelete(ctx context.Context, d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)

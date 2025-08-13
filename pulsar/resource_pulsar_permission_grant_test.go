@@ -46,7 +46,7 @@ func TestPermissionGrant(t *testing.T) {
 			{
 				Config: config,
 				Check: resource.ComposeTestCheckFunc(
-					testPulsarPermissionGrantExists(resourceName),
+					testPulsarPermissionGrantExists(),
 					resource.TestCheckResourceAttr(resourceName, "namespace", tName+"/"+nsName),
 					resource.TestCheckResourceAttr(resourceName, "role", roleName),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "2"),
@@ -79,7 +79,7 @@ func TestPermissionGrantUpdate(t *testing.T) {
 			{
 				Config: testPulsarPermissionGrant(testWebServiceURL, cName, tName, nsName, roleName, `["produce", "consume"]`),
 				Check: resource.ComposeTestCheckFunc(
-					testPulsarPermissionGrantExists(resourceName),
+					testPulsarPermissionGrantExists(),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "2"),
 					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "produce"),
 					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "consume"),
@@ -89,7 +89,7 @@ func TestPermissionGrantUpdate(t *testing.T) {
 				Config: testPulsarPermissionGrant(testWebServiceURL, cName, tName, nsName, roleName,
 					`["produce", "consume", "functions"]`),
 				Check: resource.ComposeTestCheckFunc(
-					testPulsarPermissionGrantExists(resourceName),
+					testPulsarPermissionGrantExists(),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "3"),
 					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "produce"),
 					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "consume"),
@@ -100,7 +100,7 @@ func TestPermissionGrantUpdate(t *testing.T) {
 				Config: testPulsarPermissionGrant(testWebServiceURL, cName, tName, nsName, roleName,
 					`["produce"]`),
 				Check: resource.ComposeTestCheckFunc(
-					testPulsarPermissionGrantExists(resourceName),
+					testPulsarPermissionGrantExists(),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "1"),
 					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "produce"),
 				),
@@ -127,7 +127,7 @@ func TestPermissionGrantExternallyRemoved(t *testing.T) {
 			{
 				Config: config,
 				Check: resource.ComposeTestCheckFunc(
-					testPulsarPermissionGrantExists(resourceName),
+					testPulsarPermissionGrantExists(),
 				),
 			},
 			{
@@ -157,8 +157,9 @@ func TestPermissionGrantExternallyRemoved(t *testing.T) {
 	})
 }
 
-func testPulsarPermissionGrantExists(resourceName string) resource.TestCheckFunc {
+func testPulsarPermissionGrantExists() resource.TestCheckFunc {
 	return func(s *terraform.State) error {
+		const resourceName = "pulsar_permission_grant.test"
 		rs, ok := s.RootModule().Resources[resourceName]
 		if !ok {
 			return fmt.Errorf("NOT_FOUND: %s", resourceName)
