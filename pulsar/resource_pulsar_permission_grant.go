@@ -33,6 +33,14 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 		UpdateContext: resourcePulsarPermissionGrantUpdate,
 		DeleteContext: resourcePulsarPermissionGrantDelete,
 
+		Description: `Manages Pulsar namespace permissions as a standalone resource.
+
+**Important:** Do not manage permissions for the same role using both this standalone resource and the ` +
+			`permission_grant block within a pulsar_namespace resource. This will cause conflicts and unexpected behavior. ` +
+			`Choose one approach per role:
+- Use this pulsar_permission_grant for flexible, independent permission management
+- Use permission_grant blocks within pulsar_namespace for permissions tightly coupled to the namespace lifecycle`,
+
 		Schema: map[string]*schema.Schema{
 			"namespace": {
 				Type:        schema.TypeString,

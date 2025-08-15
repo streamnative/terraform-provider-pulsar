@@ -23,15 +23,13 @@ description: |-
 ### Optional
 
 - `backlog_quota` (Block Set) (see [below for nested schema](#nestedblock--backlog_quota))
-- `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace (
-  see [below for nested schema](#nestedblock--dispatch_rate))
-- `subscription_dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the subscriptions under the given
-  namespace (see [below for nested schema](#nestedblock--subscription_dispatch_rate))
+- `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace (see [below for nested schema](#nestedblock--dispatch_rate))
 - `enable_deduplication` (Boolean)
-- `namespace_config` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--namespace_config))
-- `permission_grant` (Block Set) (see [below for nested schema](#nestedblock--permission_grant))
+- `namespace_config` (Block List) The namespace configuration (see [below for nested schema](#nestedblock--namespace_config))
+- `permission_grant` (Block Set) Manages permissions within this namespace. **Warning:** Do not use this for roles that are already managed by the standalone pulsar_permission_grant resource, as it will cause conflicts. (see [below for nested schema](#nestedblock--permission_grant))
 - `persistence_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--persistence_policies))
 - `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
+- `subscription_dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the subscriptions under the given namespace (see [below for nested schema](#nestedblock--subscription_dispatch_rate))
 - `topic_auto_creation` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_auto_creation))
 
 ### Read-Only
@@ -58,15 +56,6 @@ Required:
 - `dispatch_msg_throttling_rate` (Number)
 - `rate_period_seconds` (Number)
 
-<a id="nestedblock--subscription_dispatch_rate"></a>
-
-### Nested Schema for `subscription_dispatch_rate`
-
-Required:
-
-- `dispatch_byte_throttling_rate` (Number)
-- `dispatch_msg_throttling_rate` (Number)
-- `rate_period_seconds` (Number)
 
 <a id="nestedblock--namespace_config"></a>
 ### Nested Schema for `namespace_config`
@@ -80,7 +69,7 @@ Optional:
 - `max_producers_per_topic` (Number)
 - `message_ttl_seconds` (Number)
 - `offload_threshold_size_in_mb` (Number)
-- `replication_clusters` (List of String)
+- `replication_clusters` (Set of String)
 - `schema_compatibility_strategy` (String)
 - `schema_validation_enforce` (Boolean)
 - `subscription_expiration_time_minutes` (Number)
@@ -114,8 +103,18 @@ Required:
 - `retention_minutes` (String)
 - `retention_size_in_mb` (String)
 
-<a id="nestedblock--topic_auto_creation"></a>
 
+<a id="nestedblock--subscription_dispatch_rate"></a>
+### Nested Schema for `subscription_dispatch_rate`
+
+Required:
+
+- `dispatch_byte_throttling_rate` (Number)
+- `dispatch_msg_throttling_rate` (Number)
+- `rate_period_seconds` (Number)
+
+
+<a id="nestedblock--topic_auto_creation"></a>
 ### Nested Schema for `topic_auto_creation`
 
 Required:
@@ -124,5 +123,7 @@ Required:
 
 Optional:
 
-- `type` (String)
 - `partitions` (Number)
+- `type` (String)
+
+
