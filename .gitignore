@@ -59,6 +59,7 @@ override.tf.json
 *.iml
 out
 gen
+.idea/
 
 # pulsar data mapped to docker
 /data
@@ -71,3 +72,4 @@ gen
 
 .vscode/
 .terraform.lock.hcl
+.claude/
