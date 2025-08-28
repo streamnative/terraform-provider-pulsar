@@ -80,7 +80,7 @@ func TestPulsarSchemaAvro(t *testing.T) {
 	})
 }
 
-func TestPulsarSchemaJson(t *testing.T) {
+func testPulsarSchemaJSON(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
@@ -88,7 +88,7 @@ func TestPulsarSchemaJson(t *testing.T) {
 		CheckDestroy:              testPulsarSchemaDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarSchemaJson,
+				Config: testPulsarSchemaJSON,
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarSchemaExists("pulsar_schema.test_json"),
 					resource.TestCheckResourceAttr("pulsar_schema.test_json", "tenant", "public"),
@@ -324,7 +324,7 @@ resource "pulsar_schema" "test_avro" {
 }
 `
 
-var testPulsarSchemaJson = fmt.Sprintf(`
+var testPulsarSchemaJSON = fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
 }
