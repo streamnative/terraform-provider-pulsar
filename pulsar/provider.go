@@ -160,7 +160,6 @@ func Provider() *schema.Provider {
 			"pulsar_tenant":       resourcePulsarTenant(),
 			"pulsar_namespace":    resourcePulsarNamespace(),
 			"pulsar_topic":        resourcePulsarTopic(),
-			"pulsar_schema":       resourcePulsarSchema(),
 			"pulsar_source":       resourcePulsarSource(),
 			"pulsar_sink":         resourcePulsarSink(),
 			"pulsar_function":     resourcePulsarFunction(),
