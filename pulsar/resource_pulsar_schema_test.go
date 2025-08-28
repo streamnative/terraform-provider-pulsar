@@ -80,7 +80,7 @@ func TestPulsarSchemaAvro(t *testing.T) {
 	})
 }
 
-func testPulsarSchemaJSON(t *testing.T) {
+func TestPulsarSchemaJSON(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
