@@ -302,17 +302,18 @@ resource "pulsar_schema" "test_json" {
   topic       = "test-json-schema"
   type        = "JSON"
   schema_data = jsonencode({
-    "type": "object",
-    "properties": {
-      "name": {
+    "type": "record",
+    "name": "User",
+    "fields": [
+      {
+        "name": "name",
         "type": "string"
       },
-      "age": {
-        "type": "integer",
-        "minimum": 0
+      {
+        "name": "age",
+        "type": "int"
       }
-    },
-    "required": ["name", "age"]
+    ]
   })
 }
 `, testWebServiceURL)
