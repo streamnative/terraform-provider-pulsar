@@ -289,40 +289,7 @@ resource "pulsar_schema" "test_avro" {
     "version" = "2.0"
   }
 }
-`, testWebServiceURL) + testWebServiceURL + `"
-}
-
-resource "pulsar_schema" "test_avro" {
-  tenant      = "public"
-  namespace   = "default"
-  topic       = "test-avro-schema"
-  type        = "AVRO"
-  schema_data = jsonencode({
-    "type": "record",
-    "name": "User",
-    "fields": [
-      {
-        "name": "name",
-        "type": "string"
-      },
-      {
-        "name": "age", 
-        "type": "int"
-      },
-      {
-        "name": "email",
-        "type": ["null", "string"],
-        "default": null
-      }
-    ]
-  })
-  
-  properties = {
-    "author"  = "terraform-test-updated"
-    "version" = "2.0"
-  }
-}
-`
+`, testWebServiceURL)
 
 var testPulsarSchemaJSON = fmt.Sprintf(`
 provider "pulsar" {
@@ -348,26 +315,4 @@ resource "pulsar_schema" "test_json" {
     "required": ["name", "age"]
   })
 }
-`, testWebServiceURL) + testWebServiceURL + `"
-}
-
-resource "pulsar_schema" "test_json" {
-  tenant      = "public"
-  namespace   = "default"
-  topic       = "test-json-schema"
-  type        = "JSON"
-  schema_data = jsonencode({
-    "type": "object",
-    "properties": {
-      "name": {
-        "type": "string"
-      },
-      "age": {
-        "type": "integer",
-        "minimum": 0
-      }
-    },
-    "required": ["name", "age"]
-  })
-}
-`
+`, testWebServiceURL)

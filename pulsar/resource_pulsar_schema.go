@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -97,6 +98,11 @@ func resourcePulsarSchema() *schema.Resource {
 				Type:        schema.TypeInt,
 				Computed:    true,
 				Description: "Current schema version",
+			},
+			"timestamp": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "Schema creation/update timestamp",
 			},
 		},
 	}
@@ -184,8 +190,9 @@ func resourcePulsarSchemaRead(ctx context.Context, d *schema.ResourceData, meta 
 	_ = d.Set("schema_data", string(schemaWithVersion.SchemaInfo.Schema))
 	_ = d.Set("properties", schemaWithVersion.SchemaInfo.Properties)
 
-	// Set computed fields - only version is available
+	// Set computed fields
 	_ = d.Set("version", int(schemaWithVersion.Version))
+	_ = d.Set("timestamp", time.Now().Format(time.RFC3339))
 
 	return nil
 }
