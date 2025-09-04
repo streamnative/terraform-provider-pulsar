@@ -825,8 +825,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 31 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 10, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 32 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 32, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -1096,6 +1096,47 @@ resource "pulsar_topic" "test" {
 `, url, ttype, tname, pnum, topicConfig)
 }
 
+func testPulsarTopicWithProperties(url, tname, ttype string, pnum int, propertiesHCL string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "%s"
+  topic_name = "%s"
+  partitions = %d
+
+  retention_policies {
+    retention_time_minutes = 1600
+    retention_size_mb      = 20000
+  }
+
+  %s
+}
+`, url, ttype, tname, pnum, propertiesHCL)
+}
+
+func testNonPersistentPulsarTopicWithProperties(url, tname, ttype string, pnum int, propertiesHCL string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "%s"
+  topic_name = "%s"
+  partitions = %d
+
+  %s
+}
+`, url, ttype, tname, pnum, propertiesHCL)
+}
+
 func testPulsarTopicWithTopicConfigAndOtherFields(url, tname, ttype string, pnum int, allConfigs string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
@@ -1201,6 +1242,115 @@ func TestPartitionedTopicWithTopicConfig(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_unacked_messages_per_consumer", "1000"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_unacked_messages_per_subscription", "2000"),
 				),
+			},
+		},
+	})
+}
+
+func TestTopicWithPropertiesUpdate(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
+					ttype, pnum, `topic_properties = { k1 = "v1", k2 = "v2" }`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.%", "2"),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.k1", "v1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.k2", "v2"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
+					ttype, pnum, `topic_properties = { k2 = "v2new", k3 = "v3" }`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.%", "2"),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.k2", "v2new"),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.k3", "v3"),
+				),
+			},
+		},
+	})
+}
+
+func TestNonPersistentTopicWithPropertiesFails(t *testing.T) {
+	tname := acctest.RandString(10)
+	ttype := "non-persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testNonPersistentPulsarTopicWithProperties(testWebServiceURL, tname,
+					ttype, pnum, `topic_properties = { k1 = "v1" }`),
+				ExpectError: regexp.MustCompile("persistent"),
+			},
+		},
+	})
+}
+
+func TestImportTopicWithProperties(t *testing.T) {
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	pnum := 0
+	ttype := "persistent"
+	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+	topicName, err := utils.GetTopicName(fullID)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			// create topic and set properties via admin client
+			props := map[string]string{"importK1": "importV1", "importK2": "importV2"}
+			client := getClientFromMeta(testAccProvider.Meta()).Topics()
+			if err := client.CreateWithProperties(*topicName, pnum, props); err != nil {
+				t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
+			}
+			// cleanup
+			t.Cleanup(func() {
+				_ = client.Delete(*topicName, true, pnum == 0)
+			})
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName: resourceName,
+				ImportState:  true,
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname, ttype, pnum,
+					`topic_properties = { importK1 = "importV1", importK2 = "importV2" }`),
+				ImportStateId: fullID,
+				ImportStateCheck: func(s []*terraform.InstanceState) error {
+					if len(s) != 1 {
+						return fmt.Errorf("expected 1 state, got %d", len(s))
+					}
+					if s[0].Attributes["topic_properties.%"] != "2" {
+						return fmt.Errorf("expected 2 topic_properties, got %s", s[0].Attributes["topic_properties.%"])
+					}
+					if v := s[0].Attributes["topic_properties.importK1"]; v != "importV1" {
+						return fmt.Errorf("unexpected importK1 value: %s", v)
+					}
+					if v := s[0].Attributes["topic_properties.importK2"]; v != "importV2" {
+						return fmt.Errorf("unexpected importK2 value: %s", v)
+					}
+					return nil
+				},
 			},
 		},
 	})
