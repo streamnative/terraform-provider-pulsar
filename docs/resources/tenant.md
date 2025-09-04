@@ -21,7 +21,7 @@ description: |-
 
 ### Optional
 
-- `admin_roles` (List of String) Admin roles to be attached to tenant
+- `admin_roles` (Set of String) Admin roles to be attached to tenant
 - `allowed_clusters` (Set of String) Tenant will be able to interact with these clusters
 
 ### Read-Only

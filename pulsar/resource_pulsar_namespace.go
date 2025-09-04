@@ -246,6 +246,8 @@ func resourcePulsarNamespace() *schema.Resource {
 				Type:     schema.TypeSet,
 				Optional: true,
 				MinItems: 0,
+				Description: `Manages permissions within this namespace. **Warning:** Do not use this for roles that are ` +
+					`already managed by the standalone pulsar_permission_grant resource, as it will cause conflicts.`,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"role": {
@@ -513,7 +515,7 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err))
 		}
 
-		setPermissionGrant(d, grants)
+		setPermissionGrantFiltered(d, grants)
 	}
 
 	if topicAutoCreation, ok := d.GetOk("topic_auto_creation"); ok && topicAutoCreation.(*schema.Set).Len() > 0 {
