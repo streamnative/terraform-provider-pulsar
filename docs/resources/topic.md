@@ -25,46 +25,19 @@ description: |-
 
 ### Optional
 
-- `permission_grant` (Block Set) (see [below for nested schema](#nestedblock--permission_grant))
-- `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
-- `enable_deduplication` (Boolean) Enable deduplication of the topic
-- `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace (see [below for nested schema](#nestedblock--dispatch_rate))
 - `backlog_quota` (Block Set) (see [below for nested schema](#nestedblock--backlog_quota))
-- `topic_config` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_config))
+- `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace (see [below for nested schema](#nestedblock--dispatch_rate))
+- `enable_deduplication` (Boolean)
+- `permission_grant` (Block Set) (see [below for nested schema](#nestedblock--permission_grant))
 - `persistence_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--persistence_policies))
+- `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
+- `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
+- `topic_config` (Block List) The topic configuration (see [below for nested schema](#nestedblock--topic_config))
 - `topic_properties` (Map of String) Custom properties for the topic
-
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-
-<a id="nestedblock--permission_grant"></a>
-### Nested Schema for `permission_grant`
-
-Required:
-
-- `actions` (Set of String)
-- `role` (String)
-
-
-<a id="nestedblock--retention_policies"></a>
-### Nested Schema for `retention_policies`
-
-Required:
-
-- `retention_size_mb` (Number)
-- `retention_time_minutes` (Number)
-
-<a id="nestedblock--dispatch_rate"></a>
-### Nested Schema for `dispatch_rate`
-
-Required:
-
-- `msg_dispatch_rate` (Number)
-- `byte_dispatch_rate` (Number)
-- `dispatch_rate_period` (Number)
-- `relative_to_publish_rate` (Boolean)
 
 <a id="nestedblock--backlog_quota"></a>
 ### Nested Schema for `backlog_quota`
@@ -76,6 +49,27 @@ Required:
 - `policy` (String)
 - `type` (String)
 
+
+<a id="nestedblock--dispatch_rate"></a>
+### Nested Schema for `dispatch_rate`
+
+Required:
+
+- `byte_dispatch_rate` (Number)
+- `dispatch_rate_period` (Number)
+- `msg_dispatch_rate` (Number)
+- `relative_to_publish_rate` (Boolean)
+
+
+<a id="nestedblock--permission_grant"></a>
+### Nested Schema for `permission_grant`
+
+Required:
+
+- `actions` (Set of String)
+- `role` (String)
+
+
 <a id="nestedblock--persistence_policies"></a>
 ### Nested Schema for `persistence_policies`
 
@@ -86,37 +80,57 @@ Required:
 - `bookkeeper_write_quorum` (Number)
 - `managed_ledger_max_mark_delete_rate` (Number)
 
+
+<a id="nestedblock--retention_policies"></a>
+### Nested Schema for `retention_policies`
+
+Required:
+
+- `retention_size_mb` (Number)
+- `retention_time_minutes` (Number)
+
+
+<a id="nestedblock--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String)
+- `delete` (String)
+- `update` (String)
+
+
 <a id="nestedblock--topic_config"></a>
 ### Nested Schema for `topic_config`
 
 Optional:
 
+- `byte_publish_rate` (Number)
 - `compaction_threshold` (Number)
-- `delayed_delivery` (Block Set) (see [below for nested schema](#nestedblock--delayed_delivery))
-- `inactive_topic` (Block Set) (see [below for nested schema](#nestedblock--inactive_topic))
+- `delayed_delivery` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_config--delayed_delivery))
+- `inactive_topic` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_config--inactive_topic))
 - `max_consumers` (Number)
 - `max_producers` (Number)
-- `message_ttl_seconds` (Number)
 - `max_unacked_messages_per_consumer` (Number)
 - `max_unacked_messages_per_subscription` (Number)
+- `message_ttl_seconds` (Number)
 - `msg_publish_rate` (Number)
-- `byte_publish_rate` (Number)
 
-
-<a id="nestedblock--delayed_delivery"></a>
-### Nested Schema for `delayed_delivery`
+<a id="nestedblock--topic_config--delayed_delivery"></a>
+### Nested Schema for `topic_config.delayed_delivery`
 
 Required:
 
 - `enabled` (Boolean)
-- `time` (Number) 
+- `time` (Number)
 
 
-<a id="nestedblock--inactive_topic"></a>
-### Nested Schema for `inactive_topic`
+<a id="nestedblock--topic_config--inactive_topic"></a>
+### Nested Schema for `topic_config.inactive_topic`
 
 Required:
 
+- `delete_mode` (String)
 - `enable_delete_while_inactive` (Boolean)
 - `max_inactive_duration` (String)
 - `delete_mode` (String) `delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`

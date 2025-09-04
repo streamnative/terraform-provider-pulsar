@@ -3,12 +3,19 @@
 page_title: "pulsar_permission_grant Resource - terraform-provider-pulsar"
 subcategory: ""
 description: |-
-  
+  Manages Pulsar namespace permissions as a standalone resource.
+  Important: Do not manage permissions for the same role using both this standalone resource and the permissiongrant block within a pulsarnamespace resource. This will cause conflicts and unexpected behavior. Choose one approach per role:
+  - Use this pulsarpermissiongrant for flexible, independent permission management
+  - Use permissiongrant blocks within pulsarnamespace for permissions tightly coupled to the namespace lifecycle
 ---
 
 # pulsar_permission_grant (Resource)
 
+Manages Pulsar namespace permissions as a standalone resource.
 
+**Important:** Do not manage permissions for the same role using both this standalone resource and the permission_grant block within a pulsar_namespace resource. This will cause conflicts and unexpected behavior. Choose one approach per role:
+- Use this pulsar_permission_grant for flexible, independent permission management
+- Use permission_grant blocks within pulsar_namespace for permissions tightly coupled to the namespace lifecycle
 
 
 
