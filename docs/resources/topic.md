@@ -33,6 +33,7 @@ description: |-
 - `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `topic_config` (Block List) The topic configuration (see [below for nested schema](#nestedblock--topic_config))
+- `topic_properties` (Map of String) Custom properties for the topic
 
 ### Read-Only
 
@@ -132,5 +133,21 @@ Required:
 - `delete_mode` (String)
 - `enable_delete_while_inactive` (Boolean)
 - `max_inactive_duration` (String)
+- `delete_mode` (String) `delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`
 
+## Example Usage
 
+```hcl
+resource "pulsar_topic" "my_topic" {
+  tenant     = "my-tenant"
+  namespace  = "my-namespace"
+  topic_name = "my-topic"
+  topic_type = "persistent"
+  partitions = 1
+
+  topic_properties = {
+    "owner" = "data-engineering"
+    "env"   = "production"
+  }
+}
+```

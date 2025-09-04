@@ -294,6 +294,14 @@ func resourcePulsarTopic() *schema.Resource {
 				},
 				Set: persistencePoliciesToHash,
 			},
+			"topic_properties": {
+				Type:        schema.TypeMap,
+				Optional:    true,
+				Description: "Custom properties for the topic",
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(5 * time.Minute),
@@ -435,6 +443,14 @@ func internalPulsarTopicPoliciesCreate(d *schema.ResourceData, meta interface{},
 	})
 	if err != nil {
 		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_CONFIG: %w", err))...)
+		return diags
+	}
+
+	err = retry(func() error {
+		return updateTopicProperties(d, meta, topicName)
+	})
+	if err != nil {
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_PROPERTIES: %w", err))...)
 		return diags
 	}
 
@@ -687,6 +703,34 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
+	// Read topic properties if they are configured
+	time.Sleep(time.Millisecond * 100)
+	if topicName.IsPersistent() {
+		properties, err := client.GetProperties(*topicName)
+		if err != nil {
+			if !isIgnorableTopicPolicyError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetProperties: %w", err))
+			}
+			// When the error is ignorable, it means no properties are set.
+			// We set an empty map to clear any existing state.
+			properties = make(map[string]string)
+		}
+
+		if properties == nil {
+			// If the API returns a nil map without an error, treat it as empty.
+			properties = make(map[string]string)
+		}
+
+		if err := d.Set("topic_properties", properties); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
+		}
+	} else {
+		// For non-persistent topics, ensure properties are cleared from state if they exist
+		if err := d.Set("topic_properties", make(map[string]string)); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_CLEARING_TOPIC_PROPERTIES: %w", err))
+		}
+	}
+
 	return nil
 }
 
@@ -747,6 +791,13 @@ func resourcePulsarTopicUpdate(ctx context.Context, d *schema.ResourceData, meta
 
 	if d.HasChange("topic_config") {
 		err := updateTopicConfig(d, meta, topicName)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("topic_properties") {
+		err := updateTopicProperties(d, meta, topicName)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -1465,4 +1516,63 @@ func inactiveTopicPoliciesToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%s-", m["delete_mode"].(string)))
 
 	return hashcode.String(buf.String())
+}
+
+func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	client := getClientFromMeta(meta).Topics()
+
+	if !topicName.IsPersistent() {
+		if props, ok := d.GetOk("topic_properties"); ok {
+			if len(props.(map[string]interface{})) > 0 {
+				return fmt.Errorf("topic_properties can only be set on persistent topics")
+			}
+		}
+		return nil
+	}
+
+	o, n := d.GetChange("topic_properties")
+	if o == nil {
+		o = make(map[string]interface{})
+	}
+	if n == nil {
+		n = make(map[string]interface{})
+	}
+
+	oldMap := o.(map[string]interface{})
+	newMap := n.(map[string]interface{})
+
+	// Remove properties that are in the old map but not in the new map
+	for k := range oldMap {
+		if _, ok := newMap[k]; !ok {
+			if err := client.RemoveProperty(*topicName, k); err != nil {
+				// It's possible the property was already removed or doesn't exist, so we can ignore 404 errors
+				if cliErr, ok := err.(rest.Error); ok && cliErr.Code == 404 {
+					continue
+				}
+				return fmt.Errorf("failed to remove property '%s': %w", k, err)
+			}
+		}
+	}
+
+	// Add/Update properties from the new map
+	newPropMap := make(map[string]string)
+	for k, v := range newMap {
+		newPropMap[k] = v.(string)
+	}
+
+	if len(newPropMap) > 0 {
+		if err := client.UpdateProperties(*topicName, newPropMap); err != nil {
+			return fmt.Errorf("UpdateProperties failed: %w", err)
+		}
+	} else if len(oldMap) > 0 {
+		// If the new map is empty, but the old one was not,
+		// we might have just deleted all keys.
+		// We still call Update with an empty map to be sure,
+		// though the loop above should have handled deletions.
+		if err := client.UpdateProperties(*topicName, make(map[string]string)); err != nil {
+			return fmt.Errorf("UpdateProperties with empty map failed: %w", err)
+		}
+	}
+
+	return nil
 }
