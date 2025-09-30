@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
@@ -418,4 +419,98 @@ resource "pulsar_permission_grant" "test" {
     actions = %s
 }
 `, wsURL, cluster, tenant, namespace, topic, role, actions)
+}
+
+func TestPermissionGrantBothNamespaceAndTopic(t *testing.T) {
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+
+	config := testPulsarPermissionGrantBothNamespaceAndTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      config,
+				ExpectError: regexp.MustCompile(`only one of .*namespace,topic.* can be specified`),
+			},
+		},
+	})
+}
+
+func testPulsarPermissionGrantBothNamespaceAndTopic(wsURL, cluster, tenant, namespace, topic, role string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+    web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+    cluster = "%s"
+
+    cluster_data {
+        web_service_url    = "http://localhost:8080"
+        broker_service_url = "pulsar://localhost:6050"
+        peer_clusters      = ["standalone"]
+    }
+}
+
+resource "pulsar_tenant" "test_tenant" {
+    tenant           = "%s"
+    allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test_namespace" {
+    tenant    = pulsar_tenant.test_tenant.tenant
+    namespace = "%s"
+}
+
+resource "pulsar_topic" "test_topic" {
+    tenant     = pulsar_tenant.test_tenant.tenant
+    namespace  = pulsar_namespace.test_namespace.namespace
+    topic_type = "persistent"
+    topic_name = "%s"
+	partitions = 0
+}
+
+resource "pulsar_permission_grant" "test" {
+    namespace = "${pulsar_tenant.test_tenant.tenant}/${pulsar_namespace.test_namespace.namespace}"
+    topic     = pulsar_topic.test_topic.id
+    role      = "%s"
+    actions   = ["produce", "consume"]
+}
+`, wsURL, cluster, tenant, namespace, topic, role)
+}
+
+func TestPermissionGrantNeitherNamespaceNorTopic(t *testing.T) {
+	roleName := acctest.RandString(10)
+
+	config := testPulsarPermissionGrantNeitherNamespaceNorTopic(testWebServiceURL, roleName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      config,
+				ExpectError: regexp.MustCompile(`one of .*namespace,topic.* must be specified`),
+			},
+		},
+	})
+}
+
+func testPulsarPermissionGrantNeitherNamespaceNorTopic(wsURL, role string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+    web_service_url = "%s"
+}
+
+resource "pulsar_permission_grant" "test" {
+    role    = "%s"
+    actions = ["produce", "consume"]
+}
+`, wsURL, role)
 }
