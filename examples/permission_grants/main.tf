@@ -66,3 +66,30 @@ resource "pulsar_permission_grant" "admin_access" {
   role      = "admin-user"
   actions   = ["produce", "consume", "functions"]
 }
+
+# Create topic for topic-level permissions
+resource "pulsar_topic" "test_topic" {
+  tenant     = pulsar_tenant.test_tenant.tenant
+  namespace  = pulsar_namespace.test_namespace.namespace
+  topic_type = "persistent"
+  topic_name = "important-topic"
+}
+
+# Topic permission grant example
+resource "pulsar_permission_grant" "topic_producer" {
+  topic   = "persistent://avengers/heroes/important-topic"
+  role    = "topic-producer"
+  actions = ["produce"]
+}
+
+resource "pulsar_permission_grant" "topic_consumer" {
+  topic   = "persistent://avengers/heroes/important-topic"
+  role    = "topic-consumer"
+  actions = ["consume"]
+}
+
+resource "pulsar_permission_grant" "topic_admin" {
+  topic   = "persistent://avengers/heroes/important-topic"
+  role    = "topic-admin"
+  actions = ["produce", "consume", "functions", "sources", "sinks", "packages"]
+}
