@@ -1364,9 +1364,6 @@ func skipIfNoTopicPolicies(t *testing.T) {
 
 func TestTopicDoesNotInterfereWithExternalPermissions(t *testing.T) {
 	resourceName := "pulsar_topic.test-topic"
-	cName := acctest.RandString(10)
-	tName := acctest.RandString(10)
-	nsName := acctest.RandString(10)
 	topicName := acctest.RandString(10)
 	externalRole := acctest.RandString(10) + "-external"
 	topicRole := acctest.RandString(10) + "-topic-managed"
@@ -1379,19 +1376,18 @@ func TestTopicDoesNotInterfereWithExternalPermissions(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				// Step 1: Create basic topic, then manually add external permission via API
-				Config: testPulsarBasicTopic(testWebServiceURL, cName, tName, nsName, topicName, "persistent"),
+				Config: testPulsarBasicTopic(testWebServiceURL, topicName, "persistent"),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
 					// After topic is created, add external permission via API
 					func(s *terraform.State) error {
-						// Simulate external team adding permission via API (not Terraform)
 						client, err := sharedClient(testWebServiceURL)
 						if err != nil {
 							return fmt.Errorf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
 						}
 
 						conn := client.(admin.Client)
-						topicFullName := fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName)
+						topicFullName := fmt.Sprintf("persistent://public/default/%s", topicName)
 
 						topicName, err := utils.GetTopicName(topicFullName)
 						if err != nil {
@@ -1406,13 +1402,13 @@ func TestTopicDoesNotInterfereWithExternalPermissions(t *testing.T) {
 						return nil
 					},
 					// Verify the external permission was created
-					testTopicPermissionExists(fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName), externalRole),
+					testTopicPermissionExists(fmt.Sprintf("persistent://public/default/%s", topicName), externalRole),
 				),
 			},
 			{
 				// Step 2: Add topic resource with its own permissions
 				// External permission should NOT be removed
-				Config: testPulsarTopicWithOwnPermissions(testWebServiceURL, cName, tName, nsName, topicName,
+				Config: testPulsarTopicWithOwnPermissions(testWebServiceURL, topicName,
 					"persistent", topicRole, `["produce", "consume"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
@@ -1420,12 +1416,12 @@ func TestTopicDoesNotInterfereWithExternalPermissions(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", topicRole),
 					// External permission should still exist in Pulsar
-					testTopicPermissionExists(fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName), externalRole),
+					testTopicPermissionExists(fmt.Sprintf("persistent://public/default/%s", topicName), externalRole),
 				),
 			},
 			{
 				// Step 3: Update topic permission - external permission should remain untouched
-				Config: testPulsarTopicWithOwnPermissions(testWebServiceURL, cName, tName, nsName, topicName,
+				Config: testPulsarTopicWithOwnPermissions(testWebServiceURL, topicName,
 					"persistent", topicRole, `["produce", "consume", "functions"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
@@ -1434,79 +1430,39 @@ func TestTopicDoesNotInterfereWithExternalPermissions(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", topicRole),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
 					// External permission should still exist and be unchanged
-					testTopicPermissionExists(fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName), externalRole),
+					testTopicPermissionExists(fmt.Sprintf("persistent://public/default/%s", topicName), externalRole),
 				),
 			},
 		},
 	})
 }
 
-func testPulsarBasicTopic(wsURL, cluster, tenant, namespace, topic, topicType string) string {
+func testPulsarBasicTopic(wsURL, topic, topicType string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
 }
 
-resource "pulsar_cluster" "test-cluster" {
-  cluster = "%s"
-
-  cluster_data {
-    web_service_url    = "http://localhost:8080"
-    broker_service_url = "pulsar://localhost:6050"
-    peer_clusters      = ["standalone"]
-  }
-}
-
-resource "pulsar_tenant" "test-tenant" {
-  tenant           = "%s"
-  allowed_clusters = [pulsar_cluster.test-cluster.cluster, "standalone"]
-}
-
-resource "pulsar_namespace" "test-namespace" {
-  tenant    = pulsar_tenant.test-tenant.tenant
-  namespace = "%s"
-}
-
 resource "pulsar_topic" "test-topic" {
-  tenant     = pulsar_tenant.test-tenant.tenant
-  namespace  = pulsar_namespace.test-namespace.namespace
+  tenant     = "public"
+  namespace  = "default"
   topic_type = "%s"
   topic_name = "%s"
   partitions = 0
 }
-`, wsURL, cluster, tenant, namespace, topicType, topic)
+`, wsURL, topicType, topic)
 }
 
-func testPulsarTopicWithOwnPermissions(wsURL, cluster, tenant, namespace, topic, topicType, role string,
+func testPulsarTopicWithOwnPermissions(wsURL, topic, topicType, role string,
 	actions string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
 }
 
-resource "pulsar_cluster" "test-cluster" {
-  cluster = "%s"
-
-  cluster_data {
-    web_service_url    = "http://localhost:8080"
-    broker_service_url = "pulsar://localhost:6050"
-    peer_clusters      = ["standalone"]
-  }
-}
-
-resource "pulsar_tenant" "test-tenant" {
-  tenant           = "%s"
-  allowed_clusters = [pulsar_cluster.test-cluster.cluster, "standalone"]
-}
-
-resource "pulsar_namespace" "test-namespace" {
-  tenant    = pulsar_tenant.test-tenant.tenant
-  namespace = "%s"
-}
-
 resource "pulsar_topic" "test-topic" {
-  tenant     = pulsar_tenant.test-tenant.tenant
-  namespace  = pulsar_namespace.test-namespace.namespace
+  tenant     = "public"
+  namespace  = "default"
   topic_type = "%s"
   topic_name = "%s"
   partitions = 0
@@ -1516,7 +1472,7 @@ resource "pulsar_topic" "test-topic" {
     actions = %s
   }
 }
-`, wsURL, cluster, tenant, namespace, topicType, topic, role, actions)
+`, wsURL, topicType, topic, role, actions)
 }
 
 func testTopicPermissionExists(topic, role string) resource.TestCheckFunc {
