@@ -97,6 +97,8 @@ func resourcePulsarTopic() *schema.Resource {
 				Type:     schema.TypeSet,
 				Optional: true,
 				MinItems: 0,
+				Description: `Manages permissions within this topic. **Warning:** Do not use this for roles that are ` +
+					`already managed by the standalone pulsar_permission_grant resource, as it will cause conflicts.`,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"role": {
@@ -492,7 +494,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 			return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPermissions: %w", err))
 		}
 
-		setPermissionGrant(d, grants)
+		setPermissionGrantFiltered(d, grants)
 	}
 
 	if retPoliciesCfg, ok := d.GetOk("retention_policies"); ok && retPoliciesCfg.(*schema.Set).Len() > 0 {

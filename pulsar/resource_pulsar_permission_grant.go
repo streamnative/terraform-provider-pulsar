@@ -33,32 +33,41 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 		UpdateContext: resourcePulsarPermissionGrantUpdate,
 		DeleteContext: resourcePulsarPermissionGrantDelete,
 
-		Description: `Manages Pulsar namespace permissions as a standalone resource.
+		Description: `Provides a resource for managing permissions on either Pulsar namespaces or topics. Permission can be granted
+to specific roles using this resource. This resource is optional and can be used to manage permissions
+for roles outside of the namespace or topic resource lifecycle.
 
-**Important:** Do not manage permissions for the same role using both this standalone resource and the ` +
-			`permission_grant block within a pulsar_namespace resource. This will cause conflicts and unexpected behavior. ` +
-			`Choose one approach per role:
-- Use this pulsar_permission_grant for flexible, independent permission management
-- Use permission_grant blocks within pulsar_namespace for permissions tightly coupled to the namespace lifecycle`,
+**Note:** It is not recommended to use this resource in conjunction with the ` + "`permission_grant`" + `
+attributes of the ` + "`pulsar_namespace`" + ` or ` + "`pulsar_topic`" + ` resources for the same role.
+Doing so will result in the resources continuously modifying the permission state.
+See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` and ` + "`pulsar_topic`" + ` resources for more information.`,
 
 		Schema: map[string]*schema.Schema{
 			"namespace": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The namespace in format 'tenant/namespace'",
+				Type:         schema.TypeString,
+				Optional:     true,
+				ForceNew:     true,
+				Description:  "The Pulsar namespace. Format: tenant/namespace",
+				ExactlyOneOf: []string{"namespace", "topic"},
+			},
+			"topic": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ForceNew:     true,
+				Description:  "The Pulsar topic. Format: persistent://tenant/namespace/topic or non-persistent://tenant/namespace/topic",
+				ExactlyOneOf: []string{"namespace", "topic"},
 			},
 			"role": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The role to grant permissions to",
+				Description: "The name of the Pulsar role to grant permissions to",
 			},
 			"actions": {
 				Type:        schema.TypeSet,
 				Required:    true,
 				MinItems:    1,
-				Description: "Set of actions to grant to the role",
+				Description: "A set of authorization actions granted to the role. Valid auth actions are produce, consume, sources, sinks, packages, and functions.",
 				Elem: &schema.Schema{
 					Type:         schema.TypeString,
 					ValidateFunc: validateAuthAction,
@@ -70,62 +79,86 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 
 func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
-	client := getClientFromMeta(meta).Namespaces()
+	client := getClientFromMeta(meta)
 
-	namespace := d.Get("namespace").(string)
 	role := d.Get("role").(string)
 	actionsSet := d.Get("actions").(*schema.Set)
 
-	// Convert actions to Pulsar API format
 	actions := make([]utils.AuthAction, 0, actionsSet.Len())
 	for _, action := range actionsSet.List() {
-		actions = append(actions, utils.AuthAction(action.(string)))
+		auth, err := utils.ParseAuthAction(action.(string))
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_PARSE_AUTH_ACTION: %w", err))
+		}
+		actions = append(actions, auth)
 	}
 
-	nsName, err := utils.GetNamespaceName(namespace)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
-	}
+	if namespace := d.Get("namespace").(string); namespace != "" {
+		nsName, err := utils.GetNamespaceName(namespace)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
+		}
 
-	if err := client.GrantNamespacePermission(*nsName, role, actions); err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_GRANT_NAMESPACE_PERMISSION: %w", err))
-	}
+		if err = client.Namespaces().GrantNamespacePermission(*nsName, role, actions); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_GRANT_NAMESPACE_PERMISSION: %w", err))
+		}
 
-	d.SetId(fmt.Sprintf("%s/%s", namespace, role))
+		d.SetId(fmt.Sprintf("%s/%s", namespace, role))
+
+	} else if topic := d.Get("topic").(string); topic != "" {
+		topicName, err := utils.GetTopicName(topic)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err))
+		}
+
+		if err = client.Topics().GrantPermission(*topicName, role, actions); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_GRANT_TOPIC_PERMISSION: %w", err))
+		}
+
+		d.SetId(fmt.Sprintf("%s/%s", topic, role))
+	}
 
 	return resourcePulsarPermissionGrantRead(ctx, d, meta)
 }
 
 func resourcePulsarPermissionGrantRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := getClientFromMeta(meta).Namespaces()
-
-	namespace := d.Get("namespace").(string)
+	client := getClientFromMeta(meta)
 	role := d.Get("role").(string)
 
-	nsName, err := utils.GetNamespaceName(namespace)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
+	var grants map[string][]utils.AuthAction
+	var err error
+
+	if namespace := d.Get("namespace").(string); namespace != "" {
+		nsName, parseErr := utils.GetNamespaceName(namespace)
+		if parseErr != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", parseErr))
+		}
+
+		grants, err = client.Namespaces().GetNamespacePermissions(*nsName)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE_PERMISSION_GRANT: %w", err))
+		}
+
+	} else if topic := d.Get("topic").(string); topic != "" {
+		topicName, parseErr := utils.GetTopicName(topic)
+		if parseErr != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", parseErr))
+		}
+
+		grants, err = client.Topics().GetPermissions(*topicName)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC_PERMISSION_GRANT: %w", err))
+		}
 	}
 
-	permissions, err := client.GetNamespacePermissions(*nsName)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE_PERMISSIONS: %w", err))
-	}
-
-	roleActions, exists := permissions[role]
-	if !exists {
+	if actions, exists := grants[role]; exists && len(actions) > 0 {
+		actionsSet := schema.NewSet(schema.HashString, []interface{}{})
+		for _, action := range actions {
+			actionsSet.Add(action.String())
+		}
+		_ = d.Set("actions", actionsSet)
+	} else {
 		d.SetId("")
-		return nil
-	}
-
-	// Convert actions back to string slice
-	actions := make([]string, len(roleActions))
-	for i, action := range roleActions {
-		actions[i] = string(action)
-	}
-
-	if err := d.Set("actions", actions); err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_SET_ACTIONS: %w", err))
 	}
 
 	return nil
@@ -133,30 +166,50 @@ func resourcePulsarPermissionGrantRead(ctx context.Context, d *schema.ResourceDa
 
 func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
-	client := getClientFromMeta(meta).Namespaces()
-
-	namespace := d.Get("namespace").(string)
-	role := d.Get("role").(string)
-
-	nsName, err := utils.GetNamespaceName(namespace)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
-	}
+	client := getClientFromMeta(meta)
 
 	if d.HasChange("actions") {
-		// Revoke existing permissions and grant new ones
-		if err := client.RevokeNamespacePermission(*nsName, role); err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_REVOKE_NAMESPACE_PERMISSION: %w", err))
-		}
-
+		role := d.Get("role").(string)
 		actionsSet := d.Get("actions").(*schema.Set)
+
 		actions := make([]utils.AuthAction, 0, actionsSet.Len())
 		for _, action := range actionsSet.List() {
-			actions = append(actions, utils.AuthAction(action.(string)))
+			auth, err := utils.ParseAuthAction(action.(string))
+			if err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_PARSE_AUTH_ACTION: %w", err))
+			}
+			actions = append(actions, auth)
 		}
 
-		if err := client.GrantNamespacePermission(*nsName, role, actions); err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_GRANT_NAMESPACE_PERMISSION: %w", err))
+		if namespace := d.Get("namespace").(string); namespace != "" {
+			nsName, err := utils.GetNamespaceName(namespace)
+			if err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
+			}
+
+			// Revoke and re-grant pattern
+			if err = client.Namespaces().RevokeNamespacePermission(*nsName, role); err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_PERMISSION_GRANT: %w", err))
+			}
+
+			if err = client.Namespaces().GrantNamespacePermission(*nsName, role, actions); err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_PERMISSION_GRANT: %w", err))
+			}
+
+		} else if topic := d.Get("topic").(string); topic != "" {
+			topicName, err := utils.GetTopicName(topic)
+			if err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err))
+			}
+
+			// Revoke and re-grant pattern
+			if err = client.Topics().RevokePermission(*topicName, role); err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: %w", err))
+			}
+
+			if err = client.Topics().GrantPermission(*topicName, role, actions); err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: %w", err))
+			}
 		}
 	}
 
@@ -165,18 +218,28 @@ func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.Resource
 
 func resourcePulsarPermissionGrantDelete(ctx context.Context, d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
-	client := getClientFromMeta(meta).Namespaces()
-
-	namespace := d.Get("namespace").(string)
+	client := getClientFromMeta(meta)
 	role := d.Get("role").(string)
 
-	nsName, err := utils.GetNamespaceName(namespace)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
-	}
+	if namespace := d.Get("namespace").(string); namespace != "" {
+		nsName, err := utils.GetNamespaceName(namespace)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
+		}
 
-	if err := client.RevokeNamespacePermission(*nsName, role); err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_REVOKE_NAMESPACE_PERMISSION: %w", err))
+		if err = client.Namespaces().RevokeNamespacePermission(*nsName, role); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_DELETE_NAMESPACE_PERMISSION_GRANT: %w", err))
+		}
+
+	} else if topic := d.Get("topic").(string); topic != "" {
+		topicName, err := utils.GetTopicName(topic)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err))
+		}
+
+		if err = client.Topics().RevokePermission(*topicName, role); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_DELETE_TOPIC_PERMISSION_GRANT: %w", err))
+		}
 	}
 
 	return nil
