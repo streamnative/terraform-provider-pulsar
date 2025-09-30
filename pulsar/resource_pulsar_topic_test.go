@@ -1477,7 +1477,8 @@ resource "pulsar_topic" "test-topic" {
 `, wsURL, cluster, tenant, namespace, topicType, topic)
 }
 
-func testPulsarTopicWithOwnPermissions(wsURL, cluster, tenant, namespace, topic, topicType, role string, actions string) string {
+func testPulsarTopicWithOwnPermissions(wsURL, cluster, tenant, namespace, topic, topicType, role string,
+	actions string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"

@@ -33,14 +33,15 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 		UpdateContext: resourcePulsarPermissionGrantUpdate,
 		DeleteContext: resourcePulsarPermissionGrantDelete,
 
-		Description: `Provides a resource for managing permissions on either Pulsar namespaces or topics. Permission can be granted
-to specific roles using this resource. This resource is optional and can be used to manage permissions
-for roles outside of the namespace or topic resource lifecycle.
+		Description: `Provides a resource for managing permissions on either Pulsar namespaces or topics. 
+Permission can be granted to specific roles using this resource. This resource is optional and can be used
+to manage permissions for roles outside of the namespace or topic resource lifecycle.
 
 **Note:** It is not recommended to use this resource in conjunction with the ` + "`permission_grant`" + `
 attributes of the ` + "`pulsar_namespace`" + ` or ` + "`pulsar_topic`" + ` resources for the same role.
 Doing so will result in the resources continuously modifying the permission state.
-See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` and ` + "`pulsar_topic`" + ` resources for more information.`,
+See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` and ` + "`pulsar_topic`" +
+			` resources for more information.`,
 
 		Schema: map[string]*schema.Schema{
 			"namespace": {
@@ -51,10 +52,11 @@ See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` a
 				ExactlyOneOf: []string{"namespace", "topic"},
 			},
 			"topic": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ForceNew:     true,
-				Description:  "The Pulsar topic. Format: persistent://tenant/namespace/topic or non-persistent://tenant/namespace/topic",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Description: "The Pulsar topic. Format: persistent://tenant/namespace/topic or " +
+					"non-persistent://tenant/namespace/topic",
 				ExactlyOneOf: []string{"namespace", "topic"},
 			},
 			"role": {
@@ -67,7 +69,7 @@ See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` a
 				Type:        schema.TypeSet,
 				Required:    true,
 				MinItems:    1,
-				Description: "A set of authorization actions granted to the role. Valid auth actions are produce, consume, sources, sinks, packages, and functions.",
+				Description: "A set of authorization actions granted to the role.",
 				Elem: &schema.Schema{
 					Type:         schema.TypeString,
 					ValidateFunc: validateAuthAction,
@@ -187,7 +189,7 @@ func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.Resource
 				return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 			}
 
-			// Revoke and re-grant pattern
+			// Revoke and re-grant
 			if err = client.Namespaces().RevokeNamespacePermission(*nsName, role); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_PERMISSION_GRANT: %w", err))
 			}
@@ -202,7 +204,7 @@ func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.Resource
 				return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err))
 			}
 
-			// Revoke and re-grant pattern
+			// Revoke and re-grant
 			if err = client.Topics().RevokePermission(*topicName, role); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: %w", err))
 			}

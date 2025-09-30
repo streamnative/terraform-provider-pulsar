@@ -63,22 +63,6 @@ func unmarshalPermissionGrants(v *schema.Set) ([]*types.PermissionGrant, error) 
 	return permissionGrants, nil
 }
 
-func setPermissionGrant(d *schema.ResourceData, grants map[string][]utils.AuthAction) {
-	permissionGrants := []interface{}{}
-	for role, roleActions := range grants {
-		actions := []string{}
-		for _, action := range roleActions {
-			actions = append(actions, action.String())
-		}
-		permissionGrants = append(permissionGrants, map[string]interface{}{
-			"role":    role,
-			"actions": actions,
-		})
-	}
-
-	_ = d.Set("permission_grant", schema.NewSet(permissionGrantToHash, permissionGrants))
-}
-
 // setPermissionGrantFiltered only sets permissions for roles that are explicitly defined in the Terraform configuration
 func setPermissionGrantFiltered(d *schema.ResourceData, grants map[string][]utils.AuthAction) {
 	// Get the current permission_grant configuration to see which roles are managed by Terraform

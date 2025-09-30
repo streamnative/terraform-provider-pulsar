@@ -35,7 +35,8 @@ func TestPermissionGrant(t *testing.T) {
 	nsName := acctest.RandString(10)
 	roleName := acctest.RandString(10)
 
-	config := testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName, `["produce", "consume"]`)
+	config := testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName,
+		`["produce", "consume"]`)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -77,7 +78,8 @@ func TestPermissionGrantNamespaceUpdate(t *testing.T) {
 		CheckDestroy:      testPulsarPermissionGrantDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName, `["produce", "consume"]`),
+				Config: testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName,
+					`["produce", "consume"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarPermissionGrantExists(),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "2"),
@@ -116,7 +118,8 @@ func TestPermissionGrantNamespaceExternallyRemoved(t *testing.T) {
 	nsName := acctest.RandString(10)
 	roleName := acctest.RandString(10)
 
-	config := testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName, `["produce", "consume"]`)
+	config := testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName,
+		`["produce", "consume"]`)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -298,7 +301,8 @@ func TestPermissionGrantTopic(t *testing.T) {
 	topicName := acctest.RandString(10)
 	roleName := acctest.RandString(10)
 
-	config := testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName, `["produce", "consume"]`)
+	config := testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+		`["produce", "consume"]`)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -310,7 +314,8 @@ func TestPermissionGrantTopic(t *testing.T) {
 				Config: config,
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarPermissionGrantExists(),
-					resource.TestCheckResourceAttr(resourceName, "topic", fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName)),
+					resource.TestCheckResourceAttr(resourceName, "topic",
+						fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName)),
 					resource.TestCheckResourceAttr(resourceName, "role", roleName),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "2"),
 					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "produce"),
@@ -341,7 +346,8 @@ func TestPermissionGrantTopicUpdate(t *testing.T) {
 		CheckDestroy:      testPulsarPermissionGrantDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName, `["produce"]`),
+				Config: testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+					`["produce"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarPermissionGrantExists(),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "1"),
@@ -349,7 +355,8 @@ func TestPermissionGrantTopicUpdate(t *testing.T) {
 				),
 			},
 			{
-				Config: testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName, `["produce", "consume", "functions"]`),
+				Config: testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+					`["produce", "consume", "functions"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarPermissionGrantExists(),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "3"),
@@ -359,7 +366,8 @@ func TestPermissionGrantTopicUpdate(t *testing.T) {
 				),
 			},
 			{
-				Config: testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName, `["consume"]`),
+				Config: testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+					`["consume"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarPermissionGrantExists(),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "1"),
