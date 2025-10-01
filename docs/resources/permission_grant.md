@@ -3,19 +3,25 @@
 page_title: "pulsar_permission_grant Resource - terraform-provider-pulsar"
 subcategory: ""
 description: |-
-  Manages Pulsar namespace permissions as a standalone resource.
-  Important: Do not manage permissions for the same role using both this standalone resource and the permissiongrant block within a pulsarnamespace resource. This will cause conflicts and unexpected behavior. Choose one approach per role:
-  - Use this pulsarpermissiongrant for flexible, independent permission management
-  - Use permissiongrant blocks within pulsarnamespace for permissions tightly coupled to the namespace lifecycle
+  Provides a resource for managing permissions on either Pulsar namespaces or topics.
+  Permission can be granted to specific roles using this resource. This resource is optional and can be used
+  to manage permissions for roles outside of the namespace or topic resource lifecycle.
+  Note: It is not recommended to use this resource in conjunction with the permission_grant
+  attributes of the pulsar_namespace or pulsar_topic resources for the same role.
+  Doing so will result in the resources continuously modifying the permission state.
+  See the permission_grant attribute of pulsar_namespace and pulsar_topic resources for more information.
 ---
 
 # pulsar_permission_grant (Resource)
 
-Manages Pulsar namespace permissions as a standalone resource.
+Provides a resource for managing permissions on either Pulsar namespaces or topics. 
+Permission can be granted to specific roles using this resource. This resource is optional and can be used
+to manage permissions for roles outside of the namespace or topic resource lifecycle.
 
-**Important:** Do not manage permissions for the same role using both this standalone resource and the permission_grant block within a pulsar_namespace resource. This will cause conflicts and unexpected behavior. Choose one approach per role:
-- Use this pulsar_permission_grant for flexible, independent permission management
-- Use permission_grant blocks within pulsar_namespace for permissions tightly coupled to the namespace lifecycle
+**Note:** It is not recommended to use this resource in conjunction with the `permission_grant`
+attributes of the `pulsar_namespace` or `pulsar_topic` resources for the same role.
+Doing so will result in the resources continuously modifying the permission state.
+See the `permission_grant` attribute of `pulsar_namespace` and `pulsar_topic` resources for more information.
 
 
 
@@ -24,9 +30,13 @@ Manages Pulsar namespace permissions as a standalone resource.
 
 ### Required
 
-- `actions` (Set of String) Set of actions to grant to the role
-- `namespace` (String) The namespace in format 'tenant/namespace'
-- `role` (String) The role to grant permissions to
+- `actions` (Set of String) A set of authorization actions granted to the role.
+- `role` (String) The name of the Pulsar role to grant permissions to
+
+### Optional
+
+- `namespace` (String) The Pulsar namespace. Format: tenant/namespace. One of namespace or topic **must** be specified.
+- `topic` (String) The Pulsar topic. Format: persistent://tenant/namespace/topic or non-persistent://tenant/namespace/topic. One of namespace or topic **must** be specified.
 
 ### Read-Only
 

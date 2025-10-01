@@ -45,10 +45,11 @@ See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` a
 
 		Schema: map[string]*schema.Schema{
 			"namespace": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ForceNew:     true,
-				Description:  "The Pulsar namespace. Format: tenant/namespace",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Description: "The Pulsar namespace. Format: tenant/namespace. " +
+					"One of namespace or topic **must** be specified.",
 				ExactlyOneOf: []string{"namespace", "topic"},
 			},
 			"topic": {
@@ -56,7 +57,8 @@ See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` a
 				Optional: true,
 				ForceNew: true,
 				Description: "The Pulsar topic. Format: persistent://tenant/namespace/topic or " +
-					"non-persistent://tenant/namespace/topic",
+					"non-persistent://tenant/namespace/topic. " +
+					"One of namespace or topic **must** be specified.",
 				ExactlyOneOf: []string{"namespace", "topic"},
 			},
 			"role": {
