@@ -34,6 +34,9 @@ func resourcePulsarSchema() *schema.Resource {
 		ReadContext:   resourcePulsarSchemaRead,
 		UpdateContext: resourcePulsarSchemaUpdate,
 		DeleteContext: resourcePulsarSchemaDelete,
+		Description: "Manages Pulsar schemas for topics. Schemas provide a way to enforce structure and compatibility" +
+			" for messages in Pulsar topics. Schema updates create new versions rather than modifying existing" +
+			" schemas, enabling schema evolution and compatibility validation.",
 
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
@@ -61,35 +64,40 @@ func resourcePulsarSchema() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The tenant name",
+				Description: "The tenant name. Cannot be changed after creation.",
 			},
 			"namespace": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The namespace name",
+				Description: "The namespace name. Cannot be changed after creation.",
 			},
 			"topic": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The topic name",
+				Description: "The topic name. Cannot be changed after creation.",
 			},
 			"type": {
-				Type:         schema.TypeString,
-				Required:     true,
-				Description:  "Schema type (STRING, AVRO, JSON, PROTOBUF, etc.)",
+				Type:     schema.TypeString,
+				Required: true,
+				Description: "Schema type. Supported types include:\n  - **Primitive types**: `STRING`, `INT8`," +
+					" `INT16`, `INT32`, `INT64`, `FLOAT`, `DOUBLE`, `BOOLEAN`, `BYTES`, `TIMESTAMP`, `DATE`," +
+					" `TIME`, `INSTANT`, `LOCAL_DATE`, `LOCAL_TIME`, `LOCAL_DATE_TIME`\n  - **Complex types**:" +
+					" `AVRO`, `JSON`, `PROTOBUF`, `PROTOBUF_NATIVE`, `KEY_VALUE`\n  - **Auto types**: `AUTO_CONSUME`," +
+					" `AUTO_PUBLISH`, `AUTO_PRODUCE_BYTES`",
 				ValidateFunc: validateSchemaType,
 			},
 			"schema_data": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "Schema definition data (required for complex types like AVRO, JSON, PROTOBUF)",
+				Type:     schema.TypeString,
+				Optional: true,
+				Description: " Required for complex types (`AVRO`, `JSON`, `PROTOBUF`, `PROTOBUF_NATIVE`," +
+					" `KEY_VALUE`). Not needed for primitive types.",
 			},
 			"properties": {
 				Type:        schema.TypeMap,
 				Optional:    true,
-				Description: "Additional schema properties",
+				Description: "Additional schema properties as key-value pairs.",
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 
@@ -97,12 +105,17 @@ func resourcePulsarSchema() *schema.Resource {
 			"version": {
 				Type:        schema.TypeInt,
 				Computed:    true,
-				Description: "Current schema version",
+				Description: "Current schema version. Automatically incremented when schema is updated.",
 			},
 			"timestamp": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "Schema creation/update timestamp",
+			},
+			"id": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "The ID of this resource in the format `tenant/namespace/topic`.",
 			},
 		},
 	}

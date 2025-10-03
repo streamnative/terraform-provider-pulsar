@@ -3,7 +3,7 @@
 page_title: "pulsar_schema Resource - terraform-provider-pulsar"
 subcategory: ""
 description: |-
-  Manages Pulsar schemas for topics. Schemas provide a way to enforce structure and compatibility for messages in Pulsar topics.
+  Manages Pulsar schemas for topics. Schemas provide a way to enforce structure and compatibility for messages in Pulsar topics. Schema updates create new versions rather than modifying existing schemas, enabling schema evolution and compatibility validation.
 ---
 
 # pulsar_schema (Resource)
@@ -15,8 +15,8 @@ Manages Pulsar schemas for topics. Schemas provide a way to enforce structure an
 
 ### Required
 
-- `tenant` (String) The tenant name. Cannot be changed after creation.
 - `namespace` (String) The namespace name. Cannot be changed after creation.
+- `tenant` (String) The tenant name. Cannot be changed after creation.
 - `topic` (String) The topic name. Cannot be changed after creation.
 - `type` (String) Schema type. Supported types include:
   - **Primitive types**: `STRING`, `INT8`, `INT16`, `INT32`, `INT64`, `FLOAT`, `DOUBLE`, `BOOLEAN`, `BYTES`, `TIMESTAMP`, `DATE`, `TIME`, `INSTANT`, `LOCAL_DATE`, `LOCAL_TIME`, `LOCAL_DATE_TIME`
@@ -25,160 +25,14 @@ Manages Pulsar schemas for topics. Schemas provide a way to enforce structure an
 
 ### Optional
 
-- `schema_data` (String) Schema definition data. Required for complex types (`AVRO`, `JSON`, `PROTOBUF`, `PROTOBUF_NATIVE`, `KEY_VALUE`). Not needed for primitive types.
 - `properties` (Map of String) Additional schema properties as key-value pairs.
+- `schema_data` (String) Required for complex types (`AVRO`, `JSON`, `PROTOBUF`, `PROTOBUF_NATIVE`, `KEY_VALUE`). Not needed for primitive types.
 
 ### Read-Only
 
 - `id` (String) The ID of this resource in the format `tenant/namespace/topic`.
+- `timestamp` (String) Schema creation/update timestamp
 - `version` (Number) Current schema version. Automatically incremented when schema is updated.
-
-## Example Usage
-
-### Simple String Schema
-
-```hcl
-resource "pulsar_schema" "user_events" {
-  tenant    = "my-tenant"
-  namespace = "my-namespace"
-  topic     = "user-events"
-  type      = "STRING"
-  
-  properties = {
-    "owner"       = "data-team"
-    "description" = "User activity events"
-  }
-}
-```
-
-### AVRO Schema with Complex Structure
-
-```hcl
-resource "pulsar_schema" "user_profile" {
-  tenant    = "my-tenant"
-  namespace = "my-namespace"
-  topic     = "user-profile"
-  type      = "AVRO"
-  
-  schema_data = jsonencode({
-    type = "record"
-    name = "UserProfile"
-    fields = [
-      {
-        name = "id"
-        type = "string"
-      },
-      {
-        name = "email"
-        type = "string"
-      },
-      {
-        name = "age"
-        type = ["null", "int"]
-        default = null
-      },
-      {
-        name = "preferences"
-        type = {
-          type = "record"
-          name = "Preferences"
-          fields = [
-            {
-              name = "theme"
-              type = "string"
-              default = "light"
-            },
-            {
-              name = "notifications"
-              type = "boolean"
-              default = true
-            }
-          ]
-        }
-      }
-    ]
-  })
-  
-  properties = {
-    "owner"   = "user-service"
-    "version" = "1.0"
-  }
-}
-```
-
-### JSON Schema
-
-```hcl
-resource "pulsar_schema" "order_events" {
-  tenant    = "ecommerce"
-  namespace = "orders"
-  topic     = "order-created"
-  type      = "JSON"
-  
-  schema_data = jsonencode({
-    type = "object"
-    properties = {
-      orderId = {
-        type = "string"
-      }
-      customerId = {
-        type = "string"
-      }
-      amount = {
-        type = "number"
-        minimum = 0
-      }
-      items = {
-        type = "array"
-        items = {
-          type = "object"
-          properties = {
-            productId = { type = "string" }
-            quantity = { type = "integer", minimum = 1 }
-            price = { type = "number", minimum = 0 }
-          }
-          required = ["productId", "quantity", "price"]
-        }
-      }
-    }
-    required = ["orderId", "customerId", "amount", "items"]
-  })
-  
-  properties = {
-    "service" = "order-service"
-    "env"     = "production"
-  }
-}
-```
-
-### Protobuf Schema
-
-```hcl
-resource "pulsar_schema" "metrics" {
-  tenant    = "monitoring"
-  namespace = "metrics"
-  topic     = "system-metrics"
-  type      = "PROTOBUF"
-  
-  schema_data = <<EOF
-syntax = "proto3";
-
-message SystemMetrics {
-  string host = 1;
-  int64 timestamp = 2;
-  double cpu_usage = 3;
-  double memory_usage = 4;
-  double disk_usage = 5;
-  map<string, string> labels = 6;
-}
-EOF
-
-  properties = {
-    "collector" = "prometheus"
-    "interval"  = "30s"
-  }
-}
-```
 
 ## Import
 

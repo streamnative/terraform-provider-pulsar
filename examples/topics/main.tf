@@ -36,3 +36,15 @@ resource "pulsar_topic" "sample-topic-1" {
   partitions =  0
 }
 
+resource "pulsar_topic" "my_topic" {
+  tenant     = "my-tenant"
+  namespace  = "my-namespace"
+  topic_name = "my-topic"
+  topic_type = "persistent"
+  partitions = 1
+
+  topic_properties = {
+  "owner" = "data-engineering"
+  "env"   = "production"
+  }
+}
