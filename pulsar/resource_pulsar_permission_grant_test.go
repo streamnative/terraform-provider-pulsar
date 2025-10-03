@@ -410,7 +410,7 @@ resource "pulsar_topic" "test_topic" {
     namespace  = pulsar_namespace.test_namespace.namespace
     topic_type = "persistent"
     topic_name = "%s"
-	partitions = 0
+    partitions = 0
 }
 
 resource "pulsar_permission_grant" "test" {
@@ -473,7 +473,7 @@ resource "pulsar_topic" "test_topic" {
     namespace  = pulsar_namespace.test_namespace.namespace
     topic_type = "persistent"
     topic_name = "%s"
-	partitions = 0
+    partitions = 0
 }
 
 resource "pulsar_permission_grant" "test" {
