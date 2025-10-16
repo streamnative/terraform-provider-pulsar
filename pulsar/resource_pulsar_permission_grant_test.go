@@ -436,7 +436,7 @@ func TestPermissionGrantBothNamespaceAndTopic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config:      config,
-				ExpectError: regexp.MustCompile(`only one of .*namespace,topic.* can be specified`),
+				ExpectError: regexp.MustCompile("only one of `namespace,topic` can be specified"),
 			},
 		},
 	})
@@ -496,7 +496,7 @@ func TestPermissionGrantNeitherNamespaceNorTopic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config:      config,
-				ExpectError: regexp.MustCompile(`one of .*namespace,topic.* must be specified`),
+				ExpectError: regexp.MustCompile("one of `namespace,topic` must be specified"),
 			},
 		},
 	})

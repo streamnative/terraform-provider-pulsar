@@ -34,8 +34,10 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 		DeleteContext: resourcePulsarPermissionGrantDelete,
 
 		Description: `Provides a resource for managing permissions on either Pulsar namespaces or topics. 
-Permission can be granted to specific roles using this resource. This resource is optional and can be used
-to manage permissions for roles outside of the namespace or topic resource lifecycle.
+Permission can be granted to specific roles using this resource.
+
+**Important:** You must specify either ` + "`namespace`" + ` OR ` + "`topic`" + `, but not both. While both fields 
+are marked as optional in the schema, exactly one must be provided for the resource to be valid.
 
 **Note:** It is not recommended to use this resource in conjunction with the ` + "`permission_grant`" + `
 attributes of the ` + "`pulsar_namespace`" + ` or ` + "`pulsar_topic`" + ` resources for the same role.
