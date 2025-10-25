@@ -218,6 +218,7 @@ func resourcePulsarTopic() *schema.Resource {
 										Type:         schema.TypeString,
 										Required:     true,
 										ValidateFunc: validiateDeleteMode,
+										Description:  "`delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`",
 									},
 								},
 							},
