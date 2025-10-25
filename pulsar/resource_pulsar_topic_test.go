@@ -1361,3 +1361,138 @@ func skipIfNoTopicPolicies(t *testing.T) {
 		t.Skip("Skipping test: not running in 'no_topic_policies' environment")
 	}
 }
+
+func TestTopicDoesNotInterfereWithExternalPermissions(t *testing.T) {
+	resourceName := "pulsar_topic.test-topic"
+	topicName := acctest.RandString(10)
+	externalRole := acctest.RandString(10) + "-external"
+	topicRole := acctest.RandString(10) + "-topic-managed"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				// Step 1: Create basic topic, then manually add external permission via API
+				Config: testPulsarBasicTopic(testWebServiceURL, topicName, "persistent"),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					// After topic is created, add external permission via API
+					func(s *terraform.State) error {
+						client, err := sharedClient(testWebServiceURL)
+						if err != nil {
+							return fmt.Errorf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
+						}
+
+						conn := client.(admin.Client)
+						topicFullName := fmt.Sprintf("persistent://public/default/%s", topicName)
+
+						topicName, err := utils.GetTopicName(topicFullName)
+						if err != nil {
+							return fmt.Errorf("ERROR_PARSING_TOPIC: %v", err)
+						}
+
+						// Add external permission (simulating standalone permission resource)
+						externalActions := []utils.AuthAction{utils.AuthAction("produce")}
+						if err = conn.Topics().GrantPermission(*topicName, externalRole, externalActions); err != nil {
+							return fmt.Errorf("ERROR_GRANTING_EXTERNAL_PERMISSION: %v", err)
+						}
+						return nil
+					},
+					// Verify the external permission was created
+					testTopicPermissionExists(fmt.Sprintf("persistent://public/default/%s", topicName), externalRole),
+				),
+			},
+			{
+				// Step 2: Add topic resource with its own permissions
+				// External permission should NOT be removed
+				Config: testPulsarTopicWithOwnPermissions(testWebServiceURL, topicName,
+					"persistent", topicRole, `["produce", "consume"]`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					// Topic should only show its managed permission
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", topicRole),
+					// External permission should still exist in Pulsar
+					testTopicPermissionExists(fmt.Sprintf("persistent://public/default/%s", topicName), externalRole),
+				),
+			},
+			{
+				// Step 3: Update topic permission - external permission should remain untouched
+				Config: testPulsarTopicWithOwnPermissions(testWebServiceURL, topicName,
+					"persistent", topicRole, `["produce", "consume", "functions"]`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					// Topic permission should be updated
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", topicRole),
+					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.actions.#", "3"),
+					// External permission should still exist and be unchanged
+					testTopicPermissionExists(fmt.Sprintf("persistent://public/default/%s", topicName), externalRole),
+				),
+			},
+		},
+	})
+}
+
+func testPulsarBasicTopic(wsURL, topic, topicType string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test-topic" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "%s"
+  topic_name = "%s"
+  partitions = 0
+}
+`, wsURL, topicType, topic)
+}
+
+func testPulsarTopicWithOwnPermissions(wsURL, topic, topicType, role string,
+	actions string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test-topic" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "%s"
+  topic_name = "%s"
+  partitions = 0
+
+  permission_grant {
+    role    = "%s"
+    actions = %s
+  }
+}
+`, wsURL, topicType, topic, role, actions)
+}
+
+func testTopicPermissionExists(topic, role string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		client := getClientFromMeta(testAccProvider.Meta()).Topics()
+
+		topicName, err := utils.GetTopicName(topic)
+		if err != nil {
+			return fmt.Errorf("ERROR_PARSING_TOPIC: %w", err)
+		}
+
+		permissions, err := client.GetPermissions(*topicName)
+		if err != nil {
+			return fmt.Errorf("ERROR_READ_TOPIC_PERMISSIONS: %w", err)
+		}
+
+		if _, exists := permissions[role]; !exists {
+			return fmt.Errorf("permission for role %s should exist", role)
+		}
+
+		return nil
+	}
+}
