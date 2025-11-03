@@ -3,7 +3,7 @@ module github.com/streamnative/terraform-provider-pulsar
 go 1.24.4
 
 require (
-	github.com/apache/pulsar-client-go v0.15.2-0.20250710023731-c587b5cefb04
+	github.com/apache/pulsar-client-go v0.17.1-0.20251030144200-7b4b3a6a7b51
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/hashicorp/go-cty v1.4.1-0.20200414143053-d3edf31b6320
 	github.com/hashicorp/go-multierror v1.1.1
@@ -60,7 +60,7 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/zclconf/go-cty v1.16.2 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
-	golang.org/x/mod v0.22.0 // indirect
+	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect

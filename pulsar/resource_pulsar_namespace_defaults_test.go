@@ -186,7 +186,7 @@ func testNamespaceUsesDefaults(resourceName string) resource.TestCheckFunc {
 		// When using defaults, these should return broker default values
 		// The actual default values depend on the broker configuration
 		// We're mainly checking that our -1 default didn't cause Set operations
-		
+
 		// For parameters without Remove methods, they might return 0 if never set
 		maxConsPerSub, err := client.GetMaxConsumersPerSubscription(*ns)
 		if err != nil {

@@ -698,6 +698,9 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	if err == nil && publishRate != nil {
 		topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
 		topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
+	} else if publishRate == nil {
+		topicConfigMap["msg_publish_rate"] = -1
+		topicConfigMap["byte_publish_rate"] = -1
 	} else if err != nil && !isIgnorableTopicPolicyError(err) {
 		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPublishRate: %w", err))
 	}
@@ -1333,6 +1336,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	// Set max consumers
 	if val, ok := topicConfig["max_consumers"]; ok {
 		maxConsVal := val.(int)
+		var operationSucceeded bool
+
 		if maxConsVal == -1 {
 			if err := client.RemoveMaxConsumers(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
@@ -1340,6 +1345,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: RemoveMaxConsumers: %w", err))
 				}
+			} else {
+				operationSucceeded = true
 			}
 		} else {
 			if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
@@ -1349,19 +1356,23 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: SetMaxConsumers: %w", err))
 				}
 			} else {
-				// Verify the configuration was applied
-				if err := waitForTopicConfigUpdate(d, topicName, "MAX_CONSUMERS", func() (bool, error) {
-					maxConsValue, err := client.GetMaxConsumers(*topicName)
-					if err != nil {
-						return false, fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: GetMaxConsumers: %w", err)
-					}
-					if maxConsValue != maxConsVal {
-						return false, nil
-					}
-					return true, nil
-				}); err != nil {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers verification error: %v", err))
+				operationSucceeded = true
+			}
+		}
+
+		// Verify the configuration was applied
+		if operationSucceeded {
+			if err := waitForTopicConfigUpdate(d, topicName, "MAX_CONSUMERS", func() (bool, error) {
+				maxConsValue, err := client.GetMaxConsumers(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: GetMaxConsumers: %w", err)
 				}
+				if maxConsValue != maxConsVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("MaxConsumers verification error: %v", err))
 			}
 		}
 	}
@@ -1369,6 +1380,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	// Set max producers
 	if val, ok := topicConfig["max_producers"]; ok {
 		maxProdVal := val.(int)
+		var operationSucceeded bool
+
 		if maxProdVal == -1 {
 			if err := client.RemoveMaxProducers(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
@@ -1376,6 +1389,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: RemoveMaxProducers: %w", err))
 				}
+			} else {
+				operationSucceeded = true
 			}
 		} else {
 			if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
@@ -1385,19 +1400,23 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: SetMaxProducers: %w", err))
 				}
 			} else {
-				// Verify the configuration was applied
-				if err := waitForTopicConfigUpdate(d, topicName, "MAX_PRODUCERS", func() (bool, error) {
-					maxProdValue, err := client.GetMaxProducers(*topicName)
-					if err != nil {
-						return false, fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: GetMaxProducers: %w", err)
-					}
-					if maxProdValue != maxProdVal {
-						return false, nil
-					}
-					return true, nil
-				}); err != nil {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers verification error: %v", err))
+				operationSucceeded = true
+			}
+		}
+
+		// Verify the configuration was applied
+		if operationSucceeded {
+			if err := waitForTopicConfigUpdate(d, topicName, "MAX_PRODUCERS", func() (bool, error) {
+				maxProdValue, err := client.GetMaxProducers(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: GetMaxProducers: %w", err)
 				}
+				if maxProdValue != maxProdVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("MaxProducers verification error: %v", err))
 			}
 		}
 	}
@@ -1405,6 +1424,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	// Set message TTL (in seconds)
 	if val, ok := topicConfig["message_ttl_seconds"]; ok {
 		ttlVal := val.(int)
+		var operationSucceeded bool
+
 		if ttlVal == -1 {
 			if err := client.RemoveMessageTTL(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
@@ -1412,6 +1433,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: RemoveMessageTTL: %w", err))
 				}
+			} else {
+				operationSucceeded = true
 			}
 		} else {
 			if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
@@ -1421,25 +1444,31 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: SetMessageTTL: %w", err))
 				}
 			} else {
-				// Verify the configuration was applied
-				if err := waitForTopicConfigUpdate(d, topicName, "MESSAGE_TTL", func() (bool, error) {
-					ttlValue, err := client.GetMessageTTL(*topicName)
-					if err != nil {
-						return false, fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: GetMessageTTL: %w", err)
-					}
-					if ttlValue != ttlVal {
-						return false, nil
-					}
-					return true, nil
-				}); err != nil {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL verification error: %v", err))
+				operationSucceeded = true
+			}
+		}
+
+		// Verify the configuration was applied
+		if operationSucceeded {
+			if err := waitForTopicConfigUpdate(d, topicName, "MESSAGE_TTL", func() (bool, error) {
+				ttlValue, err := client.GetMessageTTL(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: GetMessageTTL: %w", err)
 				}
+				if ttlValue != ttlVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("MessageTTL verification error: %v", err))
 			}
 		}
 	}
 
 	if maxUnackedMsgPerConsumer, ok := topicConfig["max_unacked_messages_per_consumer"]; ok {
 		maxVal := maxUnackedMsgPerConsumer.(int)
+		var operationSucceeded bool
+
 		if maxVal == -1 {
 			if err := client.RemoveMaxUnackMessagesPerConsumer(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
@@ -1448,6 +1477,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 					return backoff.Permanent(
 						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: RemoveMaxUnackMessagesPerConsumer: %w", err))
 				}
+			} else {
+				operationSucceeded = true
 			}
 		} else {
 			if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
@@ -1458,25 +1489,31 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: SetMaxUnackMessagesPerConsumer: %w", err))
 				}
 			} else {
-				// Verify the configuration was applied
-				if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_CONSUMER", func() (bool, error) {
-					maxUnackedMsgPerConsumerValue, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
-					if err != nil {
-						return false, fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: GetMaxUnackMessagesPerConsumer: %w", err)
-					}
-					if maxUnackedMsgPerConsumerValue != maxVal {
-						return false, nil
-					}
-					return true, nil
-				}); err != nil {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer verification error: %v", err))
+				operationSucceeded = true
+			}
+		}
+
+		// Verify the configuration was applied
+		if operationSucceeded {
+			if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_CONSUMER", func() (bool, error) {
+				maxUnackedMsgPerConsumerValue, err := client.GetMaxUnackMessagesPerConsumer(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: GetMaxUnackMessagesPerConsumer: %w", err)
 				}
+				if maxUnackedMsgPerConsumerValue != maxVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("MaxUnackMessagesPerConsumer verification error: %v", err))
 			}
 		}
 	}
 
 	if maxUnackedMsgPerSubscription, ok := topicConfig["max_unacked_messages_per_subscription"]; ok {
 		maxVal := maxUnackedMsgPerSubscription.(int)
+		var operationSucceeded bool
+
 		if maxVal == -1 {
 			if err := client.RemoveMaxUnackMessagesPerSubscription(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
@@ -1485,6 +1522,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 					return backoff.Permanent(
 						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: RemoveMaxUnackMessagesPerSubscription: %w", err))
 				}
+			} else {
+				operationSucceeded = true
 			}
 		} else {
 			if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
@@ -1495,20 +1534,24 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: SetMaxUnackMessagesPerSubscription: %w", err))
 				}
 			} else {
-				// Verify the configuration was applied
-				if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_SUBSCRIPTION", func() (bool, error) {
-					maxUnackedMsgPerSubscriptionValue, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
-					if err != nil {
-						return false, fmt.Errorf(
-							"ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: GetMaxUnackMessagesPerSubscription: %w", err)
-					}
-					if maxUnackedMsgPerSubscriptionValue != maxVal {
-						return false, nil
-					}
-					return true, nil
-				}); err != nil {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription verification error: %v", err))
+				operationSucceeded = true
+			}
+		}
+
+		// Verify the configuration was applied
+		if operationSucceeded {
+			if err := waitForTopicConfigUpdate(d, topicName, "MAX_UNACK_MESSAGES_PER_SUBSCRIPTION", func() (bool, error) {
+				maxUnackedMsgPerSubscriptionValue, err := client.GetMaxUnackMessagesPerSubscription(*topicName)
+				if err != nil {
+					return false, fmt.Errorf(
+						"ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: GetMaxUnackMessagesPerSubscription: %w", err)
 				}
+				if maxUnackedMsgPerSubscriptionValue != maxVal {
+					return false, nil
+				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("MaxUnackMessagesPerSubscription verification error: %v", err))
 			}
 		}
 	}
@@ -1527,7 +1570,10 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			byteRate = bytePublishRate.(int)
 		}
 
-		if msgRate == -1 && byteRate == -1 {
+		var operationSucceeded bool
+		isRemoval := msgRate == -1 && byteRate == -1
+
+		if isRemoval {
 			// Remove publish rate when both are -1
 			if err := client.RemovePublishRate(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
@@ -1535,17 +1581,14 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: RemovePublishRate: %w", err))
 				}
+			} else {
+				operationSucceeded = true
 			}
 		} else {
 			// Set publish rate when at least one value is not -1
-			publishRateData := utils.PublishRateData{}
-
-			if hasMsgRate && msgRate != -1 {
-				publishRateData.PublishThrottlingRateInMsg = int64(msgRate)
-			}
-
-			if hasByteRate && byteRate != -1 {
-				publishRateData.PublishThrottlingRateInByte = int64(byteRate)
+			publishRateData := utils.PublishRateData{
+				PublishThrottlingRateInMsg:  int64(msgRate),
+				PublishThrottlingRateInByte: int64(byteRate),
 			}
 
 			if err := client.SetPublishRate(*topicName, publishRateData); err != nil {
@@ -1555,22 +1598,35 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: SetPublishRate: %w", err))
 				}
 			} else {
-				// Verify the configuration was applied
-				if err := waitForTopicConfigUpdate(d, topicName, "PUBLISH_RATE", func() (bool, error) {
-					publishRateValue, err := client.GetPublishRate(*topicName)
-					if err != nil {
-						return false, fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: %w", err)
+				operationSucceeded = true
+			}
+		}
+
+		// Verify the configuration was applied (only if operation succeeded)
+		if operationSucceeded {
+			if err := waitForTopicConfigUpdate(d, topicName, "PUBLISH_RATE", func() (bool, error) {
+				publishRateValue, err := client.GetPublishRate(*topicName)
+				if err != nil {
+					return false, fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: GetPublishRate: %w", err)
+				}
+
+				if isRemoval {
+					// After removal, the value should be nil
+					if publishRateValue != nil {
+						return false, nil
 					}
+				} else {
+					// After setting, verify the values match
 					if hasMsgRate && msgRate != -1 && publishRateValue.PublishThrottlingRateInMsg != int64(msgRate) {
 						return false, nil
 					}
 					if hasByteRate && byteRate != -1 && publishRateValue.PublishThrottlingRateInByte != int64(byteRate) {
 						return false, nil
 					}
-					return true, nil
-				}); err != nil {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate verification error: %v", err))
 				}
+				return true, nil
+			}); err != nil {
+				errs = errors.Wrap(errs, fmt.Sprintf("PublishRate verification error: %v", err))
 			}
 		}
 	}
