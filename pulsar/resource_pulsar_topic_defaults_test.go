@@ -229,7 +229,8 @@ func testTopicHasNoExplicitConfig(resourceName string) resource.TestCheckFunc {
 }
 
 // Helper function to verify topic has explicit configuration
-func testTopicHasExplicitConfig(resourceName string, maxConsumers, maxProducers, messageTTL int) resource.TestCheckFunc {
+func testTopicHasExplicitConfig(resourceName string, maxConsumers, maxProducers,
+	messageTTL int) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[resourceName]
 		if !ok {

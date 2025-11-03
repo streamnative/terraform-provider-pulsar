@@ -228,49 +228,56 @@ func resourcePulsarTopic() *schema.Resource {
 							Optional:     true,
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
-							Description:  "Max number of consumers on topic. 0 = unlimited, >0 = specific limit. Omit to inherit namespace defaults.",
+							Description: "Max number of consumers on topic. 0 = unlimited, >0 = specific limit. " +
+								"Omit to inherit namespace defaults.",
 						},
 						"max_producers": {
 							Type:         schema.TypeInt,
 							Optional:     true,
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
-							Description:  "Max number of producers on topic. 0 = unlimited, >0 = specific limit. Omit to inherit namespace defaults.",
+							Description: "Max number of producers on topic. 0 = unlimited, >0 = specific limit. " +
+								"Omit to inherit namespace defaults.",
 						},
 						"message_ttl_seconds": {
 							Type:         schema.TypeInt,
 							Optional:     true,
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
-							Description:  "Message TTL in seconds. 0 = never expire, >0 = expire after N seconds. Omit to inherit namespace defaults.",
+							Description: "Message TTL in seconds. 0 = never expire, >0 = expire after N seconds. " +
+								"Omit to inherit namespace defaults.",
 						},
 						"max_unacked_messages_per_consumer": {
 							Type:         schema.TypeInt,
 							Optional:     true,
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
-							Description:  "Max unacked messages per consumer. 0 = unlimited, >0 = specific limit. Omit to inherit namespace defaults.",
+							Description: "Max unacked messages per consumer. 0 = unlimited, >0 = specific limit. " +
+								"Omit to inherit namespace defaults.",
 						},
 						"max_unacked_messages_per_subscription": {
 							Type:         schema.TypeInt,
 							Optional:     true,
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
-							Description:  "Max unacked messages per subscription. 0 = unlimited, >0 = specific limit. Omit to inherit namespace defaults.",
+							Description: "Max unacked messages per subscription. 0 = unlimited, >0 = specific " +
+								"limit. Omit to inherit namespace defaults.",
 						},
 						"msg_publish_rate": {
 							Type:         schema.TypeInt,
 							Optional:     true,
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
-							Description:  "Message publish rate limit. 0 = disabled, >0 = messages per second limit. Omit to inherit namespace defaults.",
+							Description: "Message publish rate limit. 0 = disabled, >0 = messages per second limit. " +
+								"Omit to inherit namespace defaults.",
 						},
 						"byte_publish_rate": {
 							Type:         schema.TypeInt,
 							Optional:     true,
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
-							Description:  "Byte publish rate limit. 0 = disabled, >0 = bytes per second limit. Omit to inherit namespace defaults.",
+							Description: "Byte publish rate limit. 0 = disabled, >0 = bytes per second limit. " +
+								"Omit to inherit namespace defaults.",
 						},
 					},
 				},
@@ -695,13 +702,15 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	time.Sleep(time.Millisecond * 100)
 	publishRate, err := client.GetPublishRate(*topicName)
-	if err == nil && publishRate != nil {
-		topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
-		topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
-	} else if publishRate == nil {
-		topicConfigMap["msg_publish_rate"] = -1
-		topicConfigMap["byte_publish_rate"] = -1
-	} else if err != nil && !isIgnorableTopicPolicyError(err) {
+	if err == nil {
+		if publishRate != nil {
+			topicConfigMap["msg_publish_rate"] = int(publishRate.PublishThrottlingRateInMsg)
+			topicConfigMap["byte_publish_rate"] = int(publishRate.PublishThrottlingRateInByte)
+		} else {
+			topicConfigMap["msg_publish_rate"] = -1
+			topicConfigMap["byte_publish_rate"] = -1
+		}
+	} else if !isIgnorableTopicPolicyError(err) {
 		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPublishRate: %w", err))
 	}
 
