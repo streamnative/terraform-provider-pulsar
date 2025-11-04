@@ -409,10 +409,10 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			namespaceConfig["schema_validation_enforce"] = schemaValidationEnforce
 		}
 
-		schemaCompatibilityStrategy, err := client.GetSchemaAutoUpdateCompatibilityStrategy(*ns)
+		schemaCompatibilityStrategy, err := client.GetSchemaCompatibilityStrategy(*ns)
 		if err != nil {
-			if !strings.Contains(err.Error(), "Invalid auth strategy") {
-				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaAutoUpdateCompatibilityStrategy: %w", err))
+			if !strings.Contains(err.Error(), "Invalid auth strategy") && !strings.Contains(err.Error(), "404") {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaCompatibilityStrategy: %w", err))
 			}
 		} else {
 			namespaceConfig["schema_compatibility_strategy"] = schemaCompatibilityStrategy.String()
@@ -610,10 +610,10 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 
 		if len(nsCfg.SchemaCompatibilityStrategy) > 0 {
-			strategy, err := utils.ParseSchemaAutoUpdateCompatibilityStrategy(nsCfg.SchemaCompatibilityStrategy)
+			strategy, err := utils.ParseSchemaCompatibilityStrategy(nsCfg.SchemaCompatibilityStrategy)
 			if err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
-			} else if err = client.SetSchemaAutoUpdateCompatibilityStrategy(*nsName, strategy); err != nil {
+			} else if err = client.SetSchemaCompatibilityStrategy(*nsName, strategy); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
 			}
 		}
