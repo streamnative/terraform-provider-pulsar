@@ -431,7 +431,8 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaCompatibilityStrategy: %w", err))
 			}
 		} else {
-			namespaceConfig["schema_compatibility_strategy"] = schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
+			namespaceConfig["schema_compatibility_strategy"] =
+				schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
 		}
 
 		subscriptionExpirationTimeMinutes, err := client.GetSubscriptionExpirationTime(*ns)
