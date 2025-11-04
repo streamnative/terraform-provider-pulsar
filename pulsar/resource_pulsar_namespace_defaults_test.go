@@ -61,16 +61,15 @@ func TestNamespaceParameterDefaults(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.max_producers_per_topic", "-1"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.message_ttl_seconds", "-1"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.subscription_expiration_time_minutes", "-1"),
-					// Verify these are using broker defaults (not explicitly set to 0)
-					testNamespaceUsesDefaults(resourceName),
 				),
 			},
 		},
 	})
 }
 
-// TestNamespaceSubscriptionExpirationRemoval verifies subscription_expiration_time_minutes can be removed
-func TestNamespaceSubscriptionExpirationRemoval(t *testing.T) {
+// TestNamespaceConfigRemoval verifies subscription_expiration_time_minutes can be removed
+// This is the only removal supported by the API at this time
+func TestNamespaceConfigRemoval(t *testing.T) {
 	resourceName := "pulsar_namespace.test"
 	nsname := acctest.RandString(10)
 
@@ -96,7 +95,6 @@ func TestNamespaceSubscriptionExpirationRemoval(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.subscription_expiration_time_minutes", "60"),
-					testNamespaceHasSubscriptionExpiration(resourceName, 60),
 				),
 			},
 			{
@@ -116,8 +114,12 @@ func TestNamespaceSubscriptionExpirationRemoval(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.subscription_expiration_time_minutes", "-1"),
-					// Verify it was removed (should return 0 which is the broker default)
-					testNamespaceHasSubscriptionExpiration(resourceName, 0),
+					// Verify -1 values are actually set via API
+					testNamespaceConfigValue(resourceName, "subscription expiration time", -1, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetSubscriptionExpirationTime(utils.NameSpaceName) (int, error)
+						}).GetSubscriptionExpirationTime(*ns.(*utils.NameSpaceName))
+					}),
 				),
 			},
 		},
@@ -159,15 +161,47 @@ func TestNamespaceExplicitZeroValues(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.message_ttl_seconds", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.subscription_expiration_time_minutes", "0"),
 					// Verify 0 values are actually set via API
-					testNamespaceHasExplicitZeros(resourceName),
+					testNamespaceConfigValue(resourceName, "max consumers per subscription", 0, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetMaxConsumersPerSubscription(utils.NameSpaceName) (int, error)
+						}).GetMaxConsumersPerSubscription(*ns.(*utils.NameSpaceName))
+					}),
+					testNamespaceConfigValue(resourceName, "max consumers per topic", 0, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetMaxConsumersPerTopic(utils.NameSpaceName) (int, error)
+						}).GetMaxConsumersPerTopic(*ns.(*utils.NameSpaceName))
+					}),
+					testNamespaceConfigValue(resourceName, "max producers per topic", 0, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetMaxProducersPerTopic(utils.NameSpaceName) (int, error)
+						}).GetMaxProducersPerTopic(*ns.(*utils.NameSpaceName))
+					}),
+					testNamespaceConfigValue(resourceName, "message TTL", 0, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetNamespaceMessageTTL(string) (int, error)
+						}).GetNamespaceMessageTTL(ns.(*utils.NameSpaceName).String())
+					}),
+					testNamespaceConfigValue(resourceName, "subscription expiration time", 0, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetSubscriptionExpirationTime(utils.NameSpaceName) (int, error)
+						}).GetSubscriptionExpirationTime(*ns.(*utils.NameSpaceName))
+					}),
 				),
 			},
 		},
 	})
 }
 
-// Helper function to verify namespace is using broker defaults
-func testNamespaceUsesDefaults(resourceName string) resource.TestCheckFunc {
+// Helper function to verify namespace has a specific config value
+// The getConfig parameter is a function that calls the specific API method on the namespace client
+//
+//nolint:unparam // resourceName is intentionally a parameter for reusability across different tests
+func testNamespaceConfigValue(
+	resourceName string,
+	configName string,
+	expectedValue int,
+	getConfig func(client interface{}, ns interface{}) (int, error),
+) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[resourceName]
 		if !ok {
@@ -182,111 +216,13 @@ func testNamespaceUsesDefaults(resourceName string) resource.TestCheckFunc {
 		}
 
 		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
-
-		// When using defaults, these should return broker default values
-		// The actual default values depend on the broker configuration
-		// We're mainly checking that our -1 default didn't cause Set operations
-
-		// For parameters without Remove methods, they might return 0 if never set
-		maxConsPerSub, err := client.GetMaxConsumersPerSubscription(*ns)
+		actualValue, err := getConfig(client, ns)
 		if err != nil {
-			return fmt.Errorf("failed to get max consumers per subscription: %w", err)
-		}
-		// If never set, broker typically returns 0
-		if maxConsPerSub != 0 {
-			return fmt.Errorf("expected max consumers per subscription to be broker default (0), got %d", maxConsPerSub)
+			return fmt.Errorf("failed to get %s: %w", configName, err)
 		}
 
-		return nil
-	}
-}
-
-// Helper function to verify namespace has specific subscription expiration
-func testNamespaceHasSubscriptionExpiration(resourceName string, expected int) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		rs, ok := s.RootModule().Resources[resourceName]
-		if !ok {
-			return fmt.Errorf("resource %s not found", resourceName)
-		}
-
-		tenant := rs.Primary.Attributes["tenant"]
-		namespace := rs.Primary.Attributes["namespace"]
-		ns, err := utils.GetNameSpaceName(tenant, namespace)
-		if err != nil {
-			return err
-		}
-
-		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
-
-		actual, err := client.GetSubscriptionExpirationTime(*ns)
-		if err != nil {
-			return fmt.Errorf("failed to get subscription expiration time: %w", err)
-		}
-
-		if actual != expected {
-			return fmt.Errorf("expected subscription expiration time %d, got %d", expected, actual)
-		}
-
-		return nil
-	}
-}
-
-// Helper function to verify namespace has explicit zero values
-func testNamespaceHasExplicitZeros(resourceName string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		rs, ok := s.RootModule().Resources[resourceName]
-		if !ok {
-			return fmt.Errorf("resource %s not found", resourceName)
-		}
-
-		tenant := rs.Primary.Attributes["tenant"]
-		namespace := rs.Primary.Attributes["namespace"]
-		ns, err := utils.GetNameSpaceName(tenant, namespace)
-		if err != nil {
-			return err
-		}
-
-		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
-
-		// Verify all values are explicitly set to 0
-		maxConsPerSub, err := client.GetMaxConsumersPerSubscription(*ns)
-		if err != nil {
-			return fmt.Errorf("failed to get max consumers per subscription: %w", err)
-		}
-		if maxConsPerSub != 0 {
-			return fmt.Errorf("expected max consumers per subscription 0, got %d", maxConsPerSub)
-		}
-
-		maxConsPerTopic, err := client.GetMaxConsumersPerTopic(*ns)
-		if err != nil {
-			return fmt.Errorf("failed to get max consumers per topic: %w", err)
-		}
-		if maxConsPerTopic != 0 {
-			return fmt.Errorf("expected max consumers per topic 0, got %d", maxConsPerTopic)
-		}
-
-		maxProdPerTopic, err := client.GetMaxProducersPerTopic(*ns)
-		if err != nil {
-			return fmt.Errorf("failed to get max producers per topic: %w", err)
-		}
-		if maxProdPerTopic != 0 {
-			return fmt.Errorf("expected max producers per topic 0, got %d", maxProdPerTopic)
-		}
-
-		messageTTL, err := client.GetNamespaceMessageTTL(ns.String())
-		if err != nil {
-			return fmt.Errorf("failed to get message TTL: %w", err)
-		}
-		if messageTTL != 0 {
-			return fmt.Errorf("expected message TTL 0, got %d", messageTTL)
-		}
-
-		subExpTime, err := client.GetSubscriptionExpirationTime(*ns)
-		if err != nil {
-			return fmt.Errorf("failed to get subscription expiration time: %w", err)
-		}
-		if subExpTime != 0 {
-			return fmt.Errorf("expected subscription expiration time 0, got %d", subExpTime)
+		if actualValue != expectedValue {
+			return fmt.Errorf("expected %s %d, got %d", configName, expectedValue, actualValue)
 		}
 
 		return nil

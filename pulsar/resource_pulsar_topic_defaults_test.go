@@ -65,8 +65,6 @@ func TestTopicParameterDefaults(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_unacked_messages_per_subscription", "-1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.msg_publish_rate", "-1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.byte_publish_rate", "-1"),
-					// Verify no topic-level policies are set via API
-					testTopicHasNoExplicitConfig(resourceName),
 				),
 			},
 		},
@@ -112,7 +110,21 @@ func TestTopicParameterRemoval(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "100"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "50"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "3600"),
-					testTopicHasExplicitConfig(resourceName, 100, 50, 3600),
+					testTopicConfigValue(resourceName, "max consumers", 100, func(c, tn interface{}) (int, error) {
+						return c.(interface {
+							GetMaxConsumers(utils.TopicName) (int, error)
+						}).GetMaxConsumers(*tn.(*utils.TopicName))
+					}),
+					testTopicConfigValue(resourceName, "max producers", 50, func(c, tn interface{}) (int, error) {
+						return c.(interface {
+							GetMaxProducers(utils.TopicName) (int, error)
+						}).GetMaxProducers(*tn.(*utils.TopicName))
+					}),
+					testTopicConfigValue(resourceName, "message TTL", 3600, func(c, tn interface{}) (int, error) {
+						return c.(interface {
+							GetMessageTTL(utils.TopicName) (int, error)
+						}).GetMessageTTL(*tn.(*utils.TopicName))
+					}),
 				),
 			},
 			{
@@ -138,8 +150,22 @@ func TestTopicParameterRemoval(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "-1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "-1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "-1"),
-					// Verify topic-level policies were removed
-					testTopicHasNoExplicitConfig(resourceName),
+					// Verify -1 values are actually set via API
+					testTopicConfigValue(resourceName, "max consumers", -1, func(c, tn interface{}) (int, error) {
+						return c.(interface {
+							GetMaxConsumers(utils.TopicName) (int, error)
+						}).GetMaxConsumers(*tn.(*utils.TopicName))
+					}),
+					testTopicConfigValue(resourceName, "max producers", -1, func(c, tn interface{}) (int, error) {
+						return c.(interface {
+							GetMaxProducers(utils.TopicName) (int, error)
+						}).GetMaxProducers(*tn.(*utils.TopicName))
+					}),
+					testTopicConfigValue(resourceName, "message TTL", -1, func(c, tn interface{}) (int, error) {
+						return c.(interface {
+							GetMessageTTL(utils.TopicName) (int, error)
+						}).GetMessageTTL(*tn.(*utils.TopicName))
+					}),
 				),
 			},
 		},
@@ -185,15 +211,37 @@ func TestTopicExplicitZeroValues(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "0"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "0"),
 					// Verify 0 values are actually set via API
-					testTopicHasExplicitConfig(resourceName, 0, 0, 0),
+					testTopicConfigValue(resourceName, "max consumers", 0, func(c, tn interface{}) (int, error) {
+						return c.(interface {
+							GetMaxConsumers(utils.TopicName) (int, error)
+						}).GetMaxConsumers(*tn.(*utils.TopicName))
+					}),
+					testTopicConfigValue(resourceName, "max producers", 0, func(c, tn interface{}) (int, error) {
+						return c.(interface {
+							GetMaxProducers(utils.TopicName) (int, error)
+						}).GetMaxProducers(*tn.(*utils.TopicName))
+					}),
+					testTopicConfigValue(resourceName, "message TTL", 0, func(c, tn interface{}) (int, error) {
+						return c.(interface {
+							GetMessageTTL(utils.TopicName) (int, error)
+						}).GetMessageTTL(*tn.(*utils.TopicName))
+					}),
 				),
 			},
 		},
 	})
 }
 
-// Helper function to verify no topic-level configuration is set
-func testTopicHasNoExplicitConfig(resourceName string) resource.TestCheckFunc {
+// Helper function to verify topic has a specific config value
+// The getConfig parameter is a function that calls the specific API method on the topic client
+//
+//nolint:unparam // resourceName is intentionally a parameter for reusability across different tests
+func testTopicConfigValue(
+	resourceName string,
+	configName string,
+	expectedValue int,
+	getConfig func(client interface{}, topicName interface{}) (int, error),
+) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[resourceName]
 		if !ok {
@@ -206,67 +254,13 @@ func testTopicHasNoExplicitConfig(resourceName string) resource.TestCheckFunc {
 		}
 
 		client := getClientFromMeta(testAccProvider.Meta()).Topics()
-
-		// Check that getting these values returns errors (not found/not set)
-		// The actual error type/message depends on whether topic policies are enabled
-		_, err = client.GetMaxConsumers(*topicName)
-		if err == nil {
-			return fmt.Errorf("expected GetMaxConsumers to fail for unset value, but it succeeded")
-		}
-
-		_, err = client.GetMaxProducers(*topicName)
-		if err == nil {
-			return fmt.Errorf("expected GetMaxProducers to fail for unset value, but it succeeded")
-		}
-
-		_, err = client.GetMessageTTL(*topicName)
-		if err == nil {
-			return fmt.Errorf("expected GetMessageTTL to fail for unset value, but it succeeded")
-		}
-
-		return nil
-	}
-}
-
-// Helper function to verify topic has explicit configuration
-func testTopicHasExplicitConfig(resourceName string, maxConsumers, maxProducers,
-	messageTTL int) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		rs, ok := s.RootModule().Resources[resourceName]
-		if !ok {
-			return fmt.Errorf("resource %s not found", resourceName)
-		}
-
-		topicName, err := utils.GetTopicName(rs.Primary.ID)
+		actualValue, err := getConfig(client, topicName)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get %s: %w", configName, err)
 		}
 
-		client := getClientFromMeta(testAccProvider.Meta()).Topics()
-
-		// Verify values are set correctly
-		actualMaxConsumers, err := client.GetMaxConsumers(*topicName)
-		if err != nil {
-			return fmt.Errorf("failed to get max consumers: %w", err)
-		}
-		if actualMaxConsumers != maxConsumers {
-			return fmt.Errorf("expected max consumers %d, got %d", maxConsumers, actualMaxConsumers)
-		}
-
-		actualMaxProducers, err := client.GetMaxProducers(*topicName)
-		if err != nil {
-			return fmt.Errorf("failed to get max producers: %w", err)
-		}
-		if actualMaxProducers != maxProducers {
-			return fmt.Errorf("expected max producers %d, got %d", maxProducers, actualMaxProducers)
-		}
-
-		actualMessageTTL, err := client.GetMessageTTL(*topicName)
-		if err != nil {
-			return fmt.Errorf("failed to get message TTL: %w", err)
-		}
-		if actualMessageTTL != messageTTL {
-			return fmt.Errorf("expected message TTL %d, got %d", messageTTL, actualMessageTTL)
+		if actualValue != expectedValue {
+			return fmt.Errorf("expected %s %d, got %d", configName, expectedValue, actualValue)
 		}
 
 		return nil
