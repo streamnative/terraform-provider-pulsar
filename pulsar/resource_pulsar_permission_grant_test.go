@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
@@ -35,7 +36,8 @@ func TestPermissionGrant(t *testing.T) {
 	nsName := acctest.RandString(10)
 	roleName := acctest.RandString(10)
 
-	config := testPulsarPermissionGrant(testWebServiceURL, cName, tName, nsName, roleName, `["produce", "consume"]`)
+	config := testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName,
+		`["produce", "consume"]`)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -63,7 +65,7 @@ func TestPermissionGrant(t *testing.T) {
 	})
 }
 
-func TestPermissionGrantUpdate(t *testing.T) {
+func TestPermissionGrantNamespaceUpdate(t *testing.T) {
 	resourceName := "pulsar_permission_grant.test"
 	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
@@ -77,7 +79,8 @@ func TestPermissionGrantUpdate(t *testing.T) {
 		CheckDestroy:      testPulsarPermissionGrantDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarPermissionGrant(testWebServiceURL, cName, tName, nsName, roleName, `["produce", "consume"]`),
+				Config: testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName,
+					`["produce", "consume"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarPermissionGrantExists(),
 					resource.TestCheckResourceAttr(resourceName, "actions.#", "2"),
@@ -86,7 +89,7 @@ func TestPermissionGrantUpdate(t *testing.T) {
 				),
 			},
 			{
-				Config: testPulsarPermissionGrant(testWebServiceURL, cName, tName, nsName, roleName,
+				Config: testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName,
 					`["produce", "consume", "functions"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarPermissionGrantExists(),
@@ -97,7 +100,7 @@ func TestPermissionGrantUpdate(t *testing.T) {
 				),
 			},
 			{
-				Config: testPulsarPermissionGrant(testWebServiceURL, cName, tName, nsName, roleName,
+				Config: testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName,
 					`["produce"]`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarPermissionGrantExists(),
@@ -109,14 +112,15 @@ func TestPermissionGrantUpdate(t *testing.T) {
 	})
 }
 
-func TestPermissionGrantExternallyRemoved(t *testing.T) {
+func TestPermissionGrantNamespaceExternallyRemoved(t *testing.T) {
 	resourceName := "pulsar_permission_grant.test"
 	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
 	nsName := acctest.RandString(10)
 	roleName := acctest.RandString(10)
 
-	config := testPulsarPermissionGrant(testWebServiceURL, cName, tName, nsName, roleName, `["produce", "consume"]`)
+	config := testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName,
+		`["produce", "consume"]`)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -165,27 +169,44 @@ func testPulsarPermissionGrantExists() resource.TestCheckFunc {
 			return fmt.Errorf("NOT_FOUND: %s", resourceName)
 		}
 
-		namespace := rs.Primary.Attributes["namespace"]
 		role := rs.Primary.Attributes["role"]
-
-		if namespace == "" || role == "" {
-			return fmt.Errorf("namespace or role is empty")
+		if role == "" {
+			return fmt.Errorf("role is empty")
 		}
 
-		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
+		client := getClientFromMeta(testAccProvider.Meta())
 
-		nsName, err := utils.GetNamespaceName(namespace)
-		if err != nil {
-			return fmt.Errorf("ERROR_PARSING_NAMESPACE: %w", err)
-		}
+		// Check if it's a namespace or topic permission
+		if namespace := rs.Primary.Attributes["namespace"]; namespace != "" {
+			nsName, err := utils.GetNamespaceName(namespace)
+			if err != nil {
+				return fmt.Errorf("ERROR_PARSING_NAMESPACE: %w", err)
+			}
 
-		permissions, err := client.GetNamespacePermissions(*nsName)
-		if err != nil {
-			return fmt.Errorf("ERROR_READ_NAMESPACE_PERMISSIONS: %w", err)
-		}
+			permissions, err := client.Namespaces().GetNamespacePermissions(*nsName)
+			if err != nil {
+				return fmt.Errorf("ERROR_READ_NAMESPACE_PERMISSIONS: %w", err)
+			}
 
-		if _, exists := permissions[role]; !exists {
-			return fmt.Errorf("permission grant for role %s on namespace %s does not exist", role, namespace)
+			if _, exists := permissions[role]; !exists {
+				return fmt.Errorf("permission grant for role %s on namespace %s does not exist", role, namespace)
+			}
+		} else if topic := rs.Primary.Attributes["topic"]; topic != "" {
+			topicName, err := utils.GetTopicName(topic)
+			if err != nil {
+				return fmt.Errorf("ERROR_PARSING_TOPIC: %w", err)
+			}
+
+			permissions, err := client.Topics().GetPermissions(*topicName)
+			if err != nil {
+				return fmt.Errorf("ERROR_READ_TOPIC_PERMISSIONS: %w", err)
+			}
+
+			if _, exists := permissions[role]; !exists {
+				return fmt.Errorf("permission grant for role %s on topic %s does not exist", role, topic)
+			}
+		} else {
+			return fmt.Errorf("neither namespace nor topic is set")
 		}
 
 		return nil
@@ -198,30 +219,48 @@ func testPulsarPermissionGrantDestroy(s *terraform.State) error {
 			continue
 		}
 
-		namespace := rs.Primary.Attributes["namespace"]
 		role := rs.Primary.Attributes["role"]
+		client := getClientFromMeta(testAccProvider.Meta())
 
-		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
+		// Check namespace permissions
+		if namespace := rs.Primary.Attributes["namespace"]; namespace != "" {
+			nsName, err := utils.GetNamespaceName(namespace)
+			if err != nil {
+				continue
+			}
 
-		nsName, err := utils.GetNamespaceName(namespace)
-		if err != nil {
-			continue
+			permissions, err := client.Namespaces().GetNamespacePermissions(*nsName)
+			if err != nil {
+				continue
+			}
+
+			if _, exists := permissions[role]; exists {
+				return fmt.Errorf("permission grant still exists for role %s on namespace %s", role, namespace)
+			}
 		}
 
-		permissions, err := client.GetNamespacePermissions(*nsName)
-		if err != nil {
-			continue
-		}
+		// Check topic permissions
+		if topic := rs.Primary.Attributes["topic"]; topic != "" {
+			topicName, err := utils.GetTopicName(topic)
+			if err != nil {
+				continue
+			}
 
-		if _, exists := permissions[role]; exists {
-			return fmt.Errorf("permission grant still exists for role %s on namespace %s", role, namespace)
+			permissions, err := client.Topics().GetPermissions(*topicName)
+			if err != nil {
+				continue
+			}
+
+			if _, exists := permissions[role]; exists {
+				return fmt.Errorf("permission grant still exists for role %s on topic %s", role, topic)
+			}
 		}
 	}
 
 	return nil
 }
 
-func testPulsarPermissionGrant(wsURL, cluster, tenant, namespace, role, actions string) string {
+func testPulsarPermissionGrantNamespace(wsURL, cluster, tenant, namespace, role, actions string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
@@ -253,4 +292,225 @@ resource "pulsar_permission_grant" "test" {
   actions   = %s
 }
 `, wsURL, cluster, tenant, namespace, role, actions)
+}
+
+func TestPermissionGrantTopic(t *testing.T) {
+	resourceName := "pulsar_permission_grant.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+
+	config := testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+		`["produce", "consume"]`)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarPermissionGrantExists(),
+					resource.TestCheckResourceAttr(resourceName, "topic",
+						fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName)),
+					resource.TestCheckResourceAttr(resourceName, "role", roleName),
+					resource.TestCheckResourceAttr(resourceName, "actions.#", "2"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "produce"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "consume"),
+				),
+			},
+			{
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestPermissionGrantTopicUpdate(t *testing.T) {
+	resourceName := "pulsar_permission_grant.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+					`["produce"]`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarPermissionGrantExists(),
+					resource.TestCheckResourceAttr(resourceName, "actions.#", "1"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "produce"),
+				),
+			},
+			{
+				Config: testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+					`["produce", "consume", "functions"]`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarPermissionGrantExists(),
+					resource.TestCheckResourceAttr(resourceName, "actions.#", "3"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "produce"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "consume"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "functions"),
+				),
+			},
+			{
+				Config: testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+					`["consume"]`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarPermissionGrantExists(),
+					resource.TestCheckResourceAttr(resourceName, "actions.#", "1"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "consume"),
+				),
+			},
+		},
+	})
+}
+
+func testPulsarPermissionGrantTopic(wsURL, cluster, tenant, namespace, topic, role, actions string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+    web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+    cluster = "%s"
+    
+    cluster_data {
+        web_service_url    = "http://localhost:8080"
+        broker_service_url = "pulsar://localhost:6050"
+        peer_clusters      = ["standalone"]
+    }
+}
+
+resource "pulsar_tenant" "test_tenant" {
+    tenant           = "%s"
+    allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test_namespace" {
+    tenant    = pulsar_tenant.test_tenant.tenant
+    namespace = "%s"
+}
+
+resource "pulsar_topic" "test_topic" {
+    tenant     = pulsar_tenant.test_tenant.tenant
+    namespace  = pulsar_namespace.test_namespace.namespace
+    topic_type = "persistent"
+    topic_name = "%s"
+    partitions = 0
+}
+
+resource "pulsar_permission_grant" "test" {
+    topic   = pulsar_topic.test_topic.id
+    role    = "%s"
+    actions = %s
+}
+`, wsURL, cluster, tenant, namespace, topic, role, actions)
+}
+
+func TestPermissionGrantBothNamespaceAndTopic(t *testing.T) {
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+
+	config := testPulsarPermissionGrantBothNamespaceAndTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      config,
+				ExpectError: regexp.MustCompile("only one of `namespace,topic` can be specified"),
+			},
+		},
+	})
+}
+
+func testPulsarPermissionGrantBothNamespaceAndTopic(wsURL, cluster, tenant, namespace, topic, role string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+    web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+    cluster = "%s"
+
+    cluster_data {
+        web_service_url    = "http://localhost:8080"
+        broker_service_url = "pulsar://localhost:6050"
+        peer_clusters      = ["standalone"]
+    }
+}
+
+resource "pulsar_tenant" "test_tenant" {
+    tenant           = "%s"
+    allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test_namespace" {
+    tenant    = pulsar_tenant.test_tenant.tenant
+    namespace = "%s"
+}
+
+resource "pulsar_topic" "test_topic" {
+    tenant     = pulsar_tenant.test_tenant.tenant
+    namespace  = pulsar_namespace.test_namespace.namespace
+    topic_type = "persistent"
+    topic_name = "%s"
+    partitions = 0
+}
+
+resource "pulsar_permission_grant" "test" {
+    namespace = "${pulsar_tenant.test_tenant.tenant}/${pulsar_namespace.test_namespace.namespace}"
+    topic     = pulsar_topic.test_topic.id
+    role      = "%s"
+    actions   = ["produce", "consume"]
+}
+`, wsURL, cluster, tenant, namespace, topic, role)
+}
+
+func TestPermissionGrantNeitherNamespaceNorTopic(t *testing.T) {
+	roleName := acctest.RandString(10)
+
+	config := testPulsarPermissionGrantNeitherNamespaceNorTopic(testWebServiceURL, roleName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      config,
+				ExpectError: regexp.MustCompile("one of `namespace,topic` must be specified"),
+			},
+		},
+	})
+}
+
+func testPulsarPermissionGrantNeitherNamespaceNorTopic(wsURL, role string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+    web_service_url = "%s"
+}
+
+resource "pulsar_permission_grant" "test" {
+    role    = "%s"
+    actions = ["produce", "consume"]
+}
+`, wsURL, role)
 }

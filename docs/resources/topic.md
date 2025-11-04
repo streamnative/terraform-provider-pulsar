@@ -130,24 +130,8 @@ Required:
 
 Required:
 
-- `delete_mode` (String)
+- `delete_mode` (String) `delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`
 - `enable_delete_while_inactive` (Boolean)
 - `max_inactive_duration` (String)
-- `delete_mode` (String) `delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`
 
-## Example Usage
 
-```hcl
-resource "pulsar_topic" "my_topic" {
-  tenant     = "my-tenant"
-  namespace  = "my-namespace"
-  topic_name = "my-topic"
-  topic_type = "persistent"
-  partitions = 1
-
-  topic_properties = {
-    "owner" = "data-engineering"
-    "env"   = "production"
-  }
-}
-```
