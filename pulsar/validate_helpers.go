@@ -68,3 +68,19 @@ func validiateDeleteMode(val interface{}, key string) (warns []string, errs []er
 	}
 	return
 }
+
+func validateSchemaCompatibilityStrategy(val interface{}, key string) (warns []string, errs []error) {
+	v := strings.Trim(strings.TrimSpace(val.(string)), "\"")
+	if _, err := utils.ParseSchemaCompatibilityStrategy(v); err != nil {
+		errs = append(errs, fmt.Errorf("%q must be a valid schema compatibility strategy (got: %s): %w", key, v, err))
+	}
+	return
+}
+
+func validateSchemaAutoUpdateCompatibilityStrategy(val interface{}, key string) (warns []string, errs []error) {
+	v := strings.Trim(strings.TrimSpace(val.(string)), "\"")
+	if _, err := utils.ParseSchemaAutoUpdateCompatibilityStrategy(v); err != nil {
+		errs = append(errs, fmt.Errorf("%q must be a valid schema auto update compatibility strategy (got: %s): %w", key, v, err))
+	}
+	return
+}
