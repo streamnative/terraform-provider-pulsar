@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/go-multierror"
@@ -199,14 +200,14 @@ func resourcePulsarNamespace() *schema.Resource {
 						"schema_compatibility_strategy": {
 							Type:         schema.TypeString,
 							Optional:     true,
-							Default:      utils.SchemaCompatibilityStrategyFull.String(),
-							ValidateFunc: validateSchemaCompatibilityStrategy,
+							Default:      "Full",
+							ValidateFunc: validateNotBlank,
 						},
 						"schema_auto_update_compatibility_strategy": {
 							Type:         schema.TypeString,
 							Optional:     true,
-							Default:      utils.Full.String(),
-							ValidateFunc: validateSchemaAutoUpdateCompatibilityStrategy,
+							Default:      "Full",
+							ValidateFunc: validateNotBlank,
 						},
 						"schema_validation_enforce": {
 							Type:     schema.TypeBool,
@@ -430,7 +431,8 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaCompatibilityStrategy: %w", err))
 			}
 		} else {
-			namespaceConfig["schema_compatibility_strategy"] = schemaCompatibilityStrategy.String()
+			namespaceConfig["schema_compatibility_strategy"] =
+				schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
 		}
 
 		subscriptionExpirationTimeMinutes, err := client.GetSubscriptionExpirationTime(*ns)
@@ -625,7 +627,7 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 
 		if len(nsCfg.SchemaCompatibilityStrategy) > 0 {
-			strategy, err := utils.ParseSchemaCompatibilityStrategy(nsCfg.SchemaCompatibilityStrategy)
+			strategy, err := parseSchemaCompatibilityStrategy(nsCfg.SchemaCompatibilityStrategy)
 			if err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetSchemaCompatibilityStrategy: %w", err))
 			} else if err = client.SetSchemaCompatibilityStrategy(*nsName, strategy); err != nil {
@@ -887,6 +889,65 @@ func unmarshalNamespaceConfigList(v []interface{}) *types.NamespaceConfig {
 	}
 
 	return &nsConfig
+}
+
+func parseSchemaCompatibilityStrategy(strategy string) (utils.SchemaCompatibilityStrategy, error) {
+	if parsed, err := utils.ParseSchemaCompatibilityStrategy(strategy); err == nil {
+		return parsed, nil
+	}
+
+	normalized := camelToUpperSnake(strategy)
+	if normalized == strategy {
+		return "", fmt.Errorf("invalid schema compatibility strategy %s", strategy)
+	}
+
+	return utils.ParseSchemaCompatibilityStrategy(normalized)
+}
+
+func schemaCompatibilityStrategyToTerraformValue(strategy utils.SchemaCompatibilityStrategy) string {
+	if strategy == "" {
+		return ""
+	}
+
+	return screamingSnakeToCamel(strategy.String())
+}
+
+func camelToUpperSnake(s string) string {
+	if s == "" {
+		return s
+	}
+
+	var b strings.Builder
+	for i, r := range s {
+		if unicode.IsUpper(r) && i > 0 {
+			b.WriteRune('_')
+		}
+		b.WriteRune(unicode.ToUpper(r))
+	}
+
+	return b.String()
+}
+
+func screamingSnakeToCamel(s string) string {
+	if s == "" {
+		return s
+	}
+
+	parts := strings.Split(strings.ToLower(s), "_")
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+
+		switch {
+		case len(part) == 1:
+			parts[i] = strings.ToUpper(part)
+		default:
+			parts[i] = strings.ToUpper(part[:1]) + part[1:]
+		}
+	}
+
+	return strings.Join(parts, "")
 }
 
 func unmarshalPersistencePolicies(v *schema.Set) *utils.PersistencePolicies {
