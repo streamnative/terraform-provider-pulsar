@@ -3,7 +3,7 @@
 page_title: "pulsar_namespace Resource - terraform-provider-pulsar"
 subcategory: ""
 description: |-
-  
+
 ---
 
 # pulsar_namespace (Resource)
@@ -71,6 +71,7 @@ Optional:
 - `offload_threshold_size_in_mb` (Number)
 - `replication_clusters` (Set of String)
 - `schema_compatibility_strategy` (String)
+- `schema_auto_update_compatibility_strategy` (String)
 - `schema_validation_enforce` (Boolean)
 - `subscription_expiration_time_minutes` (Number)
 
@@ -125,5 +126,3 @@ Optional:
 
 - `partitions` (Number)
 - `type` (String)
-
-

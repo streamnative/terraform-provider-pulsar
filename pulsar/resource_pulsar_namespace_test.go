@@ -131,6 +131,16 @@ func TestNamespaceWithUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "subscription_dispatch_rate.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"namespace_config.0.schema_auto_update_compatibility_strategy",
+						"ForwardTransitive",
+					),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"namespace_config.0.schema_compatibility_strategy",
+						"BackwardTransitive",
+					),
 					resource.TestCheckResourceAttr(resourceName, "enable_deduplication", "true"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "permission_grant.0.role", "some-role-1"),
@@ -187,6 +197,16 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"namespace_config.0.schema_auto_update_compatibility_strategy",
+						"Full",
+					),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"namespace_config.0.schema_compatibility_strategy",
+						"Full",
+					),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
 					resource.TestCheckNoResourceAttr(resourceName, "permission_grant.#"),
 				),
@@ -624,15 +644,17 @@ resource "pulsar_namespace" "test" {
   enable_deduplication = true
 
   namespace_config {
-    anti_affinity                  			= "anti-aff"
-    is_allow_auto_update_schema    			= false
-	max_consumers_per_subscription 			= "50"
-    max_consumers_per_topic        			= "50"
-    max_producers_per_topic        			= "50"
-    message_ttl_seconds            			= "86400"
-    offload_threshold_size_in_mb   			= "100"
-	replication_clusters           		 	= ["standalone"]
-	subscription_expiration_time_minutes 	= 90
+    anti_affinity = "anti-aff"
+    is_allow_auto_update_schema = false
+    max_consumers_per_subscription = "50"
+    max_consumers_per_topic = "50"
+    max_producers_per_topic = "50"
+    message_ttl_seconds = "86400"
+    offload_threshold_size_in_mb = "100"
+    replication_clusters = ["standalone"]
+    schema_auto_update_compatibility_strategy = "ForwardTransitive"
+    schema_compatibility_strategy = "BackwardTransitive"
+    subscription_expiration_time_minutes = 90
   }
 
   dispatch_rate {

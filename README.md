@@ -281,10 +281,23 @@ namespace_config nested schema
 | `offload_threshold_size_in_mb`         | Set topic offload threshold size in MB           | No       |
 | `replication_clusters`                 | List of replication clusters for the namespace   | No       |
 | `schema_compatibility_strategy`        | Set schema compatibility strategy                | No       |
+| `schema_auto_update_compatibility_strategy` | Set schema auto-update compatibility strategy    | No       |
 | `schema_validation_enforce`            | Enable or disable schema validation              | No       |
 | `subscription_expiration_time_minutes` | Sets the subscription expiration time in minutes | No       |
 
 The `schema_compatibility_strategy` can take the following values:
+
+- UNDEFINED
+- ALWAYS_INCOMPATIBLE
+- ALWAYS_COMPATIBLE
+- BACKWARD
+- FORWARD
+- FULL
+- BACKWARD_TRANSITIVE
+- FORWARD_TRANSITIVE
+- FULL_TRANSITIVE
+
+The `schema_auto_update_compatibility_strategy` can take the following values:
 
 - AutoUpdateDisabled
 - Backward
@@ -354,7 +367,7 @@ resource "pulsar_topic" "sample-topic-2" {
     limit_bytes  = "10000000000"
     limit_seconds = "-1"
     policy = "consumer_backlog_eviction"
-    type = "destination_storage" 
+    type = "destination_storage"
   }
 
    persistence_policies {
@@ -725,4 +738,3 @@ This library is licensed under the terms of the [Apache License 2.0](LICENSE) an
 # About StreamNative
 
 Founded in 2019 by the original creators of Apache Pulsar, [StreamNative](https://streamnative.io) is one of the leading contributors to the open-source Apache Pulsar project. We have helped engineering teams worldwide make the move to Pulsar with [StreamNative Cloud](https://streamnative.io/product), a fully managed service to help teams accelerate time-to-production.
-
