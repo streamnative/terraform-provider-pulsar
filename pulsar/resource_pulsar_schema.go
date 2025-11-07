@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -205,7 +204,8 @@ func resourcePulsarSchemaRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	// Set computed fields
 	_ = d.Set("version", int(schemaWithVersion.Version))
-	_ = d.Set("timestamp", time.Now().Format(time.RFC3339))
+	// TODO: timestamp support in pulsar-client-go: https://github.com/apache/pulsar-client-go/pull/1436
+	// _ = d.Set("timestamp", time.Now().Format(time.RFC3339))
 
 	return nil
 }

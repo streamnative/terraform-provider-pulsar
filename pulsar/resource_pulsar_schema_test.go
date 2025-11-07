@@ -48,7 +48,6 @@ func TestPulsarSchema(t *testing.T) {
 					resource.TestCheckResourceAttr("pulsar_schema.test", "type", "STRING"),
 					resource.TestCheckResourceAttr("pulsar_schema.test", "schema_data", ""),
 					resource.TestCheckResourceAttrSet("pulsar_schema.test", "version"),
-					resource.TestCheckResourceAttrSet("pulsar_schema.test", "timestamp"),
 				),
 			},
 		},
@@ -73,7 +72,6 @@ func TestPulsarSchemaAvro(t *testing.T) {
 					resource.TestCheckResourceAttrSet("pulsar_schema.test_avro", "schema_data"),
 					resource.TestCheckResourceAttr("pulsar_schema.test_avro", "properties.author", "terraform-test"),
 					resource.TestCheckResourceAttrSet("pulsar_schema.test_avro", "version"),
-					resource.TestCheckResourceAttrSet("pulsar_schema.test_avro", "timestamp"),
 				),
 			},
 		},
@@ -97,7 +95,6 @@ func TestPulsarSchemaJSON(t *testing.T) {
 					resource.TestCheckResourceAttr("pulsar_schema.test_json", "type", "JSON"),
 					resource.TestCheckResourceAttrSet("pulsar_schema.test_json", "schema_data"),
 					resource.TestCheckResourceAttrSet("pulsar_schema.test_json", "version"),
-					resource.TestCheckResourceAttrSet("pulsar_schema.test_json", "timestamp"),
 				),
 			},
 		},
@@ -242,12 +239,12 @@ resource "pulsar_schema" "test_avro" {
         "type": "string"
       },
       {
-        "name": "age", 
+        "name": "age",
         "type": "int"
       }
     ]
   })
-  
+
   properties = {
     "author" = "terraform-test"
   }
@@ -273,7 +270,7 @@ resource "pulsar_schema" "test_avro" {
         "type": "string"
       },
       {
-        "name": "age", 
+        "name": "age",
         "type": "int"
       },
       {
@@ -283,7 +280,7 @@ resource "pulsar_schema" "test_avro" {
       }
     ]
   })
-  
+
   properties = {
     "author"  = "terraform-test-updated"
     "version" = "2.0"
