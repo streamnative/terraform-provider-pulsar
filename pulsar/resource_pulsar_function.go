@@ -74,11 +74,39 @@ const (
 	resourceFunctionUserConfig              = "user_config"
 	resourceFunctionSinkConfigKey           = "sink_config"
 	resourceFunctionSourceConfigKey         = "source_config"
+	resourceFunctionSinkConfigTypeKey       = "sink_type"
+	resourceFunctionSourceConfigTypeKey     = "source_type"
+	resourceFunctionRuntimeConfigConfigsKey = "configs"
 )
 
 const (
-	runtimeOptionSinkConfigKey   = "sinkConfig"
-	runtimeOptionSourceConfigKey = "sourceConfig"
+	runtimeOptionSinkConfigKey         = "sinkConfig"
+	runtimeOptionSourceConfigKey       = "sourceConfig"
+	runtimeOptionSinkConfigTypeField   = "sinkType"
+	runtimeOptionSourceConfigTypeField = "sourceType"
+	runtimeOptionConfigsKey            = "configs"
+)
+
+type runtimeConfigDefinition struct {
+	schemaKey      string
+	typeSchemaKey  string
+	runtimeKey     string
+	runtimeTypeKey string
+}
+
+var (
+	sinkRuntimeConfigDefinition = runtimeConfigDefinition{
+		schemaKey:      resourceFunctionSinkConfigKey,
+		typeSchemaKey:  resourceFunctionSinkConfigTypeKey,
+		runtimeKey:     runtimeOptionSinkConfigKey,
+		runtimeTypeKey: runtimeOptionSinkConfigTypeField,
+	}
+	sourceRuntimeConfigDefinition = runtimeConfigDefinition{
+		schemaKey:      resourceFunctionSourceConfigKey,
+		typeSchemaKey:  resourceFunctionSourceConfigTypeKey,
+		runtimeKey:     runtimeOptionSourceConfigKey,
+		runtimeTypeKey: runtimeOptionSourceConfigTypeField,
+	}
 )
 
 var resourceFunctionDescriptions = make(map[string]string)
@@ -386,18 +414,52 @@ func resourcePulsarFunction() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			resourceFunctionSinkConfigKey: {
-				Type:        schema.TypeMap,
+				Type:        schema.TypeList,
 				Optional:    true,
 				Computed:    true,
+				MaxItems:    1,
 				Description: resourceFunctionDescriptions[resourceFunctionSinkConfigKey],
-				Elem:        &schema.Schema{Type: schema.TypeString},
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						resourceFunctionSinkConfigTypeKey: {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Computed:    true,
+							Description: "Sink implementation identifier.",
+						},
+						resourceFunctionRuntimeConfigConfigsKey: {
+							Type:        schema.TypeMap,
+							Optional:    true,
+							Computed:    true,
+							Description: "Sink-specific key/value options.",
+							Elem:        &schema.Schema{Type: schema.TypeString},
+						},
+					},
+				},
 			},
 			resourceFunctionSourceConfigKey: {
-				Type:        schema.TypeMap,
+				Type:        schema.TypeList,
 				Optional:    true,
 				Computed:    true,
+				MaxItems:    1,
 				Description: resourceFunctionDescriptions[resourceFunctionSourceConfigKey],
-				Elem:        &schema.Schema{Type: schema.TypeString},
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						resourceFunctionSourceConfigTypeKey: {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Computed:    true,
+							Description: "Source implementation identifier.",
+						},
+						resourceFunctionRuntimeConfigConfigsKey: {
+							Type:        schema.TypeMap,
+							Optional:    true,
+							Computed:    true,
+							Description: "Source-specific key/value options.",
+							Elem:        &schema.Schema{Type: schema.TypeString},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -921,7 +983,11 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 		}
 
 		if sinkConfigPresent {
-			if err = d.Set(resourceFunctionSinkConfigKey, sinkConfig); err != nil {
+			sinkState, err := flattenRuntimeConfigForState(sinkConfig, sinkRuntimeConfigDefinition)
+			if err != nil {
+				return err
+			}
+			if err = d.Set(resourceFunctionSinkConfigKey, sinkState); err != nil {
 				return err
 			}
 		} else {
@@ -931,7 +997,11 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 		}
 
 		if sourceConfigPresent {
-			if err = d.Set(resourceFunctionSourceConfigKey, sourceConfig); err != nil {
+			sourceState, err := flattenRuntimeConfigForState(sourceConfig, sourceRuntimeConfigDefinition)
+			if err != nil {
+				return err
+			}
+			if err = d.Set(resourceFunctionSourceConfigKey, sourceState); err != nil {
 				return err
 			}
 		} else {
@@ -1009,8 +1079,14 @@ func buildFunctionCustomRuntimeOptions(d *schema.ResourceData) (string, error) {
 		base = inter.(string)
 	}
 
-	sinkConfig, sinkConfigSet := expandFunctionRuntimeConfig(d, resourceFunctionSinkConfigKey)
-	sourceConfig, sourceConfigSet := expandFunctionRuntimeConfig(d, resourceFunctionSourceConfigKey)
+	sinkConfig, sinkConfigSet, err := expandFunctionRuntimeConfig(d, sinkRuntimeConfigDefinition)
+	if err != nil {
+		return "", err
+	}
+	sourceConfig, sourceConfigSet, err := expandFunctionRuntimeConfig(d, sourceRuntimeConfigDefinition)
+	if err != nil {
+		return "", err
+	}
 
 	if !sinkConfigSet && !sourceConfigSet {
 		return base, nil
@@ -1034,23 +1110,58 @@ func buildFunctionCustomRuntimeOptions(d *schema.ResourceData) (string, error) {
 	return mergeFunctionCustomRuntimeOptions(base, updates...)
 }
 
-func expandFunctionRuntimeConfig(d *schema.ResourceData, schemaKey string) (map[string]interface{}, bool) {
-	inter, ok := d.GetOkExists(schemaKey)
+func expandFunctionRuntimeConfig(d *schema.ResourceData, def runtimeConfigDefinition) (map[string]interface{}, bool, error) {
+	inter, ok := d.GetOkExists(def.schemaKey)
 	if !ok {
-		return nil, false
+		return nil, false, nil
 	}
 
 	if inter == nil {
-		return map[string]interface{}{}, true
+		return map[string]interface{}{}, true, nil
 	}
 
-	rawMap := inter.(map[string]interface{})
-	config := make(map[string]interface{}, len(rawMap))
-	for key, value := range rawMap {
-		config[key] = value
+	list, ok := inter.([]interface{})
+	if !ok {
+		return nil, false, fmt.Errorf("%s must be a list", def.schemaKey)
 	}
 
-	return config, true
+	if len(list) == 0 || list[0] == nil {
+		return map[string]interface{}{}, true, nil
+	}
+
+	item, ok := list[0].(map[string]interface{})
+	if !ok {
+		return nil, false, fmt.Errorf("%s must contain an object", def.schemaKey)
+	}
+
+	runtimeConfig := make(map[string]interface{})
+	if typeValue, ok := item[def.typeSchemaKey].(string); ok && typeValue != "" {
+		runtimeConfig[def.runtimeTypeKey] = typeValue
+	}
+
+	if configsRaw, ok := item[resourceFunctionRuntimeConfigConfigsKey].(map[string]interface{}); ok && len(configsRaw) > 0 {
+		runtimeConfig[runtimeOptionConfigsKey] = normalizeRuntimeConfigSchemaMap(configsRaw)
+	}
+
+	return runtimeConfig, true, nil
+}
+
+func normalizeRuntimeConfigSchemaMap(input map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(input))
+	for key, value := range input {
+		switch v := value.(type) {
+		case string:
+			normalized[key] = v
+		case fmt.Stringer:
+			normalized[key] = v.String()
+		case nil:
+			normalized[key] = ""
+		default:
+			normalized[key] = fmt.Sprintf("%v", v)
+		}
+	}
+
+	return normalized
 }
 
 type runtimeConfigUpdate struct {
@@ -1101,12 +1212,12 @@ func splitFunctionCustomRuntimeOptions(raw string) (string, map[string]interface
 		return "", nil, false, nil, false, errors.Wrap(err, "cannot unmarshal custom_runtime_options from Pulsar")
 	}
 
-	sinkConfig, sinkPresent, err := extractRuntimeConfig(runtimeOptions, runtimeOptionSinkConfigKey)
+	sinkConfig, sinkPresent, err := extractRuntimeConfig(runtimeOptions, sinkRuntimeConfigDefinition)
 	if err != nil {
 		return "", nil, false, nil, false, err
 	}
 
-	sourceConfig, sourcePresent, err := extractRuntimeConfig(runtimeOptions, runtimeOptionSourceConfigKey)
+	sourceConfig, sourcePresent, err := extractRuntimeConfig(runtimeOptions, sourceRuntimeConfigDefinition)
 	if err != nil {
 		return "", nil, false, nil, false, err
 	}
@@ -1123,13 +1234,13 @@ func splitFunctionCustomRuntimeOptions(raw string) (string, map[string]interface
 	return sanitized, sinkConfig, sinkPresent, sourceConfig, sourcePresent, nil
 }
 
-func extractRuntimeConfig(runtimeOptions map[string]interface{}, runtimeKey string) (map[string]interface{}, bool, error) {
-	raw, ok := runtimeOptions[runtimeKey]
+func extractRuntimeConfig(runtimeOptions map[string]interface{}, def runtimeConfigDefinition) (map[string]interface{}, bool, error) {
+	raw, ok := runtimeOptions[def.runtimeKey]
 	if !ok {
 		return nil, false, nil
 	}
 
-	delete(runtimeOptions, runtimeKey)
+	delete(runtimeOptions, def.runtimeKey)
 	configState := map[string]interface{}{}
 	if raw == nil {
 		return configState, true, nil
@@ -1137,18 +1248,31 @@ func extractRuntimeConfig(runtimeOptions map[string]interface{}, runtimeKey stri
 
 	configMap, ok := raw.(map[string]interface{})
 	if !ok {
-		return nil, false, fmt.Errorf("%s in custom_runtime_options must be a JSON object", runtimeKey)
+		return nil, false, fmt.Errorf("%s in custom_runtime_options must be a JSON object", def.runtimeKey)
 	}
 
-	flattened, err := flattenFunctionRuntimeConfig(configMap)
-	if err != nil {
-		return nil, false, err
+	if typeVal, ok := configMap[def.runtimeTypeKey]; ok {
+		if typeStr, ok := typeVal.(string); ok && typeStr != "" {
+			configState[def.runtimeTypeKey] = typeStr
+		}
 	}
 
-	return flattened, true, nil
+	if configsRaw, ok := configMap[runtimeOptionConfigsKey]; ok {
+		configsMap, ok := configsRaw.(map[string]interface{})
+		if !ok {
+			return nil, false, fmt.Errorf("configs in %s must be a JSON object", def.runtimeKey)
+		}
+		flattened, err := stringifyRuntimeConfigMap(configsMap)
+		if err != nil {
+			return nil, false, err
+		}
+		configState[runtimeOptionConfigsKey] = flattened
+	}
+
+	return configState, true, nil
 }
 
-func flattenFunctionRuntimeConfig(input map[string]interface{}) (map[string]interface{}, error) {
+func stringifyRuntimeConfigMap(input map[string]interface{}) (map[string]interface{}, error) {
 	config := make(map[string]interface{}, len(input))
 	for key, value := range input {
 		stringValue, err := stringifyRuntimeConfigValue(value)
@@ -1181,4 +1305,31 @@ func stringifyRuntimeConfigValue(value interface{}) (string, error) {
 		}
 		return string(b), nil
 	}
+}
+
+func flattenRuntimeConfigForState(config map[string]interface{}, def runtimeConfigDefinition) ([]interface{}, error) {
+	if config == nil || len(config) == 0 {
+		return nil, nil
+	}
+
+	state := make(map[string]interface{})
+	if typeVal, ok := config[def.runtimeTypeKey]; ok {
+		if typeStr, ok := typeVal.(string); ok && typeStr != "" {
+			state[def.typeSchemaKey] = typeStr
+		}
+	}
+
+	if configsVal, ok := config[runtimeOptionConfigsKey]; ok {
+		configsMap, ok := configsVal.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("configs in %s must be a map of strings", def.runtimeKey)
+		}
+		state[resourceFunctionRuntimeConfigConfigsKey] = configsMap
+	}
+
+	if len(state) == 0 {
+		return nil, nil
+	}
+
+	return []interface{}{state}, nil
 }
