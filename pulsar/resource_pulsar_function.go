@@ -977,7 +977,8 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 	}
 
 	if functionConfig.CustomRuntimeOptions != "" {
-		sanitizedOptions, sinkConfig, sinkConfigPresent, sourceConfig, sourceConfigPresent, err := splitFunctionCustomRuntimeOptions(functionConfig.CustomRuntimeOptions)
+		sanitizedOptions, sinkConfig, sinkConfigPresent, sourceConfig, sourceConfigPresent,
+			err := splitFunctionCustomRuntimeOptions(functionConfig.CustomRuntimeOptions)
 		if err != nil {
 			return err
 		}
@@ -1110,8 +1111,9 @@ func buildFunctionCustomRuntimeOptions(d *schema.ResourceData) (string, error) {
 	return mergeFunctionCustomRuntimeOptions(base, updates...)
 }
 
-func expandFunctionRuntimeConfig(d *schema.ResourceData, def runtimeConfigDefinition) (map[string]interface{}, bool, error) {
-	inter, ok := d.GetOkExists(def.schemaKey)
+func expandFunctionRuntimeConfig(d *schema.ResourceData,
+	def runtimeConfigDefinition) (map[string]interface{}, bool, error) {
+	inter, ok := d.GetOk(def.schemaKey)
 	if !ok {
 		return nil, false, nil
 	}
@@ -1139,7 +1141,8 @@ func expandFunctionRuntimeConfig(d *schema.ResourceData, def runtimeConfigDefini
 		runtimeConfig[def.runtimeTypeKey] = typeValue
 	}
 
-	if configsRaw, ok := item[resourceFunctionRuntimeConfigConfigsKey].(map[string]interface{}); ok && len(configsRaw) > 0 {
+	if configsRaw, ok := item[resourceFunctionRuntimeConfigConfigsKey].(map[string]interface{}); ok &&
+		len(configsRaw) > 0 {
 		runtimeConfig[runtimeOptionConfigsKey] = normalizeRuntimeConfigSchemaMap(configsRaw)
 	}
 
@@ -1201,7 +1204,8 @@ func mergeFunctionCustomRuntimeOptions(base string, updates ...runtimeConfigUpda
 	return string(b), nil
 }
 
-func splitFunctionCustomRuntimeOptions(raw string) (string, map[string]interface{}, bool, map[string]interface{}, bool, error) {
+func splitFunctionCustomRuntimeOptions(raw string) (
+	string, map[string]interface{}, bool, map[string]interface{}, bool, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return "", nil, false, nil, false, nil
@@ -1234,7 +1238,8 @@ func splitFunctionCustomRuntimeOptions(raw string) (string, map[string]interface
 	return sanitized, sinkConfig, sinkPresent, sourceConfig, sourcePresent, nil
 }
 
-func extractRuntimeConfig(runtimeOptions map[string]interface{}, def runtimeConfigDefinition) (map[string]interface{}, bool, error) {
+func extractRuntimeConfig(runtimeOptions map[string]interface{},
+	def runtimeConfigDefinition) (map[string]interface{}, bool, error) {
 	raw, ok := runtimeOptions[def.runtimeKey]
 	if !ok {
 		return nil, false, nil
@@ -1308,7 +1313,7 @@ func stringifyRuntimeConfigValue(value interface{}) (string, error) {
 }
 
 func flattenRuntimeConfigForState(config map[string]interface{}, def runtimeConfigDefinition) ([]interface{}, error) {
-	if config == nil || len(config) == 0 {
+	if len(config) == 0 {
 		return nil, nil
 	}
 

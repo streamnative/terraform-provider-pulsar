@@ -10,7 +10,10 @@ import (
 
 func TestMergeFunctionCustomRuntimeOptions(t *testing.T) {
 	base := `{"foo":"bar","sinkConfig":{"old":"value"},"sourceConfig":{"keep":"me"}}`
-	sinkConfig := map[string]interface{}{runtimeOptionSinkConfigTypeField: "kafka", runtimeOptionConfigsKey: map[string]interface{}{"new": "value"}}
+	sinkConfig := map[string]interface{}{
+		runtimeOptionSinkConfigTypeField: "kafka",
+		runtimeOptionConfigsKey:          map[string]interface{}{"new": "value"},
+	}
 	sourceConfig := map[string]interface{}{}
 
 	merged, err := mergeFunctionCustomRuntimeOptions(base,
@@ -23,12 +26,16 @@ func TestMergeFunctionCustomRuntimeOptions(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(merged), &result))
 
 	assert.Equal(t, "bar", result["foo"])
-	assert.Equal(t, map[string]interface{}{runtimeOptionSinkConfigTypeField: "kafka", runtimeOptionConfigsKey: map[string]interface{}{"new": "value"}}, result["sinkConfig"])
+	assert.Equal(t, map[string]interface{}{
+		runtimeOptionSinkConfigTypeField: "kafka",
+		runtimeOptionConfigsKey:          map[string]interface{}{"new": "value"},
+	}, result["sinkConfig"])
 	_, hasSource := result["sourceConfig"]
 	assert.False(t, hasSource)
 }
 
 func TestSplitFunctionCustomRuntimeOptions(t *testing.T) {
+	///nolint:lll
 	raw := `{"foo":"bar","sinkConfig":{"sinkType":"kafka","configs":{"alpha":"1","beta":true}},"sourceConfig":{"sourceType":"kinesis","configs":{"gamma":2}}}`
 
 	sanitized, sinkConfig, sinkPresent, sourceConfig, sourcePresent, err := splitFunctionCustomRuntimeOptions(raw)
