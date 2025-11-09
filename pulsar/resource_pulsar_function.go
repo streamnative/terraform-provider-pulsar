@@ -21,6 +21,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
@@ -70,6 +72,13 @@ const (
 	resourceFunctionRAMKey                  = "ram_mb"
 	resourceFunctionDiskKey                 = "disk_mb"
 	resourceFunctionUserConfig              = "user_config"
+	resourceFunctionSinkConfigKey           = "sink_config"
+	resourceFunctionSourceConfigKey         = "source_config"
+)
+
+const (
+	runtimeOptionSinkConfigKey   = "sinkConfig"
+	runtimeOptionSourceConfigKey = "sourceConfig"
 )
 
 var resourceFunctionDescriptions = make(map[string]string)
@@ -114,6 +123,8 @@ func init() {
 		resourceFunctionRAMKey:                  "The RAM that need to be allocated per function instance",
 		resourceFunctionDiskKey:                 "The disk that need to be allocated per function instance",
 		resourceFunctionUserConfig:              "User-defined config key/values",
+		resourceFunctionSinkConfigKey:           "Sink configuration key/values serialized into custom_runtime_options.",
+		resourceFunctionSourceConfigKey:         "Source configuration key/values serialized into custom_runtime_options.",
 	}
 }
 
@@ -372,6 +383,20 @@ func resourcePulsarFunction() *schema.Resource {
 				Type:        schema.TypeMap,
 				Optional:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionUserConfig],
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			resourceFunctionSinkConfigKey: {
+				Type:        schema.TypeMap,
+				Optional:    true,
+				Computed:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionSinkConfigKey],
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			resourceFunctionSourceConfigKey: {
+				Type:        schema.TypeMap,
+				Optional:    true,
+				Computed:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionSourceConfigKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 		},
@@ -638,8 +663,12 @@ func marshalFunctionConfig(d *schema.ResourceData) (*utils.FunctionConfig, error
 
 		functionConfig.CustomSchemaOutputs = stringMap
 	}
-	if inter, ok := d.GetOk(resourceFunctionCustomRuntimeOptionsKey); ok {
-		functionConfig.CustomRuntimeOptions = inter.(string)
+	customRuntimeOptions, err := buildFunctionCustomRuntimeOptions(d)
+	if err != nil {
+		return nil, err
+	}
+	if customRuntimeOptions != "" {
+		functionConfig.CustomRuntimeOptions = customRuntimeOptions
 	}
 
 	if inter, ok := d.GetOk(resourceFunctionSecretsKey); ok {
@@ -886,16 +915,49 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 	}
 
 	if functionConfig.CustomRuntimeOptions != "" {
-		orig, ok := d.GetOk(resourceFunctionCustomRuntimeOptionsKey)
-		if ok {
-			s, err := ignoreServerSetCustomRuntimeOptions(orig.(string), functionConfig.CustomRuntimeOptions)
-			if err != nil {
+		sanitizedOptions, sinkConfig, sinkConfigPresent, sourceConfig, sourceConfigPresent, err := splitFunctionCustomRuntimeOptions(functionConfig.CustomRuntimeOptions)
+		if err != nil {
+			return err
+		}
+
+		if sinkConfigPresent {
+			if err = d.Set(resourceFunctionSinkConfigKey, sinkConfig); err != nil {
 				return err
 			}
-			err = d.Set(resourceFunctionCustomRuntimeOptionsKey, s)
-			if err != nil {
+		} else {
+			if err = d.Set(resourceFunctionSinkConfigKey, nil); err != nil {
 				return err
 			}
+		}
+
+		if sourceConfigPresent {
+			if err = d.Set(resourceFunctionSourceConfigKey, sourceConfig); err != nil {
+				return err
+			}
+		} else {
+			if err = d.Set(resourceFunctionSourceConfigKey, nil); err != nil {
+				return err
+			}
+		}
+
+		if orig, ok := d.GetOk(resourceFunctionCustomRuntimeOptionsKey); ok {
+			valueToSet := sanitizedOptions
+			if origStr := orig.(string); origStr != "" && sanitizedOptions != "" {
+				valueToSet, err = ignoreServerSetCustomRuntimeOptions(origStr, sanitizedOptions)
+				if err != nil {
+					return err
+				}
+			}
+			if err = d.Set(resourceFunctionCustomRuntimeOptionsKey, valueToSet); err != nil {
+				return err
+			}
+		}
+	} else {
+		if err := d.Set(resourceFunctionSinkConfigKey, nil); err != nil {
+			return err
+		}
+		if err := d.Set(resourceFunctionSourceConfigKey, nil); err != nil {
+			return err
 		}
 	}
 
@@ -939,4 +1001,184 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 	}
 
 	return nil
+}
+
+func buildFunctionCustomRuntimeOptions(d *schema.ResourceData) (string, error) {
+	var base string
+	if inter, ok := d.GetOk(resourceFunctionCustomRuntimeOptionsKey); ok {
+		base = inter.(string)
+	}
+
+	sinkConfig, sinkConfigSet := expandFunctionRuntimeConfig(d, resourceFunctionSinkConfigKey)
+	sourceConfig, sourceConfigSet := expandFunctionRuntimeConfig(d, resourceFunctionSourceConfigKey)
+
+	if !sinkConfigSet && !sourceConfigSet {
+		return base, nil
+	}
+
+	updates := make([]runtimeConfigUpdate, 0, 2)
+	if sinkConfigSet {
+		updates = append(updates, runtimeConfigUpdate{
+			key:    runtimeOptionSinkConfigKey,
+			config: sinkConfig,
+		})
+	}
+
+	if sourceConfigSet {
+		updates = append(updates, runtimeConfigUpdate{
+			key:    runtimeOptionSourceConfigKey,
+			config: sourceConfig,
+		})
+	}
+
+	return mergeFunctionCustomRuntimeOptions(base, updates...)
+}
+
+func expandFunctionRuntimeConfig(d *schema.ResourceData, schemaKey string) (map[string]interface{}, bool) {
+	inter, ok := d.GetOkExists(schemaKey)
+	if !ok {
+		return nil, false
+	}
+
+	if inter == nil {
+		return map[string]interface{}{}, true
+	}
+
+	rawMap := inter.(map[string]interface{})
+	config := make(map[string]interface{}, len(rawMap))
+	for key, value := range rawMap {
+		config[key] = value
+	}
+
+	return config, true
+}
+
+type runtimeConfigUpdate struct {
+	key    string
+	config map[string]interface{}
+}
+
+func mergeFunctionCustomRuntimeOptions(base string, updates ...runtimeConfigUpdate) (string, error) {
+	if len(updates) == 0 {
+		return base, nil
+	}
+
+	trimmed := strings.TrimSpace(base)
+	runtimeOptions := make(map[string]interface{})
+	if trimmed != "" {
+		if err := json.Unmarshal([]byte(trimmed), &runtimeOptions); err != nil {
+			return "", errors.Wrap(err, "cannot unmarshal custom_runtime_options")
+		}
+	}
+
+	for _, update := range updates {
+		delete(runtimeOptions, update.key)
+		if len(update.config) > 0 {
+			runtimeOptions[update.key] = update.config
+		}
+	}
+
+	if len(runtimeOptions) == 0 {
+		return "", nil
+	}
+
+	b, err := json.Marshal(runtimeOptions)
+	if err != nil {
+		return "", errors.Wrap(err, "cannot marshal custom_runtime_options")
+	}
+
+	return string(b), nil
+}
+
+func splitFunctionCustomRuntimeOptions(raw string) (string, map[string]interface{}, bool, map[string]interface{}, bool, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil, false, nil, false, nil
+	}
+
+	runtimeOptions := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(trimmed), &runtimeOptions); err != nil {
+		return "", nil, false, nil, false, errors.Wrap(err, "cannot unmarshal custom_runtime_options from Pulsar")
+	}
+
+	sinkConfig, sinkPresent, err := extractRuntimeConfig(runtimeOptions, runtimeOptionSinkConfigKey)
+	if err != nil {
+		return "", nil, false, nil, false, err
+	}
+
+	sourceConfig, sourcePresent, err := extractRuntimeConfig(runtimeOptions, runtimeOptionSourceConfigKey)
+	if err != nil {
+		return "", nil, false, nil, false, err
+	}
+
+	sanitized := ""
+	if len(runtimeOptions) > 0 {
+		b, err := json.Marshal(runtimeOptions)
+		if err != nil {
+			return "", nil, false, nil, false, errors.Wrap(err, "cannot marshal custom_runtime_options")
+		}
+		sanitized = string(b)
+	}
+
+	return sanitized, sinkConfig, sinkPresent, sourceConfig, sourcePresent, nil
+}
+
+func extractRuntimeConfig(runtimeOptions map[string]interface{}, runtimeKey string) (map[string]interface{}, bool, error) {
+	raw, ok := runtimeOptions[runtimeKey]
+	if !ok {
+		return nil, false, nil
+	}
+
+	delete(runtimeOptions, runtimeKey)
+	configState := map[string]interface{}{}
+	if raw == nil {
+		return configState, true, nil
+	}
+
+	configMap, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, false, fmt.Errorf("%s in custom_runtime_options must be a JSON object", runtimeKey)
+	}
+
+	flattened, err := flattenFunctionRuntimeConfig(configMap)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return flattened, true, nil
+}
+
+func flattenFunctionRuntimeConfig(input map[string]interface{}) (map[string]interface{}, error) {
+	config := make(map[string]interface{}, len(input))
+	for key, value := range input {
+		stringValue, err := stringifyRuntimeConfigValue(value)
+		if err != nil {
+			return nil, err
+		}
+		config[key] = stringValue
+	}
+
+	return config, nil
+}
+
+func stringifyRuntimeConfigValue(value interface{}) (string, error) {
+	switch v := value.(type) {
+	case string:
+		return v, nil
+	case bool:
+		return strconv.FormatBool(v), nil
+	case float64:
+		if math.Trunc(v) == v {
+			return strconv.FormatInt(int64(v), 10), nil
+		}
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case nil:
+		return "", nil
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
+	}
 }

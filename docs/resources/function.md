@@ -51,6 +51,8 @@ description: |-
 - `retain_key_ordering` (Boolean) Whether to retain key ordering when the function is restarted after failure.
 - `retain_ordering` (Boolean) Whether to retain ordering when the function is restarted after failure.
 - `secrets` (String) The secrets of the function.
+- `sink_config` (Map of String) Sink configuration key/values serialized into custom_runtime_options.
+- `source_config` (Map of String) Source configuration key/values serialized into custom_runtime_options.
 - `skip_to_latest` (Boolean) Whether to skip to the latest position when the function is restarted after failure.
 - `subscription_name` (String) The subscription name of the function.
 - `subscription_position` (String) The subscription position of the function. Possible values are `LATEST`, `EARLIEST`, and `CUSTOM`.
@@ -61,5 +63,3 @@ description: |-
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-
-
