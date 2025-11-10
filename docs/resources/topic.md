@@ -28,7 +28,7 @@ description: |-
 - `backlog_quota` (Block Set) (see [below for nested schema](#nestedblock--backlog_quota))
 - `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace (see [below for nested schema](#nestedblock--dispatch_rate))
 - `enable_deduplication` (Boolean)
-- `permission_grant` (Block Set) (see [below for nested schema](#nestedblock--permission_grant))
+- `permission_grant` (Block Set) Manages permissions within this topic. **Warning:** Do not use this for roles that are already managed by the standalone pulsar_permission_grant resource, as it will cause conflicts. (see [below for nested schema](#nestedblock--permission_grant))
 - `persistence_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--persistence_policies))
 - `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
@@ -105,16 +105,16 @@ Optional:
 
 Optional:
 
-- `byte_publish_rate` (Number)
+- `byte_publish_rate` (Number) Byte publish rate limit. 0 = disabled, >0 = bytes per second limit. Omit to inherit namespace defaults.
 - `compaction_threshold` (Number)
 - `delayed_delivery` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_config--delayed_delivery))
 - `inactive_topic` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_config--inactive_topic))
-- `max_consumers` (Number)
-- `max_producers` (Number)
-- `max_unacked_messages_per_consumer` (Number)
-- `max_unacked_messages_per_subscription` (Number)
-- `message_ttl_seconds` (Number)
-- `msg_publish_rate` (Number)
+- `max_consumers` (Number) Max number of consumers on topic. 0 = unlimited, >0 = specific limit. Omit to inherit namespace defaults.
+- `max_producers` (Number) Max number of producers on topic. 0 = unlimited, >0 = specific limit. Omit to inherit namespace defaults.
+- `max_unacked_messages_per_consumer` (Number) Max unacked messages per consumer. 0 = unlimited, >0 = specific limit. Omit to inherit namespace defaults.
+- `max_unacked_messages_per_subscription` (Number) Max unacked messages per subscription. 0 = unlimited, >0 = specific limit. Omit to inherit namespace defaults.
+- `message_ttl_seconds` (Number) Message TTL in seconds. 0 = never expire, >0 = expire after N seconds. Omit to inherit namespace defaults.
+- `msg_publish_rate` (Number) Message publish rate limit. 0 = disabled, >0 = messages per second limit. Omit to inherit namespace defaults.
 
 <a id="nestedblock--topic_config--delayed_delivery"></a>
 ### Nested Schema for `topic_config.delayed_delivery`
