@@ -244,6 +244,7 @@ func resourcePulsarFunction() *schema.Resource {
 			resourceFunctionProcessingGuaranteesKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionProcessingGuaranteesKey],
 			},
 			resourceFunctionSubscriptionNameKey: {
@@ -334,10 +335,12 @@ func resourcePulsarFunction() *schema.Resource {
 			resourceFunctionInputTypeClassNameKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionInputTypeClassNameKey],
 			},
 			resourceFunctionOutputTypeClassNameKey: {
 				Type:        schema.TypeString,
+				Computed:    true,
 				Optional:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionOutputTypeClassNameKey],
 			},
