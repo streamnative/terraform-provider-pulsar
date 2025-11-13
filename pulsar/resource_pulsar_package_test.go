@@ -111,6 +111,31 @@ func TestBuildPackageMetadataPropertiesUsesExistingValues(t *testing.T) {
 	}
 }
 
+func TestExistingPackageFileInfoFromState(t *testing.T) {
+	resource := resourcePulsarPackage()
+	data := schema.TestResourceDataRaw(t, resource.Schema, map[string]interface{}{
+		resourcePackageTypeKey:      "function",
+		resourcePackageTenantKey:    "tenant-a",
+		resourcePackageNamespaceKey: "ns",
+		resourcePackageNameKey:      "pkg",
+		resourcePackageVersionKey:   "v1",
+		resourcePackagePathKey:      "/tmp/pkg.nar",
+	})
+
+	_ = data.Set(resourcePackageFileNameKey, "pkg.nar")
+	_ = data.Set(resourcePackageFileSizeKey, 0)
+	_ = data.Set(resourcePackageFileChecksumKey, "abc")
+
+	info := existingPackageFileInfoFromState(data)
+	if info == nil {
+		t.Fatalf("expected file info")
+	}
+
+	if info.name != "pkg.nar" || info.checksum != "abc" || info.size != 0 {
+		t.Fatalf("unexpected info %#v", info)
+	}
+}
+
 func TestCalculatePackageFileInfo(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "pkg.nar")

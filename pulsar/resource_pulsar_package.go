@@ -335,7 +335,8 @@ func resourcePulsarPackageCustomizeDiff(_ context.Context, diff *schema.Resource
 	return nil
 }
 
-func resourcePulsarPackageImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourcePulsarPackageImport(ctx context.Context, d *schema.ResourceData,
+	meta interface{}) ([]*schema.ResourceData, error) {
 	packageName, err := utils.GetPackageName(d.Id())
 	if err != nil {
 		return nil, err
@@ -407,30 +408,37 @@ func buildPackageMetadataProperties(d *schema.ResourceData, info *packageFileInf
 	props[packageMetadataPropertyName] = d.Get(resourcePackageNameKey).(string)
 	props[packageMetadataPropertyManagedBy] = packageMetadataManagedByTerraform
 
+	if info == nil {
+		info = existingPackageFileInfoFromState(d)
+	}
+
 	if info != nil {
 		props[packageMetadataPropertyFileName] = info.name
 		props[packageMetadataPropertyFileSize] = strconv.FormatInt(info.size, 10)
 		props[packageMetadataPropertyChecksum] = info.checksum
-	} else {
-		if existing := d.Get(resourcePackageFileNameKey).(string); existing != "" {
-			props[packageMetadataPropertyFileName] = existing
-		}
-		if sizeRaw, ok := d.GetOkExists(resourcePackageFileSizeKey); ok {
-			switch v := sizeRaw.(type) {
-			case int:
-				props[packageMetadataPropertyFileSize] = strconv.Itoa(v)
-			case int64:
-				props[packageMetadataPropertyFileSize] = strconv.FormatInt(v, 10)
-			}
-		}
-		if checksumRaw, ok := d.GetOkExists(resourcePackageFileChecksumKey); ok {
-			if checksum, okCast := checksumRaw.(string); okCast && checksum != "" {
-				props[packageMetadataPropertyChecksum] = checksum
-			}
-		}
 	}
 
 	return props
+}
+
+func existingPackageFileInfoFromState(d *schema.ResourceData) *packageFileInfo {
+	name := d.Get(resourcePackageFileNameKey).(string)
+	checksum := d.Get(resourcePackageFileChecksumKey).(string)
+
+	var size int64
+	if sizeVal, ok := d.Get(resourcePackageFileSizeKey).(int); ok {
+		size = int64(sizeVal)
+	}
+
+	if name == "" && checksum == "" && size == 0 {
+		return nil
+	}
+
+	return &packageFileInfo{
+		name:     name,
+		checksum: checksum,
+		size:     size,
+	}
 }
 
 func calculatePackageFileInfo(path string) (packageFileInfo, error) {
