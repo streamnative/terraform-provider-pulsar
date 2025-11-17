@@ -166,6 +166,7 @@ func Provider() *schema.Provider {
 			"pulsar_function":         resourcePulsarFunction(),
 			"pulsar_subscription":     resourcePulsarSubscription(),
 			"pulsar_permission_grant": resourcePulsarPermissionGrant(),
+			"pulsar_package":          resourcePulsarPackage(),
 		},
 	}
 

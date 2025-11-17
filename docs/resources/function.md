@@ -51,6 +51,12 @@ description: |-
 - `retain_key_ordering` (Boolean) Whether to retain key ordering when the function is restarted after failure.
 - `retain_ordering` (Boolean) Whether to retain ordering when the function is restarted after failure.
 - `secrets` (String) The secrets of the function.
+- `sink_config` (Block List) Sink configuration key/values serialized into custom_runtime_options.
+  - `configs` (Map of String) Sink-specific key/value pairs. Non-string values are stringified during state reconciliation.
+  - `sink_type` (String) Sink implementation identifier, for example `kafka`.
+- `source_config` (Block List) Source configuration key/values serialized into custom_runtime_options.
+  - `configs` (Map of String) Source-specific key/value pairs. Non-string values are stringified during state reconciliation.
+  - `source_type` (String) Source implementation identifier, for example `kinesis`.
 - `skip_to_latest` (Boolean) Whether to skip to the latest position when the function is restarted after failure.
 - `subscription_name` (String) The subscription name of the function.
 - `subscription_position` (String) The subscription position of the function. Possible values are `LATEST`, `EARLIEST`, and `CUSTOM`.
@@ -61,5 +67,3 @@ description: |-
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-
-
