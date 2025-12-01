@@ -336,7 +336,10 @@ func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
 		return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
 	}
 	if d.Id() == "" {
-		return nil, fmt.Errorf("import %q: topic not found in Pulsar; verify the topic exists and the identifier is correct", importID)
+		return nil, fmt.Errorf(
+			"import %q: topic not found in Pulsar; verify the topic exists and the identifier is correct",
+			importID,
+		)
 	}
 	return []*schema.ResourceData{d}, nil
 }

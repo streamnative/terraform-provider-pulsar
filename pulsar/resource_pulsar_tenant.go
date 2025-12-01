@@ -43,7 +43,10 @@ func resourcePulsarTenant() *schema.Resource {
 					return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
 				}
 				if d.Id() == "" {
-					return nil, fmt.Errorf("import %q: tenant not found in Pulsar; verify the tenant exists and the identifier is correct", importID)
+					return nil, fmt.Errorf(
+						"import %q: tenant not found in Pulsar; verify the tenant exists and the identifier is correct",
+						importID,
+					)
 				}
 				return []*schema.ResourceData{d}, nil
 			},
