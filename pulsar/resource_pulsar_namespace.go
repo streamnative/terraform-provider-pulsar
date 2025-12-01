@@ -42,7 +42,8 @@ func resourcePulsarNamespace() *schema.Resource {
 		DeleteContext: resourcePulsarNamespaceDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-				ns, err := utils.GetNamespaceName(d.Id())
+				importID := d.Id()
+				ns, err := utils.GetNamespaceName(importID)
 				if err != nil {
 					return nil, fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
 				}
@@ -52,7 +53,10 @@ func resourcePulsarNamespace() *schema.Resource {
 
 				diags := resourcePulsarNamespaceRead(ctx, d, meta)
 				if diags.HasError() {
-					return nil, fmt.Errorf("import %q: %s", d.Id(), diags[0].Summary)
+					return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
+				}
+				if d.Id() == "" {
+					return nil, fmt.Errorf("import %q: namespace not found in Pulsar; verify the namespace exists and the identifier is correct", importID)
 				}
 				return []*schema.ResourceData{d}, nil
 			},
