@@ -149,6 +149,32 @@ func TestPulsarSchemaImport(t *testing.T) {
 	})
 }
 
+// Reproduces whitespace-only drift described in issue #175: the provider stores a compacted
+// schema string, so re-planning with the same schema formatted across multiple lines
+// continues to show a diff even though the JSON content is identical.
+func TestPulsarSchemaWhitespaceDiff(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { testAccPreCheck(t) },
+		ProviderFactories:         testAccProviderFactories,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarSchemaDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarSchemaWhitespaceCompact,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarSchemaExists("pulsar_schema.whitespace"),
+					resource.TestCheckResourceAttr("pulsar_schema.whitespace", "type", "AVRO"),
+				),
+			},
+			{
+				Config:             testPulsarSchemaWhitespacePretty,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
 func testPulsarSchemaExists(resourceName string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[resourceName]
@@ -312,5 +338,46 @@ resource "pulsar_schema" "test_json" {
       }
     ]
   })
+}
+`, testWebServiceURL)
+
+var testPulsarSchemaWhitespaceCompact = fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_schema" "whitespace" {
+  tenant      = "public"
+  namespace   = "default"
+  topic       = "schema-whitespace-drift"
+  type        = "AVRO"
+  schema_data = "{\"name\": \"Test\", \"namespace\": \"com.example\", \"type\": \"record\", \"fields\": [{\"name\": \"name\", \"type\": \"string\"}]}"
+}
+`, testWebServiceURL)
+
+var testPulsarSchemaWhitespacePretty = fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_schema" "whitespace" {
+  tenant    = "public"
+  namespace = "default"
+  topic     = "schema-whitespace-drift"
+  type      = "AVRO"
+
+  schema_data = <<-EOT
+{
+    "name": "Test",
+    "namespace": "com.example",
+    "type": "record",
+    "fields": [
+        {
+            "name": "name",
+            "type": "string"
+        }
+    ]
+}
+EOT
 }
 `, testWebServiceURL)
