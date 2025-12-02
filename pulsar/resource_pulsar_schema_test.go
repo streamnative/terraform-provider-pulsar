@@ -339,6 +339,7 @@ resource "pulsar_schema" "test_json" {
 }
 `, testWebServiceURL)
 
+// /nolint:lll
 var testPulsarSchemaWhitespaceCompact = fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
