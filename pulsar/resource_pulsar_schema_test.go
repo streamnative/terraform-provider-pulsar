@@ -149,9 +149,7 @@ func TestPulsarSchemaImport(t *testing.T) {
 	})
 }
 
-// Reproduces whitespace-only drift described in issue #175: the provider stores a compacted
-// schema string, so re-planning with the same schema formatted across multiple lines
-// continues to show a diff even though the JSON content is identical.
+// Ensures whitespace-only differences do not cause drift (issue #175).
 func TestPulsarSchemaWhitespaceDiff(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
@@ -169,7 +167,7 @@ func TestPulsarSchemaWhitespaceDiff(t *testing.T) {
 			{
 				Config:             testPulsarSchemaWhitespacePretty,
 				PlanOnly:           true,
-				ExpectNonEmptyPlan: true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
