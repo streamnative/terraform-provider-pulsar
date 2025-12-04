@@ -102,6 +102,24 @@ func TestImportExistingTenant(t *testing.T) {
 	})
 }
 
+func TestImportMissingTenantFails(t *testing.T) {
+	tName := fmt.Sprintf("missing-%s", acctest.RandString(5))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  "pulsar_tenant.test",
+				ImportState:   true,
+				Config:        testPulsarExistingTenantConfig(testWebServiceURL, tName),
+				ImportStateId: tName,
+				ExpectError:   regexp.MustCompile("tenant not found in Pulsar"),
+			},
+		},
+	})
+}
+
 func createTenant(t *testing.T, tname string) {
 	client, err := sharedClient(testWebServiceURL)
 	if err != nil {
