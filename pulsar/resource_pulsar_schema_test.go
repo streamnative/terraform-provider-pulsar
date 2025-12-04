@@ -149,6 +149,30 @@ func TestPulsarSchemaImport(t *testing.T) {
 	})
 }
 
+// Ensures whitespace-only differences do not cause drift (issue #175).
+func TestPulsarSchemaWhitespaceDiff(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { testAccPreCheck(t) },
+		ProviderFactories:         testAccProviderFactories,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarSchemaDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarSchemaWhitespaceCompact,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarSchemaExists("pulsar_schema.whitespace"),
+					resource.TestCheckResourceAttr("pulsar_schema.whitespace", "type", "AVRO"),
+				),
+			},
+			{
+				Config:             testPulsarSchemaWhitespacePretty,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func testPulsarSchemaExists(resourceName string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[resourceName]
@@ -312,5 +336,47 @@ resource "pulsar_schema" "test_json" {
       }
     ]
   })
+}
+`, testWebServiceURL)
+
+//nolint:lll
+var testPulsarSchemaWhitespaceCompact = fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_schema" "whitespace" {
+  tenant      = "public"
+  namespace   = "default"
+  topic       = "schema-whitespace-drift"
+  type        = "AVRO"
+  schema_data = "{\"name\": \"Test\", \"namespace\": \"com.example\", \"type\": \"record\", \"fields\": [{\"name\": \"name\", \"type\": \"string\"}]}"
+}
+`, testWebServiceURL)
+
+var testPulsarSchemaWhitespacePretty = fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_schema" "whitespace" {
+  tenant    = "public"
+  namespace = "default"
+  topic     = "schema-whitespace-drift"
+  type      = "AVRO"
+
+  schema_data = <<-EOT
+{
+    "name": "Test",
+    "namespace": "com.example",
+    "type": "record",
+    "fields": [
+        {
+            "name": "name",
+            "type": "string"
+        }
+    ]
+}
+EOT
 }
 `, testWebServiceURL)

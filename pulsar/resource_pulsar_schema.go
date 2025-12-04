@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -92,6 +93,14 @@ func resourcePulsarSchema() *schema.Resource {
 				Optional: true,
 				Description: " Required for complex types (`AVRO`, `JSON`, `PROTOBUF`, `PROTOBUF_NATIVE`," +
 					" `KEY_VALUE`). Not needed for primitive types.",
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					normalizedOld, errOld := normalizeSchemaData(old)
+					normalizedNew, errNew := normalizeSchemaData(new)
+					if errOld != nil || errNew != nil {
+						return false
+					}
+					return normalizedOld == normalizedNew
+				},
 			},
 			"properties": {
 				Type:        schema.TypeMap,
@@ -199,7 +208,12 @@ func resourcePulsarSchemaRead(ctx context.Context, d *schema.ResourceData, meta 
 	_ = d.Set("namespace", namespace)
 	_ = d.Set("topic", topic)
 	_ = d.Set("type", schemaWithVersion.SchemaInfo.Type)
-	_ = d.Set("schema_data", string(schemaWithVersion.SchemaInfo.Schema))
+	normalizedSchema, err := normalizeSchemaData(string(schemaWithVersion.SchemaInfo.Schema))
+	if err != nil {
+		_ = d.Set("schema_data", string(schemaWithVersion.SchemaInfo.Schema))
+	} else {
+		_ = d.Set("schema_data", normalizedSchema)
+	}
 	_ = d.Set("properties", schemaWithVersion.SchemaInfo.Properties)
 
 	// Set computed fields
@@ -322,4 +336,27 @@ func validateSchemaDataRequirement(schemaType, schemaData string) error {
 	}
 
 	return nil
+}
+
+// normalizeSchemaData attempts to canonicalize JSON strings to suppress whitespace-only diffs.
+// For non-JSON inputs, the original string is returned along with the parse error.
+func normalizeSchemaData(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	var payload interface{}
+	decoder := json.NewDecoder(strings.NewReader(trimmed))
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
+		return trimmed, err
+	}
+
+	normalizedBytes, err := json.Marshal(payload)
+	if err != nil {
+		return trimmed, err
+	}
+
+	return string(normalizedBytes), nil
 }
