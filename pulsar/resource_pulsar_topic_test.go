@@ -253,9 +253,9 @@ func TestTopicWithTopicConfigUpdate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "0"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "0"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "0"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "-1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "-1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "-1"),
 				),
 			},
 			{
@@ -306,9 +306,23 @@ func TestTopicWithTopicConfigUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.msg_publish_rate", "100"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.byte_publish_rate", "1024"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "0"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "0"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "0"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_consumers", "-1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "-1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.message_ttl_seconds", "-1"),
+				),
+			},
+
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						msg_publish_rate = 100
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.msg_publish_rate", "100"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.byte_publish_rate", "-1"),
 				),
 			},
 		},
