@@ -18,6 +18,8 @@ github.com/agext/levenshtein v1.2.2 h1:0S/Yg6LYmFJ5stwQeRp6EeOcCbj7xiqQSdNelsXva
 github.com/agext/levenshtein v1.2.2/go.mod h1:JEDfjyjHDjOF/1e4FlBE/PkbqA9OfWu2ki2W0IB5558=
 github.com/apache/pulsar-client-go v0.15.2-0.20250710023731-c587b5cefb04 h1:3BoszOdT9uueXXsqzZiYgrlc7B1+R0lEjGlJADwl+KU=
 github.com/apache/pulsar-client-go v0.15.2-0.20250710023731-c587b5cefb04/go.mod h1:ow9PhLoGUY6ncrKOtjnWeJycFnTKOwrIV39j3kNV54M=
+github.com/apache/pulsar-client-go v0.17.1-0.20251030144200-7b4b3a6a7b51 h1:Fyb2YUm5GVuiD8fSXwQiRH/IVEOcyFgXILyZpBJHfkY=
+github.com/apache/pulsar-client-go v0.17.1-0.20251030144200-7b4b3a6a7b51/go.mod h1:F5PKFypCg3iw55GwjqDVtN77zqZXZNgRqEtWdwLzvPg=
 github.com/apparentlymart/go-textseg/v12 v12.0.0/go.mod h1:S/4uRK2UtaQttw1GenVJEynmyUenKwP++x/+DdGV/Ec=
 github.com/apparentlymart/go-textseg/v15 v15.0.0 h1:uYvfpb3DyLSCGWnctWKGj857c6ew1u1fNQOlOtuGxQY=
 github.com/apparentlymart/go-textseg/v15 v15.0.0/go.mod h1:K8XmNZdhEBkdlyDdvbmmsvpAG721bKi0joRfFdHIWJ4=
