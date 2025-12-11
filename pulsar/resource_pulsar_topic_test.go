@@ -139,6 +139,25 @@ func TestImportExistingTopic(t *testing.T) {
 	})
 }
 
+func TestImportMissingTopicFails(t *testing.T) {
+	tname := fmt.Sprintf("missing-%s", acctest.RandString(5))
+	fullID := strings.Join([]string{"persistent:/", "public", "default", tname}, "/")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  "pulsar_topic.test",
+				ImportState:   true,
+				Config:        testPulsarTopic(testWebServiceURL, tname, "persistent", 0, ""),
+				ImportStateId: fullID,
+				ExpectError:   regexp.MustCompile("topic not found in Pulsar"),
+			},
+		},
+	})
+}
+
 func TestImportTopicWithConfig(t *testing.T) {
 	skipIfNoTopicPolicies(t)
 	tname := acctest.RandString(10)

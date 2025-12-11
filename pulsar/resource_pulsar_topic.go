@@ -330,7 +330,8 @@ func resourcePulsarTopic() *schema.Resource {
 
 func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
 	meta interface{}) ([]*schema.ResourceData, error) {
-	topic, err := utils.GetTopicName(d.Id())
+	importID := d.Id()
+	topic, err := utils.GetTopicName(importID)
 	if err != nil {
 		return nil, fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err)
 	}
@@ -346,7 +347,13 @@ func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
 
 	diags := resourcePulsarTopicRead(ctx, d, meta)
 	if diags.HasError() {
-		return nil, fmt.Errorf("import %q: %s", d.Id(), diags[0].Summary)
+		return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
+	}
+	if d.Id() == "" {
+		return nil, fmt.Errorf(
+			"import %q: topic not found in Pulsar; verify the topic exists and the identifier is correct",
+			importID,
+		)
 	}
 	return []*schema.ResourceData{d}, nil
 }

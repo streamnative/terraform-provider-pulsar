@@ -36,10 +36,17 @@ func resourcePulsarTenant() *schema.Resource {
 		DeleteContext: resourcePulsarTenantDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-				_ = d.Set("tenant", d.Id())
-				err := resourcePulsarTenantRead(ctx, d, meta)
-				if err.HasError() {
-					return nil, fmt.Errorf("import %q: %s", d.Id(), err[0].Summary)
+				importID := d.Id()
+				_ = d.Set("tenant", importID)
+				diags := resourcePulsarTenantRead(ctx, d, meta)
+				if diags.HasError() {
+					return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
+				}
+				if d.Id() == "" {
+					return nil, fmt.Errorf(
+						"import %q: tenant not found in Pulsar; verify the tenant exists and the identifier is correct",
+						importID,
+					)
 				}
 				return []*schema.ResourceData{d}, nil
 			},

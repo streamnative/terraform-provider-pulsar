@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -382,6 +383,25 @@ func TestImportExistingNamespace(t *testing.T) {
 				Config:           testPulsarExistingNamespaceWithoutOptionals(testWebServiceURL, ns),
 				ImportStateId:    id,
 				ImportStateCheck: testNamespaceImported(),
+			},
+		},
+	})
+}
+
+func TestImportMissingNamespaceFails(t *testing.T) {
+	ns := fmt.Sprintf("missing-%s", acctest.RandString(5))
+	id := "public/" + ns
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  "pulsar_namespace.test",
+				ImportState:   true,
+				Config:        testPulsarExistingNamespaceWithoutOptionals(testWebServiceURL, ns),
+				ImportStateId: id,
+				ExpectError:   regexp.MustCompile("namespace not found in Pulsar"),
 			},
 		},
 	})
