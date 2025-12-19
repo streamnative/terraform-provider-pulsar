@@ -606,7 +606,9 @@ func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta 
 		return diag.FromErr(err)
 	}
 
-	updateOptions := utils.NewUpdateOptions()
+	updateOptions := &utils.UpdateOptions{
+		UpdateAuthData: true,
+	}
 	if isPackageURLSupported(sinkConfig.Archive) {
 		err = client.UpdateSinkWithURL(sinkConfig, sinkConfig.Archive, updateOptions)
 	} else {

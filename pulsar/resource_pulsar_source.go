@@ -535,7 +535,9 @@ func resourcePulsarSourceUpdate(ctx context.Context, d *schema.ResourceData, met
 		return diag.FromErr(err)
 	}
 
-	updateOptions := utils.NewUpdateOptions()
+	updateOptions := &utils.UpdateOptions{
+		UpdateAuthData: true,
+	}
 	if isPackageURLSupported(sourceConfig.Archive) {
 		err = client.UpdateSourceWithURL(sourceConfig, sourceConfig.Archive, updateOptions)
 	} else {
