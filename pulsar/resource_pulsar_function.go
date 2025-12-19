@@ -545,7 +545,9 @@ func resourcePulsarFunctionUpdate(ctx context.Context, d *schema.ResourceData, m
 		archive = *functionConfig.Go
 	}
 
-	updateOptions := utils.NewUpdateOptions()
+	updateOptions := &utils.UpdateOptions{
+		UpdateAuthData: true,
+	}
 	if isPackageURLSupported(archive) {
 		err = client.UpdateFunctionWithURL(functionConfig, archive, updateOptions)
 	} else {
