@@ -154,8 +154,9 @@ func resourcePulsarNamespace() *schema.Resource {
 							Required: true,
 						},
 						"max_inactive_duration": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validateInactiveTopicDuration,
 						},
 						"delete_mode": {
 							Type:         schema.TypeString,
@@ -953,11 +954,9 @@ func unmarshalInactiveTopicPolicies(v *schema.Set) (*utils.InactiveTopicPolicies
 		maxInactiveDurationStr := data["max_inactive_duration"].(string)
 		deleteModeStr := data["delete_mode"].(string)
 
-		maxInactiveDurationSeconds := 0
-		if len(maxInactiveDurationStr) > 0 && strings.HasSuffix(maxInactiveDurationStr, "s") {
-			if parsedTime, err := strconv.Atoi(maxInactiveDurationStr[:len(maxInactiveDurationStr)-1]); err == nil {
-				maxInactiveDurationSeconds = parsedTime
-			}
+		maxInactiveDurationSeconds, err := parseInactiveTopicDurationSeconds(maxInactiveDurationStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid max_inactive_duration %q: %w", maxInactiveDurationStr, err)
 		}
 
 		deleteMode, err := utils.ParseInactiveTopicDeleteMode(deleteModeStr)

@@ -451,6 +451,33 @@ func TestTopicWithInactiveTopicUpdate(t *testing.T) {
 	})
 }
 
+func TestTopicWithInvalidInactiveTopicDuration(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						inactive_topic {
+							enable_delete_while_inactive = true
+							max_inactive_duration = "60m"
+							delete_mode = "delete_when_no_subscriptions"
+						}
+					}
+				`),
+				ExpectError: regexp.MustCompile(`must use seconds format like 60s`),
+			},
+		},
+	})
+}
+
 func TestTopicWithCompactionThresholdUpdate(t *testing.T) {
 	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"

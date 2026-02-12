@@ -18,12 +18,14 @@
 package pulsar
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -452,6 +454,32 @@ func TestNamespaceWithInvalidInactiveTopicDeleteMode(t *testing.T) {
 				ExpectError: regexp.MustCompile(
 					`must be one of delete_when_no_subscriptions or delete_when_subscriptions_caught_up`,
 				),
+			},
+		},
+	})
+}
+
+func TestNamespaceWithInvalidInactiveTopicDuration(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithInactiveTopic(testWebServiceURL, cName, tName, nsName,
+					`inactive_topic {
+						enable_delete_while_inactive = true
+						max_inactive_duration = "60m"
+						delete_mode = "delete_when_no_subscriptions"
+					}`),
+				ExpectError: regexp.MustCompile(`must use seconds format like 60s`),
 			},
 		},
 	})
@@ -1234,13 +1262,16 @@ func testNamespaceInactiveTopicPolicy(
 
 		policies, err := client.GetInactiveTopicPolicies(*nsName)
 		if !shouldExist {
-			if err == nil {
-				return fmt.Errorf("expected inactive topic policies to be removed, but got: %+v", policies)
-			}
-			if strings.Contains(err.Error(), "404") {
+			if err != nil && isNotFoundError(err) {
 				return nil
 			}
-			return fmt.Errorf("ERROR_GETTING_NAMESPACE_INACTIVE_TOPIC_POLICIES: %w", err)
+			if err != nil {
+				return fmt.Errorf("ERROR_GETTING_NAMESPACE_INACTIVE_TOPIC_POLICIES: %w", err)
+			}
+			if isInactiveTopicPoliciesUnset(policies) {
+				return nil
+			}
+			return fmt.Errorf("expected inactive topic policies to be removed, but got: %+v", policies)
 		}
 
 		if err != nil {
@@ -1273,4 +1304,17 @@ func testNamespaceInactiveTopicPolicy(
 
 		return nil
 	}
+}
+
+func isInactiveTopicPoliciesUnset(policies utils.InactiveTopicPolicies) bool {
+	modeUnset := policies.InactiveTopicDeleteMode == nil || policies.InactiveTopicDeleteMode.String() == ""
+	return modeUnset && policies.MaxInactiveDurationSeconds == 0 && !policies.DeleteWhileInactive
+}
+
+func isNotFoundError(err error) bool {
+	var adminErr rest.Error
+	if errors.As(err, &adminErr) {
+		return adminErr.Code == 404
+	}
+	return strings.Contains(err.Error(), "404")
 }
