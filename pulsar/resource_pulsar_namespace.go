@@ -20,11 +20,13 @@ package pulsar
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -741,8 +743,13 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 			} else if err = client.SetInactiveTopicPolicies(*nsName, *inactiveTopicPolicies); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetInactiveTopicPolicies: %w", err))
 			}
-		} else if err = client.RemoveInactiveTopicPolicies(*nsName); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("RemoveInactiveTopicPolicies: %w", err))
+		} else {
+			oldInactiveTopicConfig, _ := d.GetChange("inactive_topic")
+			if hasInactiveTopicPoliciesConfigured(oldInactiveTopicConfig) {
+				if err = client.RemoveInactiveTopicPolicies(*nsName); err != nil && !isIgnorableNotFoundError(err) {
+					errs = multierror.Append(errs, fmt.Errorf("RemoveInactiveTopicPolicies: %w", err))
+				}
+			}
 		}
 	}
 
@@ -839,6 +846,24 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 
 	d.SetId(nsName.String())
 	return resourcePulsarNamespaceRead(ctx, d, meta)
+}
+
+func hasInactiveTopicPoliciesConfigured(data interface{}) bool {
+	cfg, ok := data.(*schema.Set)
+	return ok && cfg != nil && cfg.Len() > 0
+}
+
+func isIgnorableNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var adminErr rest.Error
+	if errors.As(err, &adminErr) {
+		return adminErr.Code == 404
+	}
+
+	return strings.Contains(err.Error(), "404") || strings.Contains(strings.ToLower(err.Error()), "not found")
 }
 
 func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
