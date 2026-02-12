@@ -972,32 +972,33 @@ func unmarshalRetentionPolicies(v *schema.Set) *utils.RetentionPolicies {
 }
 
 func unmarshalInactiveTopicPolicies(v *schema.Set) (*utils.InactiveTopicPolicies, error) {
-	for _, policy := range v.List() {
-		data := policy.(map[string]interface{})
-
-		enableDeleteWhileInactive := data["enable_delete_while_inactive"].(bool)
-		maxInactiveDurationStr := data["max_inactive_duration"].(string)
-		deleteModeStr := data["delete_mode"].(string)
-
-		maxInactiveDurationSeconds, err := parseInactiveTopicDurationSeconds(maxInactiveDurationStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid max_inactive_duration %q: %w", maxInactiveDurationStr, err)
-		}
-
-		deleteMode, err := utils.ParseInactiveTopicDeleteMode(deleteModeStr)
-		if err != nil {
-			return nil, err
-		}
-
-		inactiveTopicPolicies := utils.NewInactiveTopicPolicies(
-			&deleteMode,
-			maxInactiveDurationSeconds,
-			enableDeleteWhileInactive,
-		)
-		return &inactiveTopicPolicies, nil
+	policies := v.List()
+	if len(policies) == 0 {
+		return nil, fmt.Errorf("inactive topic policies configuration is empty")
 	}
 
-	return nil, fmt.Errorf("inactive topic policies configuration is empty")
+	data := policies[0].(map[string]interface{})
+
+	enableDeleteWhileInactive := data["enable_delete_while_inactive"].(bool)
+	maxInactiveDurationStr := data["max_inactive_duration"].(string)
+	deleteModeStr := data["delete_mode"].(string)
+
+	maxInactiveDurationSeconds, err := parseInactiveTopicDurationSeconds(maxInactiveDurationStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid max_inactive_duration %q: %w", maxInactiveDurationStr, err)
+	}
+
+	deleteMode, err := utils.ParseInactiveTopicDeleteMode(deleteModeStr)
+	if err != nil {
+		return nil, err
+	}
+
+	inactiveTopicPolicies := utils.NewInactiveTopicPolicies(
+		&deleteMode,
+		maxInactiveDurationSeconds,
+		enableDeleteWhileInactive,
+	)
+	return &inactiveTopicPolicies, nil
 }
 
 func unmarshalNamespaceConfigList(v []interface{}) *types.NamespaceConfig {

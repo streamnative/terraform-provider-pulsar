@@ -410,7 +410,11 @@ func TestNamespaceWithInactiveTopicUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "inactive_topic.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "inactive_topic.0.enable_delete_while_inactive", "false"),
 					resource.TestCheckResourceAttr(resourceName, "inactive_topic.0.max_inactive_duration", "120s"),
-					resource.TestCheckResourceAttr(resourceName, "inactive_topic.0.delete_mode", "delete_when_subscriptions_caught_up"),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"inactive_topic.0.delete_mode",
+						"delete_when_subscriptions_caught_up",
+					),
 					testNamespaceInactiveTopicPolicy(namespace, true, false, 120, "delete_when_subscriptions_caught_up"),
 				),
 			},
