@@ -358,6 +358,105 @@ func TestNamespaceWithTopicAutoCreationUpdate(t *testing.T) {
 	})
 }
 
+func TestNamespaceWithInactiveTopicUpdate(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	namespace := fmt.Sprintf("%s/%s", tName, nsName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckNoResourceAttr(resourceName, "inactive_topic.#"),
+					testNamespaceInactiveTopicPolicy(namespace, false, false, 0, ""),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithInactiveTopic(testWebServiceURL, cName, tName, nsName,
+					`inactive_topic {
+						enable_delete_while_inactive = true
+						max_inactive_duration = "60s"
+						delete_mode = "delete_when_no_subscriptions"
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "inactive_topic.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "inactive_topic.0.enable_delete_while_inactive", "true"),
+					resource.TestCheckResourceAttr(resourceName, "inactive_topic.0.max_inactive_duration", "60s"),
+					resource.TestCheckResourceAttr(resourceName, "inactive_topic.0.delete_mode", "delete_when_no_subscriptions"),
+					testNamespaceInactiveTopicPolicy(namespace, true, true, 60, "delete_when_no_subscriptions"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithInactiveTopic(testWebServiceURL, cName, tName, nsName,
+					`inactive_topic {
+						enable_delete_while_inactive = false
+						max_inactive_duration = "120s"
+						delete_mode = "delete_when_subscriptions_caught_up"
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "inactive_topic.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "inactive_topic.0.enable_delete_while_inactive", "false"),
+					resource.TestCheckResourceAttr(resourceName, "inactive_topic.0.max_inactive_duration", "120s"),
+					resource.TestCheckResourceAttr(resourceName, "inactive_topic.0.delete_mode", "delete_when_subscriptions_caught_up"),
+					testNamespaceInactiveTopicPolicy(namespace, true, false, 120, "delete_when_subscriptions_caught_up"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckNoResourceAttr(resourceName, "inactive_topic.#"),
+					testNamespaceInactiveTopicPolicy(namespace, false, false, 0, ""),
+				),
+			},
+			{
+				Config:             testPulsarNamespaceWithoutOptionals(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestNamespaceWithInvalidInactiveTopicDeleteMode(t *testing.T) {
+
+	resourceName := "pulsar_namespace.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithInactiveTopic(testWebServiceURL, cName, tName, nsName,
+					`inactive_topic {
+						enable_delete_while_inactive = true
+						max_inactive_duration = "60s"
+						delete_mode = "invalid_mode"
+					}`),
+				ExpectError: regexp.MustCompile(
+					`must be one of delete_when_no_subscriptions or delete_when_subscriptions_caught_up`,
+				),
+			},
+		},
+	})
+}
+
 func TestImportExistingNamespace(t *testing.T) {
 	tname := "public"
 	ns := acctest.RandString(10)
@@ -837,6 +936,37 @@ resource "pulsar_namespace" "test" {
 `, wsURL, cluster, tenant, ns, topicAutoCreation)
 }
 
+func testPulsarNamespaceWithInactiveTopic(wsURL, cluster, tenant, ns string, inactiveTopic string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+  cluster = "%s"
+
+  cluster_data {
+    web_service_url    = "http://localhost:8080"
+    broker_service_url = "pulsar://localhost:6050"
+    peer_clusters      = ["standalone"]
+  }
+
+}
+
+resource "pulsar_tenant" "test_tenant" {
+  tenant           = "%s"
+  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = pulsar_tenant.test_tenant.tenant
+	namespace = "%s"
+
+	%s
+}
+`, wsURL, cluster, tenant, ns, inactiveTopic)
+}
+
 func testPulsarNamespaceWithMultipleReplicationClusters(wsURL, cluster, tenant, ns string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
@@ -1081,6 +1211,64 @@ func testPermissionExists(namespace, role string) resource.TestCheckFunc {
 
 		if _, exists := permissions[role]; !exists {
 			return fmt.Errorf("permission for role %s should exist", role)
+		}
+
+		return nil
+	}
+}
+
+func testNamespaceInactiveTopicPolicy(
+	namespace string,
+	shouldExist bool,
+	expectedEnableDelete bool,
+	expectedDurationSeconds int,
+	expectedDeleteMode string,
+) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		client := getClientFromMeta(testAccProvider.Meta()).Namespaces()
+
+		nsName, err := utils.GetNamespaceName(namespace)
+		if err != nil {
+			return fmt.Errorf("ERROR_PARSING_NAMESPACE: %w", err)
+		}
+
+		policies, err := client.GetInactiveTopicPolicies(*nsName)
+		if !shouldExist {
+			if err == nil {
+				return fmt.Errorf("expected inactive topic policies to be removed, but got: %+v", policies)
+			}
+			if strings.Contains(err.Error(), "404") {
+				return nil
+			}
+			return fmt.Errorf("ERROR_GETTING_NAMESPACE_INACTIVE_TOPIC_POLICIES: %w", err)
+		}
+
+		if err != nil {
+			return fmt.Errorf("ERROR_GETTING_NAMESPACE_INACTIVE_TOPIC_POLICIES: %w", err)
+		}
+
+		if policies.InactiveTopicDeleteMode == nil {
+			return fmt.Errorf("expected inactive topic delete mode to be present")
+		}
+
+		if policies.DeleteWhileInactive != expectedEnableDelete {
+			return fmt.Errorf("expected delete_while_inactive=%t, got=%t", expectedEnableDelete, policies.DeleteWhileInactive)
+		}
+
+		if policies.MaxInactiveDurationSeconds != expectedDurationSeconds {
+			return fmt.Errorf(
+				"expected max_inactive_duration_seconds=%d, got=%d",
+				expectedDurationSeconds,
+				policies.MaxInactiveDurationSeconds,
+			)
+		}
+
+		if policies.InactiveTopicDeleteMode.String() != expectedDeleteMode {
+			return fmt.Errorf(
+				"expected delete_mode=%s, got=%s",
+				expectedDeleteMode,
+				policies.InactiveTopicDeleteMode.String(),
+			)
 		}
 
 		return nil

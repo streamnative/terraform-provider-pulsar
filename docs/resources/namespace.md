@@ -28,6 +28,7 @@ description: |-
 - `namespace_config` (Block List) The namespace configuration (see [below for nested schema](#nestedblock--namespace_config))
 - `permission_grant` (Block Set) Manages permissions within this namespace. **Warning:** Do not use this for roles that are already managed by the standalone pulsar_permission_grant resource, as it will cause conflicts. (see [below for nested schema](#nestedblock--permission_grant))
 - `persistence_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--persistence_policies))
+- `inactive_topic` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--inactive_topic))
 - `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
 - `subscription_dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the subscriptions under the given namespace (see [below for nested schema](#nestedblock--subscription_dispatch_rate))
 - `topic_auto_creation` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_auto_creation))
@@ -96,6 +97,16 @@ Required:
 - `managed_ledger_max_mark_delete_rate` (Number)
 
 
+<a id="nestedblock--inactive_topic"></a>
+### Nested Schema for `inactive_topic`
+
+Required:
+
+- `delete_mode` (String) `delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`
+- `enable_delete_while_inactive` (Boolean)
+- `max_inactive_duration` (String)
+
+
 <a id="nestedblock--retention_policies"></a>
 ### Nested Schema for `retention_policies`
 
@@ -126,5 +137,4 @@ Optional:
 
 - `partitions` (Number)
 - `type` (String)
-
 
