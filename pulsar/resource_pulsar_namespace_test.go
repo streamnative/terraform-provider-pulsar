@@ -698,8 +698,8 @@ func testNamespaceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 12 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 12, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 13 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 13, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
