@@ -18,14 +18,12 @@
 package pulsar
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -361,7 +359,6 @@ func TestNamespaceWithTopicAutoCreationUpdate(t *testing.T) {
 }
 
 func TestNamespaceWithInactiveTopicUpdate(t *testing.T) {
-
 	resourceName := "pulsar_namespace.test"
 	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
@@ -436,7 +433,6 @@ func TestNamespaceWithInactiveTopicUpdate(t *testing.T) {
 }
 
 func TestNamespaceWithInvalidInactiveTopicDeleteMode(t *testing.T) {
-
 	resourceName := "pulsar_namespace.test"
 	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
@@ -464,7 +460,6 @@ func TestNamespaceWithInvalidInactiveTopicDeleteMode(t *testing.T) {
 }
 
 func TestNamespaceWithInvalidInactiveTopicDuration(t *testing.T) {
-
 	resourceName := "pulsar_namespace.test"
 	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
@@ -1266,7 +1261,7 @@ func testNamespaceInactiveTopicPolicy(
 
 		policies, err := client.GetInactiveTopicPolicies(*nsName)
 		if !shouldExist {
-			if err != nil && isNotFoundError(err) {
+			if err != nil && isIgnorableNotFoundError(err) {
 				return nil
 			}
 			if err != nil {
@@ -1313,12 +1308,4 @@ func testNamespaceInactiveTopicPolicy(
 func isInactiveTopicPoliciesUnset(policies utils.InactiveTopicPolicies) bool {
 	modeUnset := policies.InactiveTopicDeleteMode == nil || policies.InactiveTopicDeleteMode.String() == ""
 	return modeUnset && policies.MaxInactiveDurationSeconds == 0 && !policies.DeleteWhileInactive
-}
-
-func isNotFoundError(err error) bool {
-	var adminErr rest.Error
-	if errors.As(err, &adminErr) {
-		return adminErr.Code == 404
-	}
-	return strings.Contains(err.Error(), "404")
 }

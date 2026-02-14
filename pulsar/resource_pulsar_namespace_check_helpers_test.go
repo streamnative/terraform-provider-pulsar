@@ -58,15 +58,6 @@ func TestIsInactiveTopicPoliciesUnset(t *testing.T) {
 	}
 }
 
-func TestIsNotFoundError(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, isNotFoundError(rest.Error{Code: 404, Reason: "Not Found"}))
-	require.False(t, isNotFoundError(rest.Error{Code: 500, Reason: "Internal Server Error"}))
-	require.True(t, isNotFoundError(errors.New("code: 404 reason: Not Found")))
-	require.False(t, isNotFoundError(errors.New("connection reset by peer")))
-}
-
 func TestHasInactiveTopicPoliciesConfigured(t *testing.T) {
 	t.Parallel()
 
