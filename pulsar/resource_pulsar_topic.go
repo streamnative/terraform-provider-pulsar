@@ -282,6 +282,12 @@ func resourcePulsarTopic() *schema.Resource {
 							Description: "Byte publish rate limit. 0 = disabled, >0 = bytes per second limit. " +
 								"Omit to inherit namespace defaults.",
 						},
+						"schema_compatibility_strategy": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							ValidateFunc: validateNotBlank,
+							Description:  "Schema compatibility strategy override for this topic. Use `Undefined` to remove override.",
+						},
 					},
 				},
 			},
@@ -722,6 +728,15 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	} else if !isIgnorableTopicPolicyError(err) {
 		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPublishRate: %w", err))
+	}
+
+	time.Sleep(time.Millisecond * 100)
+	schemaCompatibilityStrategy, err := client.GetSchemaCompatibilityStrategy(*topicName)
+	if err == nil {
+		topicConfigMap["schema_compatibility_strategy"] =
+			schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetSchemaCompatibilityStrategy: %w", err))
 	}
 
 	// Only set topic_config if there are configuration values or it's explicitly requested in schema
@@ -1646,6 +1661,55 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 				return true, nil
 			}); err != nil {
 				errs = errors.Wrap(errs, fmt.Sprintf("PublishRate verification error: %v", err))
+			}
+		}
+	}
+
+	if schemaCompatibilityStrategy, ok := topicConfig["schema_compatibility_strategy"]; ok {
+		strategy, err := parseSchemaCompatibilityStrategy(schemaCompatibilityStrategy.(string))
+		if err != nil {
+			errs = errors.Wrap(errs, fmt.Sprintf("ParseSchemaCompatibilityStrategy error: %v", err))
+		} else {
+			var operationSucceeded bool
+
+			if strategy == utils.SchemaCompatibilityStrategyUndefined {
+				if err := client.RemoveSchemaCompatibilityStrategy(*topicName); err != nil {
+					if !isIgnorableTopicPolicyError(err) {
+						errs = errors.Wrap(errs, fmt.Sprintf("RemoveSchemaCompatibilityStrategy error: %v", err))
+					} else {
+						return backoff.Permanent(
+							fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: RemoveSchemaCompatibilityStrategy: %w", err))
+					}
+				} else {
+					operationSucceeded = true
+				}
+			} else {
+				if err := client.SetSchemaCompatibilityStrategy(*topicName, strategy); err != nil {
+					if !isIgnorableTopicPolicyError(err) {
+						errs = errors.Wrap(errs, fmt.Sprintf("SetSchemaCompatibilityStrategy error: %v", err))
+					} else {
+						return backoff.Permanent(
+							fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: SetSchemaCompatibilityStrategy: %w", err))
+					}
+				} else {
+					operationSucceeded = true
+				}
+			}
+
+			if operationSucceeded {
+				if err := waitForTopicConfigUpdate(d, topicName, "SCHEMA_COMPATIBILITY_STRATEGY", func() (bool, error) {
+					currentStrategy, err := client.GetSchemaCompatibilityStrategy(*topicName)
+					if err != nil {
+						return false,
+							fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: GetSchemaCompatibilityStrategy: %w", err)
+					}
+					if currentStrategy != strategy {
+						return false, nil
+					}
+					return true, nil
+				}); err != nil {
+					errs = errors.Wrap(errs, fmt.Sprintf("SchemaCompatibilityStrategy verification error: %v", err))
+				}
 			}
 		}
 	}

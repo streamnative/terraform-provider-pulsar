@@ -1280,6 +1280,58 @@ func TestPartitionedTopicWithTopicConfig(t *testing.T) {
 	})
 }
 
+func TestTopicSchemaCompatibilityStrategyUpdate(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						schema_compatibility_strategy = "Backward"
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", "Backward"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						schema_compatibility_strategy = "FullTransitive"
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", "FullTransitive"),
+				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+					topic_config {
+						schema_compatibility_strategy = "Undefined"
+					}
+				`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", "Undefined"),
+				),
+			},
+		},
+	})
+}
+
 func TestTopicWithPropertiesUpdate(t *testing.T) {
 	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
