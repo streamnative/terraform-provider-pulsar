@@ -1015,9 +1015,9 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 		// First apply the retention policy
 		if err := client.SetRetention(*topicName, policies); err != nil {
 			if !isIgnorableTopicPolicyError(err) {
-				return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
-			} else {
 				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err))
+			} else {
+				return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
 			}
 		}
 
@@ -1195,9 +1195,9 @@ func updatePersistencePolicies(d *schema.ResourceData, meta interface{}, topicNa
 	// First apply the persistence policy
 	if err := client.SetPersistence(*topicName, persistenceData); err != nil {
 		if !isIgnorableTopicPolicyError(err) {
-			return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
-		} else {
 			return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err))
+		} else {
+			return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
 		}
 	}
 
@@ -1238,9 +1238,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		compactionThresholdVal := int64(val.(int))
 		if err := client.SetCompactionThreshold(*topicName, compactionThresholdVal); err != nil {
 			if !isIgnorableTopicPolicyError(err) {
-				errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
-			} else {
 				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_COMPACTION_THRESHOLD: SetCompactionThreshold: %w", err))
+			} else {
+				errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
 			}
 		} else {
 			// Verify the configuration was applied
@@ -1274,9 +1274,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 			if err := client.SetDelayedDelivery(*topicName, delayedDeliveryData); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: SetDelayedDelivery: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
 				}
 			} else {
 				// Verify the configuration was applied
@@ -1319,9 +1319,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 			if err := client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: SetInactiveTopicPolicies: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
 				}
 			} else {
 				// Verify the configuration was applied
@@ -1356,9 +1356,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		if maxConsVal == -1 {
 			if err := client.RemoveMaxConsumers(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxConsumers error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: RemoveMaxConsumers: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxConsumers error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1366,9 +1366,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		} else {
 			if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: SetMaxConsumers: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1400,9 +1400,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		if maxProdVal == -1 {
 			if err := client.RemoveMaxProducers(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxProducers error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: RemoveMaxProducers: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxProducers error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1410,9 +1410,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		} else {
 			if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: SetMaxProducers: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1444,9 +1444,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		if ttlVal == -1 {
 			if err := client.RemoveMessageTTL(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMessageTTL error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: RemoveMessageTTL: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMessageTTL error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1454,9 +1454,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		} else {
 			if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: SetMessageTTL: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1487,10 +1487,10 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		if maxVal == -1 {
 			if err := client.RemoveMaxUnackMessagesPerConsumer(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxUnackMessagesPerConsumer error: %v", err))
-				} else {
 					return backoff.Permanent(
 						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: RemoveMaxUnackMessagesPerConsumer: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxUnackMessagesPerConsumer error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1498,10 +1498,10 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		} else {
 			if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
-				} else {
 					return backoff.Permanent(
 						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: SetMaxUnackMessagesPerConsumer: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1532,10 +1532,10 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		if maxVal == -1 {
 			if err := client.RemoveMaxUnackMessagesPerSubscription(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxUnackMessagesPerSubscription error: %v", err))
-				} else {
 					return backoff.Permanent(
 						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: RemoveMaxUnackMessagesPerSubscription: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxUnackMessagesPerSubscription error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1543,10 +1543,10 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		} else {
 			if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
-				} else {
 					return backoff.Permanent(
 						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: SetMaxUnackMessagesPerSubscription: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1592,9 +1592,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			// Remove publish rate when both are -1
 			if err := client.RemovePublishRate(*topicName); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("RemovePublishRate error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: RemovePublishRate: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("RemovePublishRate error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
@@ -1608,9 +1608,9 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 			if err := client.SetPublishRate(*topicName, publishRateData); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
-					errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
-				} else {
 					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: SetPublishRate: %w", err))
+				} else {
+					errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
 				}
 			} else {
 				operationSucceeded = true
