@@ -3,10 +3,27 @@ package pulsar
 import (
 	"fmt"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
+
+var inactiveTopicDurationPattern = regexp.MustCompile(`^\d+s$`)
+
+func parseInactiveTopicDurationSeconds(raw string) (int, error) {
+	if !inactiveTopicDurationPattern.MatchString(raw) {
+		return 0, fmt.Errorf("must use seconds format like 60s (got: %s)", raw)
+	}
+
+	seconds, err := strconv.Atoi(strings.TrimSuffix(raw, "s"))
+	if err != nil {
+		return 0, fmt.Errorf("invalid seconds value in duration %q: %w", raw, err)
+	}
+
+	return seconds, nil
+}
 
 func validateNotBlank(val interface{}, key string) (warns []string, errs []error) {
 	v := val.(string)
@@ -65,6 +82,14 @@ func validiateDeleteMode(val interface{}, key string) (warns []string, errs []er
 	if v != "delete_when_no_subscriptions" && v != "delete_when_subscriptions_caught_up" {
 		errs = append(errs, fmt.Errorf("%q must be one of delete_when_no_subscriptions"+
 			" or delete_when_subscriptions_caught_up (got: %s)", key, v))
+	}
+	return
+}
+
+func validateInactiveTopicDuration(val interface{}, key string) (warns []string, errs []error) {
+	v := val.(string)
+	if _, err := parseInactiveTopicDurationSeconds(v); err != nil {
+		errs = append(errs, fmt.Errorf("%q %v", key, err))
 	}
 	return
 }

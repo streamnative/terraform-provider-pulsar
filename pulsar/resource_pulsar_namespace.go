@@ -20,11 +20,13 @@ package pulsar
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -142,6 +144,31 @@ func resourcePulsarNamespace() *schema.Resource {
 					},
 				},
 				Set: retentionPoliciesToHash,
+			},
+			"inactive_topic": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"enable_delete_while_inactive": {
+							Type:     schema.TypeBool,
+							Required: true,
+						},
+						"max_inactive_duration": {
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validateInactiveTopicDuration,
+						},
+						"delete_mode": {
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validiateDeleteMode,
+							Description:  "`delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`",
+						},
+					},
+				},
+				Set: inactiveTopicPoliciesToHash,
 			},
 			"backlog_quota": {
 				Type:     schema.TypeSet,
@@ -498,6 +525,26 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		}))
 	}
 
+	if inactiveTopicCfg, ok := d.GetOk("inactive_topic"); ok && inactiveTopicCfg.(*schema.Set).Len() > 0 {
+		inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*ns)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetInactiveTopicPolicies: %w", err))
+		}
+
+		deleteMode := "delete_when_no_subscriptions"
+		if inactiveTopicPolicies.InactiveTopicDeleteMode != nil {
+			deleteMode = inactiveTopicPolicies.InactiveTopicDeleteMode.String()
+		}
+
+		_ = d.Set("inactive_topic", schema.NewSet(inactiveTopicPoliciesToHash, []interface{}{
+			map[string]interface{}{
+				"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
+				"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
+				"delete_mode":                  deleteMode,
+			},
+		}))
+	}
+
 	if backlogQuotaCfg, ok := d.GetOk("backlog_quota"); ok && backlogQuotaCfg.(*schema.Set).Len() > 0 {
 		qt, err := client.GetBacklogQuotaMap(ns.String())
 		if err != nil {
@@ -584,6 +631,7 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 	enableDeduplication, deduplicationDefined := d.GetOk("enable_deduplication")
 	namespaceConfig := d.Get("namespace_config").([]interface{})
 	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
+	inactiveTopicConfig := d.Get("inactive_topic").(*schema.Set)
 	backlogQuotaConfig := d.Get("backlog_quota").(*schema.Set)
 	dispatchRateConfig := d.Get("dispatch_rate").(*schema.Set)
 	subscriptionDispatchRateConfig := d.Get("subscription_dispatch_rate").(*schema.Set)
@@ -687,6 +735,24 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 	}
 
+	if d.HasChange("inactive_topic") || inactiveTopicConfig.Len() > 0 {
+		if inactiveTopicConfig.Len() > 0 {
+			inactiveTopicPolicies, err := unmarshalInactiveTopicPolicies(inactiveTopicConfig)
+			if err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("unmarshalInactiveTopicPolicies: %w", err))
+			} else if err = client.SetInactiveTopicPolicies(*nsName, *inactiveTopicPolicies); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetInactiveTopicPolicies: %w", err))
+			}
+		} else {
+			oldInactiveTopicConfig, _ := d.GetChange("inactive_topic")
+			if hasInactiveTopicPoliciesConfigured(oldInactiveTopicConfig) {
+				if err = client.RemoveInactiveTopicPolicies(*nsName); err != nil && !isIgnorableNotFoundError(err) {
+					errs = multierror.Append(errs, fmt.Errorf("RemoveInactiveTopicPolicies: %w", err))
+				}
+			}
+		}
+	}
+
 	if backlogQuotaConfig.Len() > 0 {
 		backlogQuotas, err := unmarshalBacklogQuota(backlogQuotaConfig)
 		if err != nil {
@@ -782,6 +848,24 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 	return resourcePulsarNamespaceRead(ctx, d, meta)
 }
 
+func hasInactiveTopicPoliciesConfigured(data interface{}) bool {
+	cfg, ok := data.(*schema.Set)
+	return ok && cfg != nil && cfg.Len() > 0
+}
+
+func isIgnorableNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var adminErr rest.Error
+	if errors.As(err, &adminErr) {
+		return adminErr.Code == 404
+	}
+
+	return strings.Contains(err.Error(), "404") || strings.Contains(strings.ToLower(err.Error()), "not found")
+}
+
 func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
@@ -799,6 +883,7 @@ func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, 
 	_ = d.Set("enable_deduplication", nil)
 	_ = d.Set("namespace_config", nil)
 	_ = d.Set("retention_policies", nil)
+	_ = d.Set("inactive_topic", nil)
 	_ = d.Set("backlog_quota", nil)
 	_ = d.Set("dispatch_rate", nil)
 	_ = d.Set("subscription_dispatch_rate", nil)
@@ -884,6 +969,36 @@ func unmarshalRetentionPolicies(v *schema.Set) *utils.RetentionPolicies {
 	}
 
 	return &rtnPolicies
+}
+
+func unmarshalInactiveTopicPolicies(v *schema.Set) (*utils.InactiveTopicPolicies, error) {
+	policies := v.List()
+	if len(policies) == 0 {
+		return nil, fmt.Errorf("inactive topic policies configuration is empty")
+	}
+
+	data := policies[0].(map[string]interface{})
+
+	enableDeleteWhileInactive := data["enable_delete_while_inactive"].(bool)
+	maxInactiveDurationStr := data["max_inactive_duration"].(string)
+	deleteModeStr := data["delete_mode"].(string)
+
+	maxInactiveDurationSeconds, err := parseInactiveTopicDurationSeconds(maxInactiveDurationStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid max_inactive_duration %q: %w", maxInactiveDurationStr, err)
+	}
+
+	deleteMode, err := utils.ParseInactiveTopicDeleteMode(deleteModeStr)
+	if err != nil {
+		return nil, err
+	}
+
+	inactiveTopicPolicies := utils.NewInactiveTopicPolicies(
+		&deleteMode,
+		maxInactiveDurationSeconds,
+		enableDeleteWhileInactive,
+	)
+	return &inactiveTopicPolicies, nil
 }
 
 func unmarshalNamespaceConfigList(v []interface{}) *types.NamespaceConfig {
