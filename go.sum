@@ -20,6 +20,8 @@ github.com/apache/pulsar-client-go v0.15.2-0.20250710023731-c587b5cefb04 h1:3Bos
 github.com/apache/pulsar-client-go v0.15.2-0.20250710023731-c587b5cefb04/go.mod h1:ow9PhLoGUY6ncrKOtjnWeJycFnTKOwrIV39j3kNV54M=
 github.com/apache/pulsar-client-go v0.18.0-candidate-1.0.20251217021558-9d65d0ecf43f h1:L2zBKmcYD/qyko07XLxVYg97kXVqN+SMI/ZySf0m7+A=
 github.com/apache/pulsar-client-go v0.18.0-candidate-1.0.20251217021558-9d65d0ecf43f/go.mod h1:GKmTD1u5YLuhUnoVTNGdhdGNAYhoglWNWgwLJZTljAw=
+github.com/apache/pulsar-client-go v0.18.0-candidate-1.0.20260225054407-3564674615ac h1:h3oeTmmuYF6WwsAMFUMN5rvBbMwiwIY266LqZrQMTas=
+github.com/apache/pulsar-client-go v0.18.0-candidate-1.0.20260225054407-3564674615ac/go.mod h1:/Zf8Q8bSSc6ndEJ8V1muIHf6ZWsMrHoQU+98Ww9pOeI=
 github.com/apparentlymart/go-textseg/v12 v12.0.0/go.mod h1:S/4uRK2UtaQttw1GenVJEynmyUenKwP++x/+DdGV/Ec=
 github.com/apparentlymart/go-textseg/v15 v15.0.0 h1:uYvfpb3DyLSCGWnctWKGj857c6ew1u1fNQOlOtuGxQY=
 github.com/apparentlymart/go-textseg/v15 v15.0.0/go.mod h1:K8XmNZdhEBkdlyDdvbmmsvpAG721bKi0joRfFdHIWJ4=

@@ -67,8 +67,8 @@ func TestNamespaceParameterDefaults(t *testing.T) {
 	})
 }
 
-// TestNamespaceConfigRemoval verifies subscription_expiration_time_minutes can be removed
-// This is the only removal supported by the API at this time
+// TestNamespaceConfigRemoval verifies namespace config policies can be removed
+// by omitting them from configuration and falling back to broker defaults.
 func TestNamespaceConfigRemoval(t *testing.T) {
 	resourceName := "pulsar_namespace.test"
 	nsname := acctest.RandString(10)
@@ -79,42 +79,74 @@ func TestNamespaceConfigRemoval(t *testing.T) {
 		CheckDestroy:      testPulsarNamespaceDestroy,
 		Steps: []resource.TestStep{
 			{
-				// First, create namespace with explicit subscription expiration
+				// First, set namespace policies with explicit values.
 				Config: fmt.Sprintf(`
-					provider "pulsar" {
-						web_service_url = "%s"
-					}
-					resource "pulsar_namespace" "test" {
-						tenant    = "public"
-						namespace = "test-ns-removal-%s"
-
-						namespace_config {
-							subscription_expiration_time_minutes = 60
+						provider "pulsar" {
+							web_service_url = "%s"
 						}
-					}`, testWebServiceURL, nsname),
+						resource "pulsar_namespace" "test" {
+							tenant    = "public"
+							namespace = "test-ns-removal-%s"
+
+							namespace_config {
+								max_consumers_per_subscription      = 60
+								max_consumers_per_topic             = 50
+								max_producers_per_topic             = 40
+								message_ttl_seconds                 = 3600
+								subscription_expiration_time_minutes = 30
+							}
+						}`, testWebServiceURL, nsname),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
-					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.subscription_expiration_time_minutes", "60"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.max_consumers_per_subscription", "60"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.max_consumers_per_topic", "50"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.max_producers_per_topic", "40"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.message_ttl_seconds", "3600"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.subscription_expiration_time_minutes", "30"),
 				),
 			},
 			{
-				// Then update to omit the parameter (should default to -1 and be removed)
+				// Then omit the policies to trigger remove and fallback behavior.
 				Config: fmt.Sprintf(`
-					provider "pulsar" {
-						web_service_url = "%s"
+						provider "pulsar" {
+							web_service_url = "%s"
 					}
 					resource "pulsar_namespace" "test" {
-						tenant    = "public"
-						namespace = "test-ns-removal-%s"
+							tenant    = "public"
+							namespace = "test-ns-removal-%s"
 
-						namespace_config {
-							# subscription_expiration_time_minutes omitted - should trigger removal
-						}
-					}`, testWebServiceURL, nsname),
+							namespace_config {
+								# policies omitted - should trigger removal
+							}
+						}`, testWebServiceURL, nsname),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarNamespaceExists(resourceName),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.max_consumers_per_subscription", "-1"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.max_consumers_per_topic", "-1"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.max_producers_per_topic", "-1"),
+					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.message_ttl_seconds", "-1"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.subscription_expiration_time_minutes", "-1"),
-					// Verify -1 values are actually set via API
+					// Verify removed values are actually reflected by API defaults.
+					testNamespaceConfigValue(resourceName, "max consumers per subscription", -1, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetMaxConsumersPerSubscription(utils.NameSpaceName) (int, error)
+						}).GetMaxConsumersPerSubscription(*ns.(*utils.NameSpaceName))
+					}),
+					testNamespaceConfigValue(resourceName, "max consumers per topic", -1, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetMaxConsumersPerTopic(utils.NameSpaceName) (int, error)
+						}).GetMaxConsumersPerTopic(*ns.(*utils.NameSpaceName))
+					}),
+					testNamespaceConfigValue(resourceName, "max producers per topic", -1, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetMaxProducersPerTopic(utils.NameSpaceName) (int, error)
+						}).GetMaxProducersPerTopic(*ns.(*utils.NameSpaceName))
+					}),
+					testNamespaceConfigValue(resourceName, "message TTL", -1, func(c, ns interface{}) (int, error) {
+						return c.(interface {
+							GetNamespaceMessageTTL(string) (int, error)
+						}).GetNamespaceMessageTTL(ns.(*utils.NameSpaceName).String())
+					}),
 					testNamespaceConfigValue(resourceName, "subscription expiration time", -1, func(c, ns interface{}) (int, error) {
 						return c.(interface {
 							GetSubscriptionExpirationTime(utils.NameSpaceName) (int, error)
