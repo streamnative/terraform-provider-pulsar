@@ -213,8 +213,9 @@ func resourcePulsarTopic() *schema.Resource {
 										Required: true,
 									},
 									"max_inactive_duration": {
-										Type:     schema.TypeString,
-										Required: true,
+										Type:         schema.TypeString,
+										Required:     true,
+										ValidateFunc: validateInactiveTopicDuration,
 									},
 									"delete_mode": {
 										Type:         schema.TypeString,
@@ -1319,19 +1320,14 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			maxInactiveDurationStr := data["max_inactive_duration"].(string)
 			deleteModeStr := data["delete_mode"].(string)
 
-			var maxInactiveDurationSeconds = (int)(0)
-			if len(maxInactiveDurationStr) > 0 {
-				if maxInactiveDurationStr[len(maxInactiveDurationStr)-1] == 's' {
-					if parsedTime, err := strconv.Atoi(maxInactiveDurationStr[:len(maxInactiveDurationStr)-1]); err == nil {
-						maxInactiveDurationSeconds = parsedTime
-					}
-				}
+			maxInactiveDurationSeconds, err := parseInactiveTopicDurationSeconds(maxInactiveDurationStr)
+			if err != nil {
+				return fmt.Errorf("ParseInactiveTopicDuration error: %w", err)
 			}
 
 			deleteMode, err := utils.ParseInactiveTopicDeleteMode(deleteModeStr)
 			if err != nil {
-				errs = errors.Wrap(errs, fmt.Sprintf("ParseInactiveTopicDeleteMode error: %v", err))
-				return errs
+				return fmt.Errorf("ParseInactiveTopicDeleteMode error: %w", err)
 			}
 
 			inactiveTopicPolicies := utils.NewInactiveTopicPolicies(&deleteMode, maxInactiveDurationSeconds, enableDelete)
