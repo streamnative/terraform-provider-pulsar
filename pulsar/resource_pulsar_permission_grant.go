@@ -283,11 +283,11 @@ func isConflictError(err error) bool {
 // retryOnConflict retries the given operation with exponential backoff when a 409 Conflict
 // error is returned. All other errors are treated as permanent and not retried.
 func retryOnConflict(operation func() error) error {
-	return backoff.RetryNotifyWithTimer(func() error {
+	return backoff.Retry(func() error {
 		err := operation()
 		if err != nil && !isConflictError(err) {
 			return backoff.Permanent(err)
 		}
 		return err
-	}, backoff.NewExponentialBackOff(), nil, &testTimer{})
+	}, backoff.NewExponentialBackOff())
 }
