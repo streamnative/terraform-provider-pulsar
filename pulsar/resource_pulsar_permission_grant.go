@@ -20,10 +20,14 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"net/http"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/pkg/errors"
 )
 
 func resourcePulsarPermissionGrant() *schema.Resource {
@@ -105,7 +109,9 @@ func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.Resource
 			return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 		}
 
-		if err = client.Namespaces().GrantNamespacePermission(*nsName, role, actions); err != nil {
+		if err = retryOnConflict(func() error {
+			return client.Namespaces().GrantNamespacePermission(*nsName, role, actions)
+		}); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_GRANT_NAMESPACE_PERMISSION: %w", err))
 		}
 
@@ -117,7 +123,9 @@ func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.Resource
 			return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err))
 		}
 
-		if err = client.Topics().GrantPermission(*topicName, role, actions); err != nil {
+		if err = retryOnConflict(func() error {
+			return client.Topics().GrantPermission(*topicName, role, actions)
+		}); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_GRANT_TOPIC_PERMISSION: %w", err))
 		}
 
@@ -194,11 +202,15 @@ func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.Resource
 			}
 
 			// Revoke and re-grant
-			if err = client.Namespaces().RevokeNamespacePermission(*nsName, role); err != nil {
+			if err = retryOnConflict(func() error {
+				return client.Namespaces().RevokeNamespacePermission(*nsName, role)
+			}); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_PERMISSION_GRANT: %w", err))
 			}
 
-			if err = client.Namespaces().GrantNamespacePermission(*nsName, role, actions); err != nil {
+			if err = retryOnConflict(func() error {
+				return client.Namespaces().GrantNamespacePermission(*nsName, role, actions)
+			}); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_PERMISSION_GRANT: %w", err))
 			}
 
@@ -209,11 +221,15 @@ func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.Resource
 			}
 
 			// Revoke and re-grant
-			if err = client.Topics().RevokePermission(*topicName, role); err != nil {
+			if err = retryOnConflict(func() error {
+				return client.Topics().RevokePermission(*topicName, role)
+			}); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: %w", err))
 			}
 
-			if err = client.Topics().GrantPermission(*topicName, role, actions); err != nil {
+			if err = retryOnConflict(func() error {
+				return client.Topics().GrantPermission(*topicName, role, actions)
+			}); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: %w", err))
 			}
 		}
@@ -233,7 +249,9 @@ func resourcePulsarPermissionGrantDelete(ctx context.Context, d *schema.Resource
 			return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 		}
 
-		if err = client.Namespaces().RevokeNamespacePermission(*nsName, role); err != nil {
+		if err = retryOnConflict(func() error {
+			return client.Namespaces().RevokeNamespacePermission(*nsName, role)
+		}); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_DELETE_NAMESPACE_PERMISSION_GRANT: %w", err))
 		}
 
@@ -243,10 +261,33 @@ func resourcePulsarPermissionGrantDelete(ctx context.Context, d *schema.Resource
 			return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err))
 		}
 
-		if err = client.Topics().RevokePermission(*topicName, role); err != nil {
+		if err = retryOnConflict(func() error {
+			return client.Topics().RevokePermission(*topicName, role)
+		}); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_DELETE_TOPIC_PERMISSION_GRANT: %w", err))
 		}
 	}
 
 	return nil
+}
+
+// isConflictError checks if the error is an HTTP 409 Conflict error from the Pulsar admin API.
+func isConflictError(err error) bool {
+	var restErr rest.Error
+	if errors.As(err, &restErr) {
+		return restErr.Code == http.StatusConflict
+	}
+	return false
+}
+
+// retryOnConflict retries the given operation with exponential backoff when a 409 Conflict
+// error is returned. All other errors are treated as permanent and not retried.
+func retryOnConflict(operation func() error) error {
+	return backoff.RetryNotifyWithTimer(func() error {
+		err := operation()
+		if err != nil && !isConflictError(err) {
+			return backoff.Permanent(err)
+		}
+		return err
+	}, backoff.NewExponentialBackOff(), nil, &testTimer{})
 }
