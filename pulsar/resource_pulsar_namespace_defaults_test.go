@@ -126,16 +126,16 @@ func TestNamespaceConfigRemoval(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.max_producers_per_topic", "-1"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.message_ttl_seconds", "-1"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.subscription_expiration_time_minutes", "-1"),
-					testNamespaceNullablePolicyValue(resourceName, "max consumers per subscription", false, 0, func(p *utils.Policies) *int {
+					testNamespaceNullablePolicyValue("max consumers per subscription", false, func(p *utils.Policies) *int {
 						return p.MaxConsumersPerSubscription
 					}),
-					testNamespaceNullablePolicyValue(resourceName, "max consumers per topic", false, 0, func(p *utils.Policies) *int {
+					testNamespaceNullablePolicyValue("max consumers per topic", false, func(p *utils.Policies) *int {
 						return p.MaxConsumersPerTopic
 					}),
-					testNamespaceNullablePolicyValue(resourceName, "max producers per topic", false, 0, func(p *utils.Policies) *int {
+					testNamespaceNullablePolicyValue("max producers per topic", false, func(p *utils.Policies) *int {
 						return p.MaxProducersPerTopic
 					}),
-					testNamespaceNullablePolicyValue(resourceName, "message TTL", false, 0, func(p *utils.Policies) *int {
+					testNamespaceNullablePolicyValue("message TTL", false, func(p *utils.Policies) *int {
 						return p.MessageTTLInSeconds
 					}),
 					testNamespaceConfigValue(resourceName, "subscription expiration time", -1, func(c, ns interface{}) (int, error) {
@@ -217,16 +217,16 @@ func TestNamespaceExplicitZeroValues(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.max_producers_per_topic", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.message_ttl_seconds", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.0.subscription_expiration_time_minutes", "0"),
-					testNamespaceNullablePolicyValue(resourceName, "max consumers per subscription", true, 0, func(p *utils.Policies) *int {
+					testNamespaceNullablePolicyValue("max consumers per subscription", true, func(p *utils.Policies) *int {
 						return p.MaxConsumersPerSubscription
 					}),
-					testNamespaceNullablePolicyValue(resourceName, "max consumers per topic", true, 0, func(p *utils.Policies) *int {
+					testNamespaceNullablePolicyValue("max consumers per topic", true, func(p *utils.Policies) *int {
 						return p.MaxConsumersPerTopic
 					}),
-					testNamespaceNullablePolicyValue(resourceName, "max producers per topic", true, 0, func(p *utils.Policies) *int {
+					testNamespaceNullablePolicyValue("max producers per topic", true, func(p *utils.Policies) *int {
 						return p.MaxProducersPerTopic
 					}),
-					testNamespaceNullablePolicyValue(resourceName, "message TTL", true, 0, func(p *utils.Policies) *int {
+					testNamespaceNullablePolicyValue("message TTL", true, func(p *utils.Policies) *int {
 						return p.MessageTTLInSeconds
 					}),
 					testNamespaceConfigValue(resourceName, "subscription expiration time", 0, func(c, ns interface{}) (int, error) {
@@ -298,12 +298,15 @@ func testNamespaceConfigValue(
 }
 
 func testNamespaceNullablePolicyValue(
-	resourceName string,
 	policyName string,
 	expectSet bool,
-	expectedValue int,
 	getValue func(*utils.Policies) *int,
 ) resource.TestCheckFunc {
+	const (
+		resourceName  = "pulsar_namespace.test"
+		expectedValue = 0
+	)
+
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[resourceName]
 		if !ok {

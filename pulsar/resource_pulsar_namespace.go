@@ -410,7 +410,9 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetPolicies: %w", err))
 		}
-		namespaceConfig["max_consumers_per_subscription"] = policyNullableIntToStateValue(policies.MaxConsumersPerSubscription)
+		namespaceConfig["max_consumers_per_subscription"] = policyNullableIntToStateValue(
+			policies.MaxConsumersPerSubscription,
+		)
 		namespaceConfig["max_consumers_per_topic"] = policyNullableIntToStateValue(policies.MaxConsumersPerTopic)
 		namespaceConfig["max_producers_per_topic"] = policyNullableIntToStateValue(policies.MaxProducersPerTopic)
 		namespaceConfig["message_ttl_seconds"] = policyNullableIntToStateValue(policies.MessageTTLInSeconds)
@@ -556,7 +558,8 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		}))
 	}
 
-	if subscriptionDispatchRateCfg, ok := d.GetOk("subscription_dispatch_rate"); ok && subscriptionDispatchRateCfg.(*schema.Set).Len() > 0 { //nolint:lll
+	if subscriptionDispatchRateCfg, ok := d.GetOk("subscription_dispatch_rate"); ok &&
+		subscriptionDispatchRateCfg.(*schema.Set).Len() > 0 {
 		sdr, err := client.GetSubscriptionDispatchRate(*ns)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSubscriptionDispatchRate: %w", err))
