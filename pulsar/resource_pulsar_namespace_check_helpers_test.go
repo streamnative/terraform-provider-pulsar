@@ -76,3 +76,40 @@ func TestIsIgnorableNotFoundError(t *testing.T) {
 	require.True(t, isIgnorableNotFoundError(errors.New("resource not found")))
 	require.False(t, isIgnorableNotFoundError(errors.New("connection reset by peer")))
 }
+
+func TestPolicyNullableIntToStateValue(t *testing.T) {
+	t.Parallel()
+
+	zero := 0
+	positive := 123
+
+	testCases := []struct {
+		name     string
+		input    *int
+		expected int
+	}{
+		{
+			name:     "nil_means_unset",
+			input:    nil,
+			expected: -1,
+		},
+		{
+			name:     "zero_is_explicit_value",
+			input:    &zero,
+			expected: 0,
+		},
+		{
+			name:     "positive_value",
+			input:    &positive,
+			expected: 123,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, policyNullableIntToStateValue(tc.input))
+		})
+	}
+}

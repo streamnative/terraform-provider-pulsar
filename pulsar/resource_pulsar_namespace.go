@@ -406,33 +406,14 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			namespaceConfig["is_allow_auto_update_schema"] = isAllowAutoUpdateSchema
 		}
 
-		maxConsPerSub, err := client.GetMaxConsumersPerSubscription(*ns)
+		policies, err := client.GetPolicies(ns.String())
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerSubscription: %w", err))
-		} else {
-			namespaceConfig["max_consumers_per_subscription"] = maxConsPerSub
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetPolicies: %w", err))
 		}
-
-		maxConsPerTopic, err := client.GetMaxConsumersPerTopic(*ns)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerTopic: %w", err))
-		} else {
-			namespaceConfig["max_consumers_per_topic"] = maxConsPerTopic
-		}
-
-		maxProdPerTopic, err := client.GetMaxProducersPerTopic(*ns)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err))
-		} else {
-			namespaceConfig["max_producers_per_topic"] = maxProdPerTopic
-		}
-
-		messageTTL, err := client.GetNamespaceMessageTTL(ns.String())
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceMessageTTL: %w", err))
-		} else {
-			namespaceConfig["message_ttl_seconds"] = messageTTL
-		}
+		namespaceConfig["max_consumers_per_subscription"] = policyNullableIntToStateValue(policies.MaxConsumersPerSubscription)
+		namespaceConfig["max_consumers_per_topic"] = policyNullableIntToStateValue(policies.MaxConsumersPerTopic)
+		namespaceConfig["max_producers_per_topic"] = policyNullableIntToStateValue(policies.MaxProducersPerTopic)
+		namespaceConfig["message_ttl_seconds"] = policyNullableIntToStateValue(policies.MessageTTLInSeconds)
 
 		offloadTresholdSizeInMb, err := client.GetOffloadThreshold(*ns)
 		if err != nil {
@@ -863,6 +844,14 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 func hasInactiveTopicPoliciesConfigured(data interface{}) bool {
 	cfg, ok := data.(*schema.Set)
 	return ok && cfg != nil && cfg.Len() > 0
+}
+
+func policyNullableIntToStateValue(value *int) int {
+	if value == nil {
+		return -1
+	}
+
+	return *value
 }
 
 func isIgnorableNotFoundError(err error) bool {
