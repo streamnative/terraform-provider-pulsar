@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -130,7 +131,7 @@ func TestIsConflictError(t *testing.T) {
 
 func TestRetryOnConflict_SucceedsImmediately(t *testing.T) {
 	calls := 0
-	err := retryOnConflict(func() error {
+	err := retryOnConflict(context.Background(), func() error {
 		calls++
 		return nil
 	})
@@ -141,7 +142,7 @@ func TestRetryOnConflict_SucceedsImmediately(t *testing.T) {
 func TestRetryOnConflict_NonConflictErrorNotRetried(t *testing.T) {
 	calls := 0
 	sentinel := errors.New("unexpected error")
-	err := retryOnConflict(func() error {
+	err := retryOnConflict(context.Background(), func() error {
 		calls++
 		return sentinel
 	})
@@ -154,7 +155,7 @@ func TestRetryOnConflict_NonConflictErrorNotRetried(t *testing.T) {
 // Note: this test takes ~500ms due to the backoff initial interval.
 func TestRetryOnConflict_ConflictErrorIsRetried(t *testing.T) {
 	calls := 0
-	err := retryOnConflict(func() error {
+	err := retryOnConflict(context.Background(), func() error {
 		calls++
 		if calls == 1 {
 			return rest.Error{Code: http.StatusConflict}
@@ -163,4 +164,19 @@ func TestRetryOnConflict_ConflictErrorIsRetried(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 2, calls, "operation must be retried after a 409 response")
+}
+
+// TestRetryOnConflict_CancelledContextStopsRetry verifies that cancelling the
+// context stops the retry loop promptly instead of waiting the full backoff.
+func TestRetryOnConflict_CancelledContextStopsRetry(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	cancel() // cancel immediately
+	err := retryOnConflict(ctx, func() error {
+		calls++
+		return rest.Error{Code: http.StatusConflict}
+	})
+	// After the first call, the backoff should notice the cancelled context and stop.
+	assert.LessOrEqual(t, calls, 2, "retry loop must stop promptly on cancelled context")
+	assert.Error(t, err)
 }
