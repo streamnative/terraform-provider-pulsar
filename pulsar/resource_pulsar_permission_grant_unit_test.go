@@ -176,7 +176,7 @@ func TestRetryOnConflict_CancelledContextStopsRetry(t *testing.T) {
 		calls++
 		return rest.Error{Code: http.StatusConflict}
 	})
-	// After the first call, the backoff should notice the cancelled context and stop.
-	assert.LessOrEqual(t, calls, 2, "retry loop must stop promptly on cancelled context")
+	// The first call executes, then the backoff detects the cancelled context and stops.
+	assert.Equal(t, 1, calls, "retry loop must stop promptly on cancelled context")
 	assert.Error(t, err)
 }
