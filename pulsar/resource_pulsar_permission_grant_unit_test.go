@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -130,7 +131,7 @@ func TestIsConflictError(t *testing.T) {
 
 func TestRetryOnConflict_SucceedsImmediately(t *testing.T) {
 	calls := 0
-	err := retryOnConflict(func() error {
+	err := retryOnConflict(context.Background(), func(context.Context) error {
 		calls++
 		return nil
 	})
@@ -141,7 +142,7 @@ func TestRetryOnConflict_SucceedsImmediately(t *testing.T) {
 func TestRetryOnConflict_NonConflictErrorNotRetried(t *testing.T) {
 	calls := 0
 	sentinel := errors.New("unexpected error")
-	err := retryOnConflict(func() error {
+	err := retryOnConflict(context.Background(), func(context.Context) error {
 		calls++
 		return sentinel
 	})
@@ -154,7 +155,7 @@ func TestRetryOnConflict_NonConflictErrorNotRetried(t *testing.T) {
 // Note: this test takes ~500ms due to the backoff initial interval.
 func TestRetryOnConflict_ConflictErrorIsRetried(t *testing.T) {
 	calls := 0
-	err := retryOnConflict(func() error {
+	err := retryOnConflict(context.Background(), func(context.Context) error {
 		calls++
 		if calls == 1 {
 			return rest.Error{Code: http.StatusConflict}
@@ -163,4 +164,23 @@ func TestRetryOnConflict_ConflictErrorIsRetried(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 2, calls, "operation must be retried after a 409 response")
+}
+
+func TestRetryOnConflict_ContextCanceledStopsRetry(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	calls := 0
+	err := retryOnConflict(ctx, func(callCtx context.Context) error {
+		assert.NotNil(t, callCtx)
+		calls++
+		if calls == 1 {
+			cancel()
+		}
+		return rest.Error{Code: http.StatusConflict}
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Less(t, calls, 10, "retry loop must stop soon after context cancellation")
 }
