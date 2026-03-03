@@ -74,7 +74,7 @@ func TestGetPermissionLock_SerializesConcurrentAccess(t *testing.T) {
 			if atomic.AddInt64(&active, 1) > 1 {
 				atomic.AddInt64(&violations, 1)
 			}
-			time.Sleep(time.Millisecond) // hold lock briefly to maximise contention
+			time.Sleep(time.Millisecond) // hold lock briefly to maximize contention
 			atomic.AddInt64(&active, -1)
 		}()
 	}
