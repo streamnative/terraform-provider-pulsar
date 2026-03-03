@@ -19,12 +19,51 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"sync"
+	"time"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	backoff "github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
+
+// permissionLocks provides per-resource-key mutexes to prevent concurrent
+// GrantPermission / RevokePermission calls within the same provider process.
+// Pulsar's grant API is read-modify-write against ZooKeeper; parallel writes
+// to the same namespace or topic produce HTTP 409 conflicts.
+var permissionLocks sync.Map
+
+func getPermissionLock(key string) *sync.Mutex {
+	mu, _ := permissionLocks.LoadOrStore(key, &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
+
+func isConflictError(err error) bool {
+	var adminErr rest.Error
+	return errors.As(err, &adminErr) && adminErr.Code == http.StatusConflict
+}
+
+// retryOnConflict retries operation on HTTP 409 with exponential backoff.
+// All other errors are treated as permanent and returned immediately.
+func retryOnConflict(ctx context.Context, operation func(context.Context) error) error {
+	bo := backoff.NewExponentialBackOff()
+	bo.MaxElapsedTime = 2 * time.Minute
+	return backoff.Retry(func() error {
+		err := operation(ctx)
+		if err == nil {
+			return nil
+		}
+		if isConflictError(err) {
+			return err
+		}
+		return backoff.Permanent(err)
+	}, backoff.WithContext(bo, ctx))
+}
 
 func resourcePulsarPermissionGrant() *schema.Resource {
 	return &schema.Resource{
@@ -33,10 +72,10 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 		UpdateContext: resourcePulsarPermissionGrantUpdate,
 		DeleteContext: resourcePulsarPermissionGrantDelete,
 
-		Description: `Provides a resource for managing permissions on either Pulsar namespaces or topics. 
+		Description: `Provides a resource for managing permissions on either Pulsar namespaces or topics.
 Permission can be granted to specific roles using this resource.
 
-**Important:** You must specify either ` + "`namespace`" + ` OR ` + "`topic`" + `, but not both. While both fields 
+**Important:** You must specify either ` + "`namespace`" + ` OR ` + "`topic`" + `, but not both. While both fields
 are marked as optional in the schema, exactly one must be provided for the resource to be valid.
 
 **Note:** It is not recommended to use this resource in conjunction with the ` + "`permission_grant`" + `
@@ -105,7 +144,13 @@ func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.Resource
 			return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 		}
 
-		if err = client.Namespaces().GrantNamespacePermission(*nsName, role, actions); err != nil {
+		mu := getPermissionLock(nsName.String())
+		mu.Lock()
+		defer mu.Unlock()
+
+		if err = retryOnConflict(ctx, func(callCtx context.Context) error {
+			return client.Namespaces().GrantNamespacePermissionWithContext(callCtx, *nsName, role, actions)
+		}); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_GRANT_NAMESPACE_PERMISSION: %w", err))
 		}
 
@@ -117,7 +162,13 @@ func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.Resource
 			return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err))
 		}
 
-		if err = client.Topics().GrantPermission(*topicName, role, actions); err != nil {
+		mu := getPermissionLock(topicName.String())
+		mu.Lock()
+		defer mu.Unlock()
+
+		if err = retryOnConflict(ctx, func(callCtx context.Context) error {
+			return client.Topics().GrantPermissionWithContext(callCtx, *topicName, role, actions)
+		}); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_GRANT_TOPIC_PERMISSION: %w", err))
 		}
 
@@ -193,12 +244,20 @@ func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.Resource
 				return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 			}
 
-			// Revoke and re-grant
-			if err = client.Namespaces().RevokeNamespacePermission(*nsName, role); err != nil {
+			mu := getPermissionLock(nsName.String())
+			mu.Lock()
+			defer mu.Unlock()
+
+			// Revoke and re-grant under the same lock to keep them atomic
+			if err = retryOnConflict(ctx, func(callCtx context.Context) error {
+				return client.Namespaces().RevokeNamespacePermissionWithContext(callCtx, *nsName, role)
+			}); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_PERMISSION_GRANT: %w", err))
 			}
 
-			if err = client.Namespaces().GrantNamespacePermission(*nsName, role, actions); err != nil {
+			if err = retryOnConflict(ctx, func(callCtx context.Context) error {
+				return client.Namespaces().GrantNamespacePermissionWithContext(callCtx, *nsName, role, actions)
+			}); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_PERMISSION_GRANT: %w", err))
 			}
 
@@ -208,12 +267,20 @@ func resourcePulsarPermissionGrantUpdate(ctx context.Context, d *schema.Resource
 				return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err))
 			}
 
-			// Revoke and re-grant
-			if err = client.Topics().RevokePermission(*topicName, role); err != nil {
+			mu := getPermissionLock(topicName.String())
+			mu.Lock()
+			defer mu.Unlock()
+
+			// Revoke and re-grant under the same lock to keep them atomic
+			if err = retryOnConflict(ctx, func(callCtx context.Context) error {
+				return client.Topics().RevokePermissionWithContext(callCtx, *topicName, role)
+			}); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: %w", err))
 			}
 
-			if err = client.Topics().GrantPermission(*topicName, role, actions); err != nil {
+			if err = retryOnConflict(ctx, func(callCtx context.Context) error {
+				return client.Topics().GrantPermissionWithContext(callCtx, *topicName, role, actions)
+			}); err != nil {
 				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_TOPIC_PERMISSION_GRANT: %w", err))
 			}
 		}
@@ -233,7 +300,13 @@ func resourcePulsarPermissionGrantDelete(ctx context.Context, d *schema.Resource
 			return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 		}
 
-		if err = client.Namespaces().RevokeNamespacePermission(*nsName, role); err != nil {
+		mu := getPermissionLock(nsName.String())
+		mu.Lock()
+		defer mu.Unlock()
+
+		if err = retryOnConflict(ctx, func(callCtx context.Context) error {
+			return client.Namespaces().RevokeNamespacePermissionWithContext(callCtx, *nsName, role)
+		}); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_DELETE_NAMESPACE_PERMISSION_GRANT: %w", err))
 		}
 
@@ -243,7 +316,13 @@ func resourcePulsarPermissionGrantDelete(ctx context.Context, d *schema.Resource
 			return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err))
 		}
 
-		if err = client.Topics().RevokePermission(*topicName, role); err != nil {
+		mu := getPermissionLock(topicName.String())
+		mu.Lock()
+		defer mu.Unlock()
+
+		if err = retryOnConflict(ctx, func(callCtx context.Context) error {
+			return client.Topics().RevokePermissionWithContext(callCtx, *topicName, role)
+		}); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_DELETE_TOPIC_PERMISSION_GRANT: %w", err))
 		}
 	}

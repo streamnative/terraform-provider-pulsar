@@ -65,10 +65,10 @@ Optional:
 
 - `anti_affinity` (String)
 - `is_allow_auto_update_schema` (Boolean)
-- `max_consumers_per_subscription` (Number) Max consumers per subscription. 0 = unlimited, >0 = specific limit. Omit to use broker defaults. Note: Due to Pulsar API limitations, once set, this cannot be unset.
-- `max_consumers_per_topic` (Number) Max consumers per topic. 0 = unlimited, >0 = specific limit. Omit to use broker defaults. Note: Due to Pulsar API limitations, once set, this cannot be unset.
-- `max_producers_per_topic` (Number) Max producers per topic. 0 = unlimited, >0 = specific limit. Omit to use broker defaults. Note: Due to Pulsar API limitations, once set, this cannot be unset.
-- `message_ttl_seconds` (Number) Message TTL in seconds. 0 = never expire, >0 = expire after N seconds. Omit to use broker defaults. Note: Due to Pulsar API limitations, once set, this cannot be unset.
+- `max_consumers_per_subscription` (Number) Max consumers per subscription. 0 = unlimited, >0 = specific limit. Omit to use broker defaults.
+- `max_consumers_per_topic` (Number) Max consumers per topic. 0 = unlimited, >0 = specific limit. Omit to use broker defaults.
+- `max_producers_per_topic` (Number) Max producers per topic. 0 = unlimited, >0 = specific limit. Omit to use broker defaults.
+- `message_ttl_seconds` (Number) Message TTL in seconds. 0 = never expire, >0 = expire after N seconds. Omit to use broker defaults.
 - `offload_threshold_size_in_mb` (Number)
 - `replication_clusters` (Set of String)
 - `schema_auto_update_compatibility_strategy` (String)
@@ -137,4 +137,3 @@ Optional:
 
 - `partitions` (Number)
 - `type` (String)
-

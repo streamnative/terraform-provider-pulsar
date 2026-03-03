@@ -198,8 +198,7 @@ func resourcePulsarNamespace() *schema.Resource {
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
 							Description: "Max consumers per subscription. 0 = unlimited, >0 = specific limit. " +
-								"Omit to use broker defaults. Note: Due to Pulsar API limitations, once set, " +
-								"this cannot be unset.",
+								"Omit to use broker defaults.",
 						},
 						"max_consumers_per_topic": {
 							Type:         schema.TypeInt,
@@ -207,8 +206,7 @@ func resourcePulsarNamespace() *schema.Resource {
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
 							Description: "Max consumers per topic. 0 = unlimited, >0 = specific limit. " +
-								"Omit to use broker defaults. Note: Due to Pulsar API limitations, once set, " +
-								"this cannot be unset.",
+								"Omit to use broker defaults.",
 						},
 						"max_producers_per_topic": {
 							Type:         schema.TypeInt,
@@ -216,8 +214,7 @@ func resourcePulsarNamespace() *schema.Resource {
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
 							Description: "Max producers per topic. 0 = unlimited, >0 = specific limit. " +
-								"Omit to use broker defaults. Note: Due to Pulsar API limitations, once set, " +
-								"this cannot be unset.",
+								"Omit to use broker defaults.",
 						},
 						"message_ttl_seconds": {
 							Type:         schema.TypeInt,
@@ -225,8 +222,7 @@ func resourcePulsarNamespace() *schema.Resource {
 							Default:      -1,
 							ValidateFunc: validateGtEq0,
 							Description: "Message TTL in seconds. 0 = never expire, >0 = expire after N seconds. " +
-								"Omit to use broker defaults. Note: Due to Pulsar API limitations, once set, " +
-								"this cannot be unset.",
+								"Omit to use broker defaults.",
 						},
 						"offload_threshold_size_in_mb": {
 							Type:         schema.TypeInt,
@@ -410,33 +406,16 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			namespaceConfig["is_allow_auto_update_schema"] = isAllowAutoUpdateSchema
 		}
 
-		maxConsPerSub, err := client.GetMaxConsumersPerSubscription(*ns)
+		policies, err := client.GetPolicies(ns.String())
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerSubscription: %w", err))
-		} else {
-			namespaceConfig["max_consumers_per_subscription"] = maxConsPerSub
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetPolicies: %w", err))
 		}
-
-		maxConsPerTopic, err := client.GetMaxConsumersPerTopic(*ns)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxConsumersPerTopic: %w", err))
-		} else {
-			namespaceConfig["max_consumers_per_topic"] = maxConsPerTopic
-		}
-
-		maxProdPerTopic, err := client.GetMaxProducersPerTopic(*ns)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetMaxProducersPerTopic: %w", err))
-		} else {
-			namespaceConfig["max_producers_per_topic"] = maxProdPerTopic
-		}
-
-		messageTTL, err := client.GetNamespaceMessageTTL(ns.String())
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceMessageTTL: %w", err))
-		} else {
-			namespaceConfig["message_ttl_seconds"] = messageTTL
-		}
+		namespaceConfig["max_consumers_per_subscription"] = policyNullableIntToStateValue(
+			policies.MaxConsumersPerSubscription,
+		)
+		namespaceConfig["max_consumers_per_topic"] = policyNullableIntToStateValue(policies.MaxConsumersPerTopic)
+		namespaceConfig["max_producers_per_topic"] = policyNullableIntToStateValue(policies.MaxProducersPerTopic)
+		namespaceConfig["message_ttl_seconds"] = policyNullableIntToStateValue(policies.MessageTTLInSeconds)
 
 		offloadTresholdSizeInMb, err := client.GetOffloadThreshold(*ns)
 		if err != nil {
@@ -579,7 +558,8 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		}))
 	}
 
-	if subscriptionDispatchRateCfg, ok := d.GetOk("subscription_dispatch_rate"); ok && subscriptionDispatchRateCfg.(*schema.Set).Len() > 0 { //nolint:lll
+	if subscriptionDispatchRateCfg, ok := d.GetOk("subscription_dispatch_rate"); ok &&
+		subscriptionDispatchRateCfg.(*schema.Set).Len() > 0 {
 		sdr, err := client.GetSubscriptionDispatchRate(*ns)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSubscriptionDispatchRate: %w", err))
@@ -663,11 +643,19 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 			if err = client.SetMaxConsumersPerTopic(*nsName, nsCfg.MaxConsumersPerTopic); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerTopic: %w", err))
 			}
+		} else {
+			if err = client.RemoveMaxConsumersPerTopic(*nsName); err != nil && !isIgnorableNotFoundError(err) {
+				errs = multierror.Append(errs, fmt.Errorf("RemoveMaxConsumersPerTopic: %w", err))
+			}
 		}
 
 		if nsCfg.MaxConsumersPerSubscription >= 0 {
 			if err = client.SetMaxConsumersPerSubscription(*nsName, nsCfg.MaxConsumersPerSubscription); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetMaxConsumersPerSubscription: %w", err))
+			}
+		} else {
+			if err = client.RemoveMaxConsumersPerSubscription(*nsName); err != nil && !isIgnorableNotFoundError(err) {
+				errs = multierror.Append(errs, fmt.Errorf("RemoveMaxConsumersPerSubscription: %w", err))
 			}
 		}
 
@@ -675,11 +663,19 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 			if err = client.SetMaxProducersPerTopic(*nsName, nsCfg.MaxProducersPerTopic); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetMaxProducersPerTopic: %w", err))
 			}
+		} else {
+			if err = client.RemoveMaxProducersPerTopic(*nsName); err != nil && !isIgnorableNotFoundError(err) {
+				errs = multierror.Append(errs, fmt.Errorf("RemoveMaxProducersPerTopic: %w", err))
+			}
 		}
 
 		if nsCfg.MessageTTLInSeconds >= 0 {
 			if err = client.SetNamespaceMessageTTL(nsName.String(), nsCfg.MessageTTLInSeconds); err != nil {
 				errs = multierror.Append(errs, fmt.Errorf("SetNamespaceMessageTTL: %w", err))
+			}
+		} else {
+			if err = client.RemoveNamespaceMessageTTL(nsName.String()); err != nil && !isIgnorableNotFoundError(err) {
+				errs = multierror.Append(errs, fmt.Errorf("RemoveNamespaceMessageTTL: %w", err))
 			}
 		}
 
@@ -851,6 +847,14 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 func hasInactiveTopicPoliciesConfigured(data interface{}) bool {
 	cfg, ok := data.(*schema.Set)
 	return ok && cfg != nil && cfg.Len() > 0
+}
+
+func policyNullableIntToStateValue(value *int) int {
+	if value == nil {
+		return -1
+	}
+
+	return *value
 }
 
 func isIgnorableNotFoundError(err error) bool {
