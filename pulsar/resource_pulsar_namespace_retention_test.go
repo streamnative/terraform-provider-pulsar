@@ -147,7 +147,7 @@ func testNamespaceRetentionPolicy(
 				return nil
 			}
 			// If no error, check that values are at defaults (0/0)
-			if ret.RetentionTimeInMinutes == 0 && ret.RetentionSizeInMB == 0 {
+			if ret == nil || (ret.RetentionTimeInMinutes == 0 && ret.RetentionSizeInMB == 0) {
 				return nil
 			}
 			return fmt.Errorf("expected retention to be removed, but got: time=%d, size=%d",
@@ -156,6 +156,9 @@ func testNamespaceRetentionPolicy(
 
 		if err != nil {
 			return fmt.Errorf("ERROR_GETTING_NAMESPACE_RETENTION: %w", err)
+		}
+		if ret == nil {
+			return fmt.Errorf("expected retention policy to exist, but got nil")
 		}
 
 		if ret.RetentionTimeInMinutes != expectedMinutes {
