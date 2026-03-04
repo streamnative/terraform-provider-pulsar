@@ -886,7 +886,7 @@ func testTopicImported() resource.ImportStateCheckFunc {
 		}
 
 		if len(s[0].Attributes) != 32 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 32, len(s[0].Attributes), s[0].Attributes)
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 33, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -1352,7 +1352,7 @@ func TestTopicSchemaCompatibilityStrategyUpdate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", "Undefined"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", ""),
 				),
 			},
 		},
