@@ -996,15 +996,12 @@ func waitForTopicConfigUpdate(d *schema.ResourceData, topicName *utils.TopicName
 func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
 	client := getClientFromMeta(meta).Topics()
 
-	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
-	if retentionPoliciesConfig.Len() == 0 {
-		return nil
-	}
-
 	if !topicName.IsPersistent() {
 		return errors.New("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: " +
 			"unsupported set retention policies for non-persistent topic")
 	}
+
+	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
 
 	if retentionPoliciesConfig.Len() > 0 {
 		var policies utils.RetentionPolicies
@@ -1035,6 +1032,29 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 				return false, nil
 			}
 			return true, nil
+		})
+	} else if d.HasChange("retention_policies") {
+		// Retention policies block was removed from config — remove from Pulsar
+		if err := client.RemoveRetention(*topicName); err != nil {
+			if !isIgnorableTopicPolicyError(err) {
+				return backoff.Permanent(fmt.Errorf("ERROR_REMOVE_RETENTION_POLICIES: RemoveRetention: %w", err))
+			} else {
+				return fmt.Errorf("ERROR_REMOVE_RETENTION_POLICIES: RemoveRetention: %w", err)
+			}
+		}
+
+		// Verify removal was applied
+		return waitForTopicConfigUpdate(d, topicName, "RETENTION_POLICIES", func() (bool, error) {
+			ret, err := client.GetRetention(*topicName, false)
+			if err != nil {
+				// Not found means removal succeeded
+				return true, nil
+			}
+			// nil or default values (0/0) means removal succeeded
+			if ret == nil || (ret.RetentionTimeInMinutes == 0 && ret.RetentionSizeInMB == 0) {
+				return true, nil
+			}
+			return false, nil
 		})
 	}
 
