@@ -124,6 +124,10 @@ func testTopicRetentionPolicy(
 				// Error getting retention means it's not set — that's expected
 				return nil
 			}
+			// nil response means no retention policy is set
+			if ret == nil {
+				return nil
+			}
 			// If no error, check that values are at defaults (0/0)
 			if ret.RetentionTimeInMinutes == 0 && ret.RetentionSizeInMB == 0 {
 				return nil
