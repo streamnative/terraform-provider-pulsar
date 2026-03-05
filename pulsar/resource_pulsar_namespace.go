@@ -503,6 +503,8 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 					"retention_size_in_mb": fmt.Sprint(ret.RetentionSizeInMB),
 				},
 			}))
+		} else {
+			_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{}))
 		}
 	}
 
