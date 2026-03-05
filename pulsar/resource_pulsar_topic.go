@@ -546,7 +546,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
-	if _, ok := d.GetOkExists("enable_deduplication"); ok {
+	if isTopicAttrConfigured(d, "enable_deduplication") {
 		deduplicationStatus, err := client.GetDeduplicationStatus(*topicName)
 		if err != nil {
 			if !isIgnorableTopicPolicyError(err) {
@@ -1115,6 +1115,19 @@ func retry(operation func() error) error {
 	return backoff.RetryNotifyWithTimer(operation, backoff.NewExponentialBackOff(), nil, &testTimer{})
 }
 
+func isTopicAttrConfigured(d *schema.ResourceData, attr string) bool {
+	rawConfig := d.GetRawConfig()
+	if rawConfig.IsNull() || !rawConfig.IsKnown() {
+		return false
+	}
+	if !rawConfig.Type().HasAttribute(attr) {
+		return false
+	}
+
+	attrValue := rawConfig.GetAttr(attr)
+	return !attrValue.IsNull()
+}
+
 func topicDispatchRateToHash(v interface{}) int {
 	var buf bytes.Buffer
 	m := v.(map[string]interface{})
@@ -1136,8 +1149,8 @@ func topicDispatchRateToHash(v interface{}) int {
 func updateDeduplicationStatus(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
 	client := getClientFromMeta(meta).Topics()
 
-	if enableDeduplication, ok := d.GetOkExists("enable_deduplication"); ok {
-		enabled := enableDeduplication.(bool)
+	if isTopicAttrConfigured(d, "enable_deduplication") {
+		enabled := d.Get("enable_deduplication").(bool)
 		err := client.SetDeduplicationStatus(*topicName, enabled)
 		if err != nil {
 			return fmt.Errorf("ERROR_UPDATE_TOPIC_DEDUPLICATION_STATUS: %w", err)
