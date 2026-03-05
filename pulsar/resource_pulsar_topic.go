@@ -287,7 +287,7 @@ func resourcePulsarTopic() *schema.Resource {
 							Type:         schema.TypeString,
 							Optional:     true,
 							ValidateFunc: validateNotBlank,
-							Description:  "Schema compatibility strategy override for this topic. Use `Undefined` to remove override.",
+							Description:  "Schema compatibility strategy override for this topic.",
 						},
 					},
 				},
@@ -1668,28 +1668,14 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		} else {
 			var operationSucceeded bool
 
-			if strategy == utils.SchemaCompatibilityStrategyUndefined {
-				if err := client.RemoveSchemaCompatibilityStrategy(*topicName); err != nil {
-					if !isIgnorableTopicPolicyError(err) {
-						errs = errors.Wrap(errs, fmt.Sprintf("RemoveSchemaCompatibilityStrategy error: %v", err))
-					} else {
-						return backoff.Permanent(
-							fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: RemoveSchemaCompatibilityStrategy: %w", err))
-					}
-				} else {
-					operationSucceeded = true
+			if err := client.SetSchemaCompatibilityStrategy(*topicName, strategy); err != nil {
+				if !isIgnorableTopicPolicyError(err) {
+					return backoff.Permanent(
+						fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: SetSchemaCompatibilityStrategy: %w", err))
 				}
+				errs = errors.Wrap(errs, fmt.Sprintf("SetSchemaCompatibilityStrategy error: %v", err))
 			} else {
-				if err := client.SetSchemaCompatibilityStrategy(*topicName, strategy); err != nil {
-					if !isIgnorableTopicPolicyError(err) {
-						errs = errors.Wrap(errs, fmt.Sprintf("SetSchemaCompatibilityStrategy error: %v", err))
-					} else {
-						return backoff.Permanent(
-							fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: SetSchemaCompatibilityStrategy: %w", err))
-					}
-				} else {
-					operationSucceeded = true
-				}
+				operationSucceeded = true
 			}
 
 			if operationSucceeded {

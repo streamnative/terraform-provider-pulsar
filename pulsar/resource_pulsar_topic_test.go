@@ -1352,7 +1352,7 @@ func TestTopicSchemaCompatibilityStrategyUpdate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", ""),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", "Undefined"),
 				),
 			},
 		},
