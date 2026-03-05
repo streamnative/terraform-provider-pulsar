@@ -528,20 +528,25 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 				if !isIgnorableTopicPolicyError(err) {
 					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err))
 				}
+				_ = d.Set("retention_policies", []interface{}{})
 			} else {
-				_ = d.Set("retention_policies", []interface{}{
-					map[string]interface{}{
-						"retention_time_minutes": ret.RetentionTimeInMinutes,
-						"retention_size_mb":      int(ret.RetentionSizeInMB),
-					},
-				})
+				if ret != nil {
+					_ = d.Set("retention_policies", []interface{}{
+						map[string]interface{}{
+							"retention_time_minutes": ret.RetentionTimeInMinutes,
+							"retention_size_mb":      int(ret.RetentionSizeInMB),
+						},
+					})
+				} else {
+					_ = d.Set("retention_policies", []interface{}{})
+				}
 			}
 		} else {
 			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get retention policies for non-persistent topic"))
 		}
 	}
 
-	if _, ok := d.GetOk("enable_deduplication"); ok {
+	if isTopicAttrConfigured(d, "enable_deduplication") {
 		deduplicationStatus, err := client.GetDeduplicationStatus(*topicName)
 		if err != nil {
 			if !isIgnorableTopicPolicyError(err) {
@@ -997,13 +1002,17 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 	client := getClientFromMeta(meta).Topics()
 
 	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
-	if retentionPoliciesConfig.Len() == 0 {
-		return nil
-	}
-
 	if !topicName.IsPersistent() {
+		if retentionPoliciesConfig.Len() == 0 {
+			return nil
+		}
+
 		return errors.New("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: " +
 			"unsupported set retention policies for non-persistent topic")
+	}
+
+	if retentionPoliciesConfig.Len() == 0 && !d.HasChange("retention_policies") {
+		return nil
 	}
 
 	if retentionPoliciesConfig.Len() > 0 {
@@ -1038,7 +1047,30 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 		})
 	}
 
-	return nil
+	if err := client.RemoveRetention(*topicName); err != nil {
+		if !isIgnorableTopicPolicyError(err) {
+			return backoff.Permanent(fmt.Errorf("ERROR_REMOVE_RETENTION_POLICIES: RemoveRetention: %w", err))
+		}
+		// Topic policy removal is effectively a no-op when topic policies are unavailable.
+		return nil
+	}
+
+	return waitForTopicConfigUpdate(d, topicName, "RETENTION_POLICIES", func() (bool, error) {
+		ret, err := client.GetRetention(*topicName, false)
+		if err != nil {
+			if isIgnorableTopicPolicyError(err) {
+				return true, nil
+			}
+
+			return false, fmt.Errorf("ERROR_REMOVE_RETENTION_POLICIES: GetRetention: %w", err)
+		}
+
+		if ret == nil || (ret.RetentionTimeInMinutes == 0 && ret.RetentionSizeInMB == 0) {
+			return true, nil
+		}
+
+		return false, nil
+	})
 }
 
 func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName, partitions int) error {
@@ -1083,6 +1115,19 @@ func retry(operation func() error) error {
 	return backoff.RetryNotifyWithTimer(operation, backoff.NewExponentialBackOff(), nil, &testTimer{})
 }
 
+func isTopicAttrConfigured(d *schema.ResourceData, attr string) bool {
+	rawConfig := d.GetRawConfig()
+	if rawConfig.IsNull() || !rawConfig.IsKnown() {
+		return false
+	}
+	if !rawConfig.Type().HasAttribute(attr) {
+		return false
+	}
+
+	attrValue := rawConfig.GetAttr(attr)
+	return !attrValue.IsNull()
+}
+
 func topicDispatchRateToHash(v interface{}) int {
 	var buf bytes.Buffer
 	m := v.(map[string]interface{})
@@ -1104,8 +1149,8 @@ func topicDispatchRateToHash(v interface{}) int {
 func updateDeduplicationStatus(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
 	client := getClientFromMeta(meta).Topics()
 
-	if enableDeduplication, ok := d.GetOk("enable_deduplication"); ok {
-		enabled := enableDeduplication.(bool)
+	if isTopicAttrConfigured(d, "enable_deduplication") {
+		enabled := d.Get("enable_deduplication").(bool)
 		err := client.SetDeduplicationStatus(*topicName, enabled)
 		if err != nil {
 			return fmt.Errorf("ERROR_UPDATE_TOPIC_DEDUPLICATION_STATUS: %w", err)
