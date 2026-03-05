@@ -997,13 +997,17 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 	client := getClientFromMeta(meta).Topics()
 
 	retentionPoliciesConfig := d.Get("retention_policies").(*schema.Set)
-	if retentionPoliciesConfig.Len() == 0 {
-		return nil
-	}
-
 	if !topicName.IsPersistent() {
+		if retentionPoliciesConfig.Len() == 0 {
+			return nil
+		}
+
 		return errors.New("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: " +
 			"unsupported set retention policies for non-persistent topic")
+	}
+
+	if retentionPoliciesConfig.Len() == 0 && !d.HasChange("retention_policies") {
+		return nil
 	}
 
 	if retentionPoliciesConfig.Len() > 0 {
@@ -1038,7 +1042,29 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 		})
 	}
 
-	return nil
+	if err := client.RemoveRetention(*topicName); err != nil {
+		if !isIgnorableTopicPolicyError(err) {
+			return backoff.Permanent(fmt.Errorf("ERROR_REMOVE_RETENTION_POLICIES: RemoveRetention: %w", err))
+		}
+		return fmt.Errorf("ERROR_REMOVE_RETENTION_POLICIES: RemoveRetention: %w", err)
+	}
+
+	return waitForTopicConfigUpdate(d, topicName, "RETENTION_POLICIES", func() (bool, error) {
+		ret, err := client.GetRetention(*topicName, false)
+		if err != nil {
+			if isIgnorableTopicPolicyError(err) {
+				return true, nil
+			}
+
+			return false, fmt.Errorf("ERROR_REMOVE_RETENTION_POLICIES: GetRetention: %w", err)
+		}
+
+		if ret == nil || (ret.RetentionTimeInMinutes == 0 && ret.RetentionSizeInMB == 0) {
+			return true, nil
+		}
+
+		return false, nil
+	})
 }
 
 func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName, partitions int) error {
