@@ -1046,7 +1046,8 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 		if !isIgnorableTopicPolicyError(err) {
 			return backoff.Permanent(fmt.Errorf("ERROR_REMOVE_RETENTION_POLICIES: RemoveRetention: %w", err))
 		}
-		return fmt.Errorf("ERROR_REMOVE_RETENTION_POLICIES: RemoveRetention: %w", err)
+		// Topic policy removal is effectively a no-op when topic policies are unavailable.
+		return nil
 	}
 
 	return waitForTopicConfigUpdate(d, topicName, "RETENTION_POLICIES", func() (bool, error) {
