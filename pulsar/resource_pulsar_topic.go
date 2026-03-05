@@ -528,20 +528,25 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 				if !isIgnorableTopicPolicyError(err) {
 					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetRetention: %w", err))
 				}
+				_ = d.Set("retention_policies", []interface{}{})
 			} else {
-				_ = d.Set("retention_policies", []interface{}{
-					map[string]interface{}{
-						"retention_time_minutes": ret.RetentionTimeInMinutes,
-						"retention_size_mb":      int(ret.RetentionSizeInMB),
-					},
-				})
+				if ret != nil {
+					_ = d.Set("retention_policies", []interface{}{
+						map[string]interface{}{
+							"retention_time_minutes": ret.RetentionTimeInMinutes,
+							"retention_size_mb":      int(ret.RetentionSizeInMB),
+						},
+					})
+				} else {
+					_ = d.Set("retention_policies", []interface{}{})
+				}
 			}
 		} else {
 			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get retention policies for non-persistent topic"))
 		}
 	}
 
-	if _, ok := d.GetOk("enable_deduplication"); ok {
+	if _, ok := d.GetOkExists("enable_deduplication"); ok {
 		deduplicationStatus, err := client.GetDeduplicationStatus(*topicName)
 		if err != nil {
 			if !isIgnorableTopicPolicyError(err) {
@@ -1131,7 +1136,7 @@ func topicDispatchRateToHash(v interface{}) int {
 func updateDeduplicationStatus(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
 	client := getClientFromMeta(meta).Topics()
 
-	if enableDeduplication, ok := d.GetOk("enable_deduplication"); ok {
+	if enableDeduplication, ok := d.GetOkExists("enable_deduplication"); ok {
 		enabled := enableDeduplication.(bool)
 		err := client.SetDeduplicationStatus(*topicName, enabled)
 		if err != nil {
