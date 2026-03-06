@@ -20,6 +20,20 @@ func TestRawConfigHasTopicSchemaCompatibilityStrategy(t *testing.T) {
 	}
 }
 
+func TestRawConfigHasTopicSchemaCompatibilityStrategyTuple(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_config": cty.TupleVal([]cty.Value{
+			cty.ObjectVal(map[string]cty.Value{
+				"schema_compatibility_strategy": cty.StringVal("Undefined"),
+			}),
+		}),
+	})
+
+	if !rawConfigHasTopicSchemaCompatibilityStrategy(rawConfig) {
+		t.Fatal("expected tuple topic_config to be supported")
+	}
+}
+
 func TestRawConfigHasTopicSchemaCompatibilityStrategyUnset(t *testing.T) {
 	rawConfig := cty.ObjectVal(map[string]cty.Value{
 		"topic_config": cty.ListVal([]cty.Value{
@@ -39,5 +53,17 @@ func TestRawConfigHasTopicSchemaCompatibilityStrategyWithoutBlock(t *testing.T) 
 
 	if rawConfigHasTopicSchemaCompatibilityStrategy(rawConfig) {
 		t.Fatal("expected missing topic_config block to remain unset")
+	}
+}
+
+func TestRawConfigHasTopicSchemaCompatibilityStrategyInvalidTopicConfigShape(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_config": cty.ObjectVal(map[string]cty.Value{
+			"schema_compatibility_strategy": cty.StringVal("Undefined"),
+		}),
+	})
+
+	if rawConfigHasTopicSchemaCompatibilityStrategy(rawConfig) {
+		t.Fatal("expected invalid topic_config shape to be ignored")
 	}
 }

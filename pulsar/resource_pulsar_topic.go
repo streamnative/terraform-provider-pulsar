@@ -1759,6 +1759,10 @@ func rawConfigHasTopicSchemaCompatibilityStrategy(rawConfig cty.Value) bool {
 	}
 
 	topicConfig := rawConfig.GetAttr("topic_config")
+	if !topicConfig.Type().IsListType() && !topicConfig.Type().IsTupleType() {
+		return false
+	}
+
 	if !topicConfig.IsKnown() || topicConfig.IsNull() || topicConfig.LengthInt() == 0 {
 		return false
 	}
