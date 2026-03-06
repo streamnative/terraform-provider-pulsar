@@ -734,8 +734,12 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	time.Sleep(time.Millisecond * 100)
 	schemaCompatibilityStrategy, err := client.GetSchemaCompatibilityStrategy(*topicName)
 	if err == nil {
-		topicConfigMap["schema_compatibility_strategy"] =
-			schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
+		terraformSchemaCompatibilityStrategy := schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
+		if terraformSchemaCompatibilityStrategy == "" {
+			terraformSchemaCompatibilityStrategy =
+				schemaCompatibilityStrategyToTerraformValue(utils.SchemaCompatibilityStrategyUndefined)
+		}
+		topicConfigMap["schema_compatibility_strategy"] = terraformSchemaCompatibilityStrategy
 	} else if !isIgnorableTopicPolicyError(err) {
 		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetSchemaCompatibilityStrategy: %w", err))
 	}
@@ -1667,8 +1671,20 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			errs = errors.Wrap(errs, fmt.Sprintf("ParseSchemaCompatibilityStrategy error: %v", err))
 		} else {
 			var operationSucceeded bool
+			isRemoveSchemaCompatibilityStrategy := strategy == utils.SchemaCompatibilityStrategyUndefined
 
-			if err := client.SetSchemaCompatibilityStrategy(*topicName, strategy); err != nil {
+			if isRemoveSchemaCompatibilityStrategy {
+				if err := client.RemoveSchemaCompatibilityStrategy(*topicName); err != nil {
+					if !isIgnorableTopicPolicyError(err) {
+						return backoff.Permanent(
+							fmt.Errorf(
+								"ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: RemoveSchemaCompatibilityStrategy: %w", err))
+					}
+					errs = errors.Wrap(errs, fmt.Sprintf("RemoveSchemaCompatibilityStrategy error: %v", err))
+				} else {
+					operationSucceeded = true
+				}
+			} else if err := client.SetSchemaCompatibilityStrategy(*topicName, strategy); err != nil {
 				if !isIgnorableTopicPolicyError(err) {
 					return backoff.Permanent(
 						fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: SetSchemaCompatibilityStrategy: %w", err))
@@ -1684,6 +1700,12 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 					if err != nil {
 						return false,
 							fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: GetSchemaCompatibilityStrategy: %w", err)
+					}
+					if isRemoveSchemaCompatibilityStrategy {
+						if currentStrategy == "" || currentStrategy == utils.SchemaCompatibilityStrategyUndefined {
+							return true, nil
+						}
+						return false, nil
 					}
 					if currentStrategy != strategy {
 						return false, nil

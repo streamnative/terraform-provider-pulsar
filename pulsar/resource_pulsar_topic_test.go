@@ -1345,15 +1345,24 @@ func TestTopicSchemaCompatibilityStrategyUpdate(t *testing.T) {
 			},
 			{
 				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
-					topic_config {
-						schema_compatibility_strategy = "Undefined"
-					}
-				`),
+						topic_config {
+							schema_compatibility_strategy = "Undefined"
+						}
+					`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", "Undefined"),
 				),
+			},
+			{
+				Config: testPulsarTopicWithTopicConfig(testWebServiceURL, tname, ttype, pnum, `
+						topic_config {
+							schema_compatibility_strategy = "Undefined"
+						}
+					`),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
