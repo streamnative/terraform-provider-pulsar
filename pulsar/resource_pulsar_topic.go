@@ -29,6 +29,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	rt "github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -1745,13 +1746,38 @@ func inactiveTopicPoliciesToHash(v interface{}) int {
 }
 
 func topicConfigHasSchemaCompatibilityStrategy(d *schema.ResourceData) bool {
-	strategy, ok := d.GetOkExists("topic_config.0.schema_compatibility_strategy")
-	if !ok {
+	return rawConfigHasTopicSchemaCompatibilityStrategy(d.GetRawConfig())
+}
+
+func rawConfigHasTopicSchemaCompatibilityStrategy(rawConfig cty.Value) bool {
+	if !rawConfig.IsKnown() || rawConfig.IsNull() {
 		return false
 	}
 
-	strategyValue, ok := strategy.(string)
-	return ok && strategyValue != ""
+	if !rawConfig.Type().IsObjectType() || !rawConfig.Type().HasAttribute("topic_config") {
+		return false
+	}
+
+	topicConfig := rawConfig.GetAttr("topic_config")
+	if !topicConfig.IsKnown() || topicConfig.IsNull() || topicConfig.LengthInt() == 0 {
+		return false
+	}
+
+	configBlock := topicConfig.Index(cty.NumberIntVal(0))
+	if !configBlock.IsKnown() || configBlock.IsNull() {
+		return false
+	}
+
+	if !configBlock.Type().IsObjectType() || !configBlock.Type().HasAttribute("schema_compatibility_strategy") {
+		return false
+	}
+
+	strategy := configBlock.GetAttr("schema_compatibility_strategy")
+	if !strategy.IsKnown() || strategy.IsNull() || strategy.Type() != cty.String {
+		return false
+	}
+
+	return strategy.AsString() != ""
 }
 
 func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
