@@ -735,11 +735,13 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	schemaCompatibilityStrategy, err := client.GetSchemaCompatibilityStrategy(*topicName)
 	if err == nil {
 		terraformSchemaCompatibilityStrategy := schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
-		if terraformSchemaCompatibilityStrategy == "" {
+		if terraformSchemaCompatibilityStrategy == "" && topicConfigHasSchemaCompatibilityStrategy(d) {
 			terraformSchemaCompatibilityStrategy =
 				schemaCompatibilityStrategyToTerraformValue(utils.SchemaCompatibilityStrategyUndefined)
 		}
-		topicConfigMap["schema_compatibility_strategy"] = terraformSchemaCompatibilityStrategy
+		if terraformSchemaCompatibilityStrategy != "" {
+			topicConfigMap["schema_compatibility_strategy"] = terraformSchemaCompatibilityStrategy
+		}
 	} else if !isIgnorableTopicPolicyError(err) {
 		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetSchemaCompatibilityStrategy: %w", err))
 	}
@@ -1740,6 +1742,16 @@ func inactiveTopicPoliciesToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%s-", m["delete_mode"].(string)))
 
 	return hashcode.String(buf.String())
+}
+
+func topicConfigHasSchemaCompatibilityStrategy(d *schema.ResourceData) bool {
+	strategy, ok := d.GetOkExists("topic_config.0.schema_compatibility_strategy")
+	if !ok {
+		return false
+	}
+
+	strategyValue, ok := strategy.(string)
+	return ok && strategyValue != ""
 }
 
 func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
