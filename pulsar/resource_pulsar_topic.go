@@ -1746,19 +1746,31 @@ func inactiveTopicPoliciesToHash(v interface{}) int {
 }
 
 func topicConfigHasSchemaCompatibilityStrategy(d *schema.ResourceData) bool {
-	return rawConfigHasTopicSchemaCompatibilityStrategy(d.GetRawConfig())
+	return rawConfigOrStateHasTopicSchemaCompatibilityStrategy(d.GetRawConfig(), d.GetRawState())
 }
 
 func rawConfigHasTopicSchemaCompatibilityStrategy(rawConfig cty.Value) bool {
-	if !rawConfig.IsKnown() || rawConfig.IsNull() {
+	return rawValueHasTopicSchemaCompatibilityStrategy(rawConfig)
+}
+
+func rawConfigOrStateHasTopicSchemaCompatibilityStrategy(rawConfig cty.Value, rawState cty.Value) bool {
+	if !rawConfig.IsNull() {
+		return rawValueHasTopicSchemaCompatibilityStrategy(rawConfig)
+	}
+
+	return rawValueHasTopicSchemaCompatibilityStrategy(rawState)
+}
+
+func rawValueHasTopicSchemaCompatibilityStrategy(rawValue cty.Value) bool {
+	if !rawValue.IsKnown() || rawValue.IsNull() {
 		return false
 	}
 
-	if !rawConfig.Type().IsObjectType() || !rawConfig.Type().HasAttribute("topic_config") {
+	if !rawValue.Type().IsObjectType() || !rawValue.Type().HasAttribute("topic_config") {
 		return false
 	}
 
-	topicConfig := rawConfig.GetAttr("topic_config")
+	topicConfig := rawValue.GetAttr("topic_config")
 	if !topicConfig.Type().IsListType() && !topicConfig.Type().IsTupleType() {
 		return false
 	}

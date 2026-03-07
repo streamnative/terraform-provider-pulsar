@@ -67,3 +67,39 @@ func TestRawConfigHasTopicSchemaCompatibilityStrategyInvalidTopicConfigShape(t *
 		t.Fatal("expected invalid topic_config shape to be ignored")
 	}
 }
+
+func TestTopicConfigHasSchemaCompatibilityStrategyFallsBackToRawState(t *testing.T) {
+	rawConfig := cty.NullVal(cty.EmptyObject)
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		"topic_config": cty.ListVal([]cty.Value{
+			cty.ObjectVal(map[string]cty.Value{
+				"schema_compatibility_strategy": cty.StringVal("Undefined"),
+			}),
+		}),
+	})
+
+	if !rawConfigOrStateHasTopicSchemaCompatibilityStrategy(rawConfig, rawState) {
+		t.Fatal("expected null raw config to fall back to raw state")
+	}
+}
+
+func TestRawConfigTakesPrecedenceOverRawStateForSchemaCompatibilityStrategy(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_config": cty.ListVal([]cty.Value{
+			cty.ObjectVal(map[string]cty.Value{
+				"schema_compatibility_strategy": cty.NullVal(cty.String),
+			}),
+		}),
+	})
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		"topic_config": cty.ListVal([]cty.Value{
+			cty.ObjectVal(map[string]cty.Value{
+				"schema_compatibility_strategy": cty.StringVal("Undefined"),
+			}),
+		}),
+	})
+
+	if rawConfigOrStateHasTopicSchemaCompatibilityStrategy(rawConfig, rawState) {
+		t.Fatal("expected raw config to take precedence over raw state")
+	}
+}
