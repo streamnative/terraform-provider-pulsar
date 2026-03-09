@@ -456,6 +456,7 @@ resource "pulsar_topic" "sample-topic-2" {
 | `max_unacked_messages_per_subscription` | Maximum number of unacknowledged messages per subscription                   | Yes      |
 | `msg_publish_rate`                  | Maximum message publish rate (per second)                                        | Yes      |
 | `byte_publish_rate`                 | Maximum byte publish rate (per second)                                           | Yes      |
+| `schema_compatibility_strategy`     | Topic-level schema compatibility strategy override. Use `Undefined` to remove it | Yes      |
 | `compaction_threshold`              | The threshold (in bytes) to trigger compaction                                   | Yes      |
 | `delayed_delivery`                  | Configuration for delayed message delivery                                       | Yes      |
 | `inactive_topic`                    | Configuration for inactive topic handling                                        | Yes      |

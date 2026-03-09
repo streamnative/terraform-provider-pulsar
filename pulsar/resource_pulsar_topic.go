@@ -29,6 +29,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	rt "github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -282,6 +283,12 @@ func resourcePulsarTopic() *schema.Resource {
 							ValidateFunc: validateGtEq0,
 							Description: "Byte publish rate limit. 0 = disabled, >0 = bytes per second limit. " +
 								"Omit to inherit namespace defaults.",
+						},
+						"schema_compatibility_strategy": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							ValidateFunc: validateNotBlank,
+							Description:  "Schema compatibility strategy override for this topic.",
 						},
 					},
 				},
@@ -728,6 +735,21 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	} else if !isIgnorableTopicPolicyError(err) {
 		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPublishRate: %w", err))
+	}
+
+	time.Sleep(time.Millisecond * 100)
+	schemaCompatibilityStrategy, err := client.GetSchemaCompatibilityStrategy(*topicName)
+	if err == nil {
+		terraformSchemaCompatibilityStrategy := schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
+		if terraformSchemaCompatibilityStrategy == "" && topicConfigHasSchemaCompatibilityStrategy(d) {
+			terraformSchemaCompatibilityStrategy =
+				schemaCompatibilityStrategyToTerraformValue(utils.SchemaCompatibilityStrategyUndefined)
+		}
+		if terraformSchemaCompatibilityStrategy != "" {
+			topicConfigMap["schema_compatibility_strategy"] = terraformSchemaCompatibilityStrategy
+		}
+	} else if !isIgnorableTopicPolicyError(err) {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetSchemaCompatibilityStrategy: %w", err))
 	}
 
 	// Only set topic_config if there are configuration values or it's explicitly requested in schema
@@ -1691,6 +1713,59 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		}
 	}
 
+	if schemaCompatibilityStrategy, ok := topicConfig["schema_compatibility_strategy"]; ok {
+		strategy, err := parseSchemaCompatibilityStrategy(schemaCompatibilityStrategy.(string))
+		if err != nil {
+			errs = errors.Wrap(errs, fmt.Sprintf("ParseSchemaCompatibilityStrategy error: %v", err))
+		} else {
+			var operationSucceeded bool
+			isRemoveSchemaCompatibilityStrategy := strategy == utils.SchemaCompatibilityStrategyUndefined
+
+			if isRemoveSchemaCompatibilityStrategy {
+				if err := client.RemoveSchemaCompatibilityStrategy(*topicName); err != nil {
+					if !isIgnorableTopicPolicyError(err) {
+						return backoff.Permanent(
+							fmt.Errorf(
+								"ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: RemoveSchemaCompatibilityStrategy: %w", err))
+					}
+					errs = errors.Wrap(errs, fmt.Sprintf("RemoveSchemaCompatibilityStrategy error: %v", err))
+				} else {
+					operationSucceeded = true
+				}
+			} else if err := client.SetSchemaCompatibilityStrategy(*topicName, strategy); err != nil {
+				if !isIgnorableTopicPolicyError(err) {
+					return backoff.Permanent(
+						fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: SetSchemaCompatibilityStrategy: %w", err))
+				}
+				errs = errors.Wrap(errs, fmt.Sprintf("SetSchemaCompatibilityStrategy error: %v", err))
+			} else {
+				operationSucceeded = true
+			}
+
+			if operationSucceeded {
+				if err := waitForTopicConfigUpdate(d, topicName, "SCHEMA_COMPATIBILITY_STRATEGY", func() (bool, error) {
+					currentStrategy, err := client.GetSchemaCompatibilityStrategy(*topicName)
+					if err != nil {
+						return false,
+							fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: GetSchemaCompatibilityStrategy: %w", err)
+					}
+					if isRemoveSchemaCompatibilityStrategy {
+						if currentStrategy == "" || currentStrategy == utils.SchemaCompatibilityStrategyUndefined {
+							return true, nil
+						}
+						return false, nil
+					}
+					if currentStrategy != strategy {
+						return false, nil
+					}
+					return true, nil
+				}); err != nil {
+					errs = errors.Wrap(errs, fmt.Sprintf("SchemaCompatibilityStrategy verification error: %v", err))
+				}
+			}
+		}
+	}
+
 	return errs
 }
 
@@ -1713,6 +1788,57 @@ func inactiveTopicPoliciesToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%s-", m["delete_mode"].(string)))
 
 	return hashcode.String(buf.String())
+}
+
+func topicConfigHasSchemaCompatibilityStrategy(d *schema.ResourceData) bool {
+	return rawConfigOrStateHasTopicSchemaCompatibilityStrategy(d.GetRawConfig(), d.GetRawState())
+}
+
+func rawConfigHasTopicSchemaCompatibilityStrategy(rawConfig cty.Value) bool {
+	return rawValueHasTopicSchemaCompatibilityStrategy(rawConfig)
+}
+
+func rawConfigOrStateHasTopicSchemaCompatibilityStrategy(rawConfig cty.Value, rawState cty.Value) bool {
+	if !rawConfig.IsNull() {
+		return rawValueHasTopicSchemaCompatibilityStrategy(rawConfig)
+	}
+
+	return rawValueHasTopicSchemaCompatibilityStrategy(rawState)
+}
+
+func rawValueHasTopicSchemaCompatibilityStrategy(rawValue cty.Value) bool {
+	if !rawValue.IsKnown() || rawValue.IsNull() {
+		return false
+	}
+
+	if !rawValue.Type().IsObjectType() || !rawValue.Type().HasAttribute("topic_config") {
+		return false
+	}
+
+	topicConfig := rawValue.GetAttr("topic_config")
+	if !topicConfig.Type().IsListType() && !topicConfig.Type().IsTupleType() {
+		return false
+	}
+
+	if !topicConfig.IsKnown() || topicConfig.IsNull() || topicConfig.LengthInt() == 0 {
+		return false
+	}
+
+	configBlock := topicConfig.Index(cty.NumberIntVal(0))
+	if !configBlock.IsKnown() || configBlock.IsNull() {
+		return false
+	}
+
+	if !configBlock.Type().IsObjectType() || !configBlock.Type().HasAttribute("schema_compatibility_strategy") {
+		return false
+	}
+
+	strategy := configBlock.GetAttr("schema_compatibility_strategy")
+	if !strategy.IsKnown() || strategy.IsNull() || strategy.Type() != cty.String {
+		return false
+	}
+
+	return strategy.AsString() != ""
 }
 
 func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {

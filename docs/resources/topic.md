@@ -115,6 +115,7 @@ Optional:
 - `max_unacked_messages_per_subscription` (Number) Max unacked messages per subscription. 0 = unlimited, >0 = specific limit. Omit to inherit namespace defaults.
 - `message_ttl_seconds` (Number) Message TTL in seconds. 0 = never expire, >0 = expire after N seconds. Omit to inherit namespace defaults.
 - `msg_publish_rate` (Number) Message publish rate limit. 0 = disabled, >0 = messages per second limit. Omit to inherit namespace defaults.
+- `schema_compatibility_strategy` (String) Schema compatibility strategy override for this topic.
 
 <a id="nestedblock--topic_config--delayed_delivery"></a>
 ### Nested Schema for `topic_config.delayed_delivery`
@@ -133,5 +134,3 @@ Required:
 - `delete_mode` (String) `delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`
 - `enable_delete_while_inactive` (Boolean)
 - `max_inactive_duration` (String)
-
-
