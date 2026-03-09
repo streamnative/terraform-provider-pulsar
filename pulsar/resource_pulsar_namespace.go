@@ -496,12 +496,16 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetRetention: %w", err))
 		}
 
-		_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
-			map[string]interface{}{
-				"retention_minutes":    fmt.Sprint(ret.RetentionTimeInMinutes),
-				"retention_size_in_mb": fmt.Sprint(ret.RetentionSizeInMB),
-			},
-		}))
+		if ret != nil {
+			_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
+				map[string]interface{}{
+					"retention_minutes":    fmt.Sprint(ret.RetentionTimeInMinutes),
+					"retention_size_in_mb": fmt.Sprint(ret.RetentionSizeInMB),
+				},
+			}))
+		} else {
+			_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{}))
+		}
 	}
 
 	if inactiveTopicCfg, ok := d.GetOk("inactive_topic"); ok && inactiveTopicCfg.(*schema.Set).Len() > 0 {
@@ -724,10 +728,19 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 	}
 
-	if retentionPoliciesConfig.Len() > 0 {
-		retentionPolicies := unmarshalRetentionPolicies(retentionPoliciesConfig)
-		if err = client.SetRetention(nsName.String(), *retentionPolicies); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("SetRetention: %w", err))
+	if d.HasChange("retention_policies") || retentionPoliciesConfig.Len() > 0 {
+		if retentionPoliciesConfig.Len() > 0 {
+			retentionPolicies := unmarshalRetentionPolicies(retentionPoliciesConfig)
+			if err = client.SetRetention(nsName.String(), *retentionPolicies); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetRetention: %w", err))
+			}
+		} else {
+			oldRetentionConfig, _ := d.GetChange("retention_policies")
+			if oldCfg, ok := oldRetentionConfig.(*schema.Set); ok && oldCfg != nil && oldCfg.Len() > 0 {
+				if err = client.RemoveRetention(nsName.String()); err != nil && !isIgnorableNotFoundError(err) {
+					errs = multierror.Append(errs, fmt.Errorf("RemoveRetention: %w", err))
+				}
+			}
 		}
 	}
 
