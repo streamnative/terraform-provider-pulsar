@@ -738,18 +738,17 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 	}
 
 	time.Sleep(time.Millisecond * 100)
-	schemaCompatibilityStrategy, err := client.GetSchemaCompatibilityStrategy(*topicName)
+	schemaCompatibilityStrategy, err := client.GetSchemaCompatibilityStrategyApplied(*topicName, false)
 	if err == nil {
-		terraformSchemaCompatibilityStrategy := schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
-		if terraformSchemaCompatibilityStrategy == "" && topicConfigHasSchemaCompatibilityStrategy(d) {
-			terraformSchemaCompatibilityStrategy =
-				schemaCompatibilityStrategyToTerraformValue(utils.SchemaCompatibilityStrategyUndefined)
-		}
-		if terraformSchemaCompatibilityStrategy != "" {
+		terraformSchemaCompatibilityStrategy, ok := topicSchemaCompatibilityStrategyStateValue(
+			schemaCompatibilityStrategy,
+			topicConfigHasSchemaCompatibilityStrategy(d),
+		)
+		if ok {
 			topicConfigMap["schema_compatibility_strategy"] = terraformSchemaCompatibilityStrategy
 		}
 	} else if !isIgnorableTopicPolicyError(err) {
-		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetSchemaCompatibilityStrategy: %w", err))
+		return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetSchemaCompatibilityStrategyApplied: %w", err))
 	}
 
 	// Only set topic_config if there are configuration values or it's explicitly requested in schema
@@ -1744,16 +1743,16 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 			if operationSucceeded {
 				if err := waitForTopicConfigUpdate(d, topicName, "SCHEMA_COMPATIBILITY_STRATEGY", func() (bool, error) {
-					currentStrategy, err := client.GetSchemaCompatibilityStrategy(*topicName)
+					currentStrategy, err := client.GetSchemaCompatibilityStrategyApplied(*topicName, false)
 					if err != nil {
 						return false,
-							fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: GetSchemaCompatibilityStrategy: %w", err)
+							fmt.Errorf(
+								"ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: GetSchemaCompatibilityStrategyApplied: %w",
+								err,
+							)
 					}
 					if isRemoveSchemaCompatibilityStrategy {
-						if currentStrategy == "" || currentStrategy == utils.SchemaCompatibilityStrategyUndefined {
-							return true, nil
-						}
-						return false, nil
+						return currentStrategy == utils.SchemaCompatibilityStrategyUndefined, nil
 					}
 					if currentStrategy != strategy {
 						return false, nil
@@ -1788,6 +1787,26 @@ func inactiveTopicPoliciesToHash(v interface{}) int {
 	buf.WriteString(fmt.Sprintf("%s-", m["delete_mode"].(string)))
 
 	return hashcode.String(buf.String())
+}
+
+func topicSchemaCompatibilityStrategyStateValue(
+	strategy utils.SchemaCompatibilityStrategy,
+	hasExplicitValue bool,
+) (string, bool) {
+	if strategy == "" || strategy == utils.SchemaCompatibilityStrategyUndefined {
+		if !hasExplicitValue {
+			return "", false
+		}
+
+		return schemaCompatibilityStrategyToTerraformValue(utils.SchemaCompatibilityStrategyUndefined), true
+	}
+
+	terraformValue := schemaCompatibilityStrategyToTerraformValue(strategy)
+	if terraformValue == "" {
+		return "", false
+	}
+
+	return terraformValue, true
 }
 
 func topicConfigHasSchemaCompatibilityStrategy(d *schema.ResourceData) bool {

@@ -1095,6 +1095,11 @@ resource "pulsar_topic" "test" {
 
 //nolint:unparam
 func testPulsarNamespaceWithTopic(wsURL, tenant, ns, topicName string) string {
+	return testPulsarNamespaceWithTopicConfig(wsURL, tenant, ns, topicName, "", "")
+}
+
+//nolint:unparam
+func testPulsarNamespaceWithTopicConfig(wsURL, tenant, ns, topicName, namespaceConfig, topicConfig string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
@@ -1113,6 +1118,8 @@ resource "pulsar_namespace" "test" {
 		enable = false
 	}
 
+  %s
+
 	depends_on = [
 		pulsar_tenant.test_tenant
 	]
@@ -1125,11 +1132,13 @@ resource "pulsar_topic" "test" {
   topic_name = "%s"
 	partitions = 0
 
+  %s
+
 	depends_on = [
 		pulsar_namespace.test
 	]
 }
-`, wsURL, tenant, ns, tenant, ns, topicName)
+`, wsURL, tenant, ns, namespaceConfig, tenant, ns, topicName, topicConfig)
 }
 
 //nolint:unparam
@@ -1361,6 +1370,85 @@ func TestTopicSchemaCompatibilityStrategyUpdate(t *testing.T) {
 							schema_compatibility_strategy = "Undefined"
 						}
 					`),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestTopicSchemaCompatibilityStrategyUnsetWithNamespaceInheritance(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tenantName := acctest.RandString(10)
+	namespaceName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+
+	namespaceConfig := `
+  namespace_config {
+    schema_compatibility_strategy = "Full"
+  }
+`
+
+	topicConfigWithSchema := `
+  topic_config {
+    max_producers = 1
+    schema_compatibility_strategy = "Backward"
+  }
+`
+
+	topicConfigWithoutSchema := `
+  topic_config {
+    max_producers = 1
+  }
+`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithTopicConfig(
+					testWebServiceURL,
+					tenantName,
+					namespaceName,
+					topicName,
+					namespaceConfig,
+					topicConfigWithSchema,
+				),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", "Backward"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithTopicConfig(
+					testWebServiceURL,
+					tenantName,
+					namespaceName,
+					topicName,
+					namespaceConfig,
+					topicConfigWithoutSchema,
+				),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "1"),
+					resource.TestCheckNoResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy"),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithTopicConfig(
+					testWebServiceURL,
+					tenantName,
+					namespaceName,
+					topicName,
+					namespaceConfig,
+					topicConfigWithoutSchema,
+				),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
