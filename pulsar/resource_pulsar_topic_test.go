@@ -811,6 +811,9 @@ func testPulsarTopicDestroy(s *terraform.State) error {
 
 		partitionedTopics, nonPartitionedTopics, err := client.List(*namespace)
 		if err != nil {
+			if isIgnorableNotFoundError(err) {
+				continue
+			}
 			return fmt.Errorf("ERROR_READ_TOPIC_DATA: %w", err)
 		}
 
