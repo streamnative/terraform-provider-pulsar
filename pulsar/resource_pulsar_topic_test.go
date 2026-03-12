@@ -1377,7 +1377,7 @@ func TestTopicSchemaCompatibilityStrategyUpdate(t *testing.T) {
 	})
 }
 
-func TestTopicSchemaCompatibilityStrategyUnsetWithNamespaceInheritance(t *testing.T) {
+func TestTopicSchemaCompatibilityStrategyRemoveWithNamespaceInheritance(t *testing.T) {
 	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tenantName := acctest.RandString(10)
@@ -1397,9 +1397,10 @@ func TestTopicSchemaCompatibilityStrategyUnsetWithNamespaceInheritance(t *testin
   }
 `
 
-	topicConfigWithoutSchema := `
+	topicConfigWithSchemaRemoved := `
   topic_config {
     max_producers = 1
+    schema_compatibility_strategy = "Undefined"
   }
 `
 
@@ -1431,13 +1432,13 @@ func TestTopicSchemaCompatibilityStrategyUnsetWithNamespaceInheritance(t *testin
 					namespaceName,
 					topicName,
 					namespaceConfig,
-					topicConfigWithoutSchema,
+					topicConfigWithSchemaRemoved,
 				),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "topic_config.0.max_producers", "1"),
-					resource.TestCheckNoResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy"),
+					resource.TestCheckResourceAttr(resourceName, "topic_config.0.schema_compatibility_strategy", "Undefined"),
 				),
 			},
 			{
@@ -1447,7 +1448,7 @@ func TestTopicSchemaCompatibilityStrategyUnsetWithNamespaceInheritance(t *testin
 					namespaceName,
 					topicName,
 					namespaceConfig,
-					topicConfigWithoutSchema,
+					topicConfigWithSchemaRemoved,
 				),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
