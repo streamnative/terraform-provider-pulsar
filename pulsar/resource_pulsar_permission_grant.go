@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	backoff "github.com/cenkalti/backoff/v4"
@@ -178,6 +179,23 @@ func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.Resource
 	return resourcePulsarPermissionGrantRead(ctx, d, meta)
 }
 
+// getTopicSpecificPermissions returns only topic-level permissions (excluding
+// inherited namespace permissions) by reading the namespace policies directly.
+// client.Topics().GetPermissions() merges namespace and topic permissions,
+// which causes Terraform drift when a role has permissions at both levels.
+func getTopicSpecificPermissions(client admin.Client, topicName *utils.TopicName) (
+	map[string][]utils.AuthAction, error) {
+	ns := fmt.Sprintf("%s/%s", topicName.GetTenant(), topicName.GetNamespace())
+	policies, err := client.Namespaces().GetPolicies(ns)
+	if err != nil {
+		return nil, err
+	}
+	if perms, ok := policies.AuthPolicies.DestinationAuth[topicName.String()]; ok {
+		return perms, nil
+	}
+	return map[string][]utils.AuthAction{}, nil
+}
+
 func resourcePulsarPermissionGrantRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta)
 	role := d.Get("role").(string)
@@ -202,7 +220,7 @@ func resourcePulsarPermissionGrantRead(ctx context.Context, d *schema.ResourceDa
 			return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", parseErr))
 		}
 
-		grants, err = client.Topics().GetPermissions(*topicName)
+		grants, err = getTopicSpecificPermissions(client, topicName)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC_PERMISSION_GRANT: %w", err))
 		}

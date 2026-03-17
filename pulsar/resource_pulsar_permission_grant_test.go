@@ -197,7 +197,7 @@ func testPulsarPermissionGrantExists() resource.TestCheckFunc {
 				return fmt.Errorf("ERROR_PARSING_TOPIC: %w", err)
 			}
 
-			permissions, err := client.Topics().GetPermissions(*topicName)
+			permissions, err := getTopicSpecificPermissions(client, topicName)
 			if err != nil {
 				return fmt.Errorf("ERROR_READ_TOPIC_PERMISSIONS: %w", err)
 			}
@@ -246,7 +246,7 @@ func testPulsarPermissionGrantDestroy(s *terraform.State) error {
 				continue
 			}
 
-			permissions, err := client.Topics().GetPermissions(*topicName)
+			permissions, err := getTopicSpecificPermissions(client, topicName)
 			if err != nil {
 				continue
 			}
@@ -421,6 +421,56 @@ resource "pulsar_permission_grant" "test" {
 `, wsURL, cluster, tenant, namespace, topic, role, actions)
 }
 
+func TestPermissionGrantTopicExternallyRemoved(t *testing.T) {
+	resourceName := "pulsar_permission_grant.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+
+	config := testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+		`["produce", "consume"]`)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarPermissionGrantExists(),
+				),
+			},
+			{
+				PreConfig: func() {
+					client, err := sharedClient(testWebServiceURL)
+					if err != nil {
+						t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
+					}
+
+					conn := client.(admin.Client)
+					topic := fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName)
+
+					tn, err := utils.GetTopicName(topic)
+					if err != nil {
+						t.Fatalf("ERROR_PARSING_TOPIC: %v", err)
+					}
+
+					if err = conn.Topics().RevokePermission(*tn, roleName); err != nil {
+						t.Fatalf("ERROR_REVOKING_PERMISSION: %v", err)
+					}
+				},
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
 func TestPermissionGrantBothNamespaceAndTopic(t *testing.T) {
 	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
@@ -440,6 +490,99 @@ func TestPermissionGrantBothNamespaceAndTopic(t *testing.T) {
 			},
 		},
 	})
+}
+
+// Tests the fix for drift detection when namespace-level permissions exist alongside topic-level permissions.
+// This reproduces the scenario where:
+// 1. Namespace has "consume" permission for a role
+// 2. Topic has "produce" permission for the same role
+// 3. Ensures only topic-specific permissions [produce] are returned and no drift is detected
+func TestPermissionGrantTopicWithNamespacePermissions(t *testing.T) {
+	resourceName := "pulsar_permission_grant.test_topic"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+
+	config := testPulsarPermissionGrantTopicWithNamespacePermissions(
+		testWebServiceURL, cName, tName, nsName, topicName, roleName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		IDRefreshName:     resourceName,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					// Verify namespace permission has consume
+					resource.TestCheckResourceAttr("pulsar_permission_grant.test_namespace", "namespace", tName+"/"+nsName),
+					resource.TestCheckResourceAttr("pulsar_permission_grant.test_namespace", "role", roleName),
+					resource.TestCheckResourceAttr("pulsar_permission_grant.test_namespace", "actions.#", "1"),
+					resource.TestCheckTypeSetElemAttr("pulsar_permission_grant.test_namespace", "actions.*", "consume"),
+					// Verify topic permission has ONLY produce (not merged with namespace consume)
+					resource.TestCheckResourceAttr(resourceName, "topic",
+						fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName)),
+					resource.TestCheckResourceAttr(resourceName, "role", roleName),
+					resource.TestCheckResourceAttr(resourceName, "actions.#", "1"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "actions.*", "produce"),
+				),
+			},
+			{
+				// This is the critical test - verify no drift is detected despite namespace permissions
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func testPulsarPermissionGrantTopicWithNamespacePermissions(
+	wsURL, cluster, tenant, namespace, topic, role string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+    web_service_url = "%s"
+}
+resource "pulsar_cluster" "test_cluster" {
+    cluster = "%s"
+    cluster_data {
+        web_service_url    = "http://localhost:8080"
+        broker_service_url = "pulsar://localhost:6050"
+        peer_clusters      = ["standalone"]
+    }
+}
+resource "pulsar_tenant" "test_tenant" {
+    tenant           = "%s"
+    allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+resource "pulsar_namespace" "test_namespace" {
+    tenant    = pulsar_tenant.test_tenant.tenant
+    namespace = "%s"
+}
+resource "pulsar_topic" "test_topic" {
+    tenant     = pulsar_tenant.test_tenant.tenant
+    namespace  = pulsar_namespace.test_namespace.namespace
+    topic_type = "persistent"
+    topic_name = "%s"
+    partitions = 0
+}
+# Grant namespace-level consume permission
+resource "pulsar_permission_grant" "test_namespace" {
+    namespace = "${pulsar_tenant.test_tenant.tenant}/${pulsar_namespace.test_namespace.namespace}"
+    role      = "%s"
+    actions   = ["consume"]
+}
+# Grant topic-level produce permission to the same role
+# This should NOT be merged with the namespace-level consume permission
+resource "pulsar_permission_grant" "test_topic" {
+    topic   = pulsar_topic.test_topic.id
+    role    = "%s"
+    actions = ["produce"]
+}
+`, wsURL, cluster, tenant, namespace, topic, role, role)
 }
 
 func testPulsarPermissionGrantBothNamespaceAndTopic(wsURL, cluster, tenant, namespace, topic, role string) string {
