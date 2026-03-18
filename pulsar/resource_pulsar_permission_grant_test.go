@@ -471,6 +471,61 @@ func TestPermissionGrantTopicExternallyRemoved(t *testing.T) {
 	})
 }
 
+// TestPermissionGrantTopicExternallyRemovedWithNamespacePermission tests drift detection when:
+// - A namespace consume grant and a topic produce grant both exist for the same role
+// - The topic grant is externally revoked while the namespace grant remains
+// - The plan should be non-empty because the topic grant resource must be recreated
+func TestPermissionGrantTopicExternallyRemovedWithNamespacePermission(t *testing.T) {
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+
+	config := testPulsarPermissionGrantTopicWithNamespacePermissions(
+		testWebServiceURL, cName, tName, nsName, topicName, roleName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("pulsar_permission_grant.test_namespace", "actions.#", "1"),
+					resource.TestCheckTypeSetElemAttr("pulsar_permission_grant.test_namespace", "actions.*", "consume"),
+					resource.TestCheckResourceAttr("pulsar_permission_grant.test_topic", "actions.#", "1"),
+					resource.TestCheckTypeSetElemAttr("pulsar_permission_grant.test_topic", "actions.*", "produce"),
+				),
+			},
+			{
+				PreConfig: func() {
+					client, err := sharedClient(testWebServiceURL)
+					if err != nil {
+						t.Fatalf("ERROR_GETTING_PULSAR_CLIENT: %v", err)
+					}
+
+					conn := client.(admin.Client)
+					topic := fmt.Sprintf("persistent://%s/%s/%s", tName, nsName, topicName)
+
+					tn, err := utils.GetTopicName(topic)
+					if err != nil {
+						t.Fatalf("ERROR_PARSING_TOPIC: %v", err)
+					}
+
+					if err = conn.Topics().RevokePermission(*tn, roleName); err != nil {
+						t.Fatalf("ERROR_REVOKING_PERMISSION: %v", err)
+					}
+				},
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
 func TestPermissionGrantBothNamespaceAndTopic(t *testing.T) {
 	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)

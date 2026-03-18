@@ -190,6 +190,9 @@ func getTopicSpecificPermissions(client admin.Client, topicName *utils.TopicName
 	if err != nil {
 		return nil, err
 	}
+	if policies == nil {
+		return map[string][]utils.AuthAction{}, nil
+	}
 	if perms, ok := policies.AuthPolicies.DestinationAuth[topicName.String()]; ok {
 		return perms, nil
 	}
