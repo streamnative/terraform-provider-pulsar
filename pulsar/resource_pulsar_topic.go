@@ -320,9 +320,11 @@ func resourcePulsarTopic() *schema.Resource {
 				Set: persistencePoliciesToHash,
 			},
 			"topic_properties": {
-				Type:        schema.TypeMap,
-				Optional:    true,
-				Description: "Custom properties managed for the topic. Only declared keys are stored in Terraform state; undeclared remote properties are ignored during refresh.",
+				Type:     schema.TypeMap,
+				Optional: true,
+				Description: "Custom properties managed for the topic. " +
+					"Only declared keys are stored in Terraform state; " +
+					"undeclared remote properties are ignored during refresh.",
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
