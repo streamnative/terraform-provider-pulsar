@@ -1865,7 +1865,35 @@ func rawValueHasTopicSchemaCompatibilityStrategy(rawValue cty.Value) bool {
 }
 
 func topicPropertiesManagedKeys(d *schema.ResourceData) map[string]struct{} {
-	return rawConfigOrStateTopicPropertiesKeys(d.GetRawConfig(), d.GetRawState())
+	rawConfig := d.GetRawConfig()
+	if !rawConfig.IsNull() {
+		return rawValueTopicPropertiesKeys(rawConfig)
+	}
+
+	if managedKeys, ok := topicPropertiesManagedKeysFromResourceData(d); ok {
+		return managedKeys
+	}
+
+	return rawValueTopicPropertiesKeys(d.GetRawState())
+}
+
+func topicPropertiesManagedKeysFromResourceData(d *schema.ResourceData) (map[string]struct{}, bool) {
+	props, ok := d.GetOk("topic_properties")
+	if !ok {
+		return nil, false
+	}
+
+	propsMap, ok := props.(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	managedKeys := make(map[string]struct{}, len(propsMap))
+	for key := range propsMap {
+		managedKeys[key] = struct{}{}
+	}
+
+	return managedKeys, len(managedKeys) > 0
 }
 
 func rawConfigOrStateTopicPropertiesKeys(rawConfig cty.Value, rawState cty.Value) map[string]struct{} {

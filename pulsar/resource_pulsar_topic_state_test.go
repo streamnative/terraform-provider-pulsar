@@ -163,6 +163,27 @@ func TestTopicPropertiesManagedKeysFallsBackToRawState(t *testing.T) {
 	}
 }
 
+func TestTopicPropertiesManagedKeysFallsBackToResourceData(t *testing.T) {
+	d := resourcePulsarTopic().TestResourceData()
+
+	if !d.GetRawConfig().IsNull() {
+		t.Fatal("expected raw config to be null")
+	}
+
+	if err := d.Set("topic_properties", map[string]string{"managed": "v1"}); err != nil {
+		t.Fatalf("failed to set topic_properties: %v", err)
+	}
+
+	got := topicPropertiesManagedKeys(d)
+	want := map[string]struct{}{
+		"managed": {},
+	}
+
+	if !maps.Equal(got, want) {
+		t.Fatalf("unexpected managed keys from resource data: got %#v, want %#v", got, want)
+	}
+}
+
 func TestRawConfigTopicPropertiesTakesPrecedenceOverRawState(t *testing.T) {
 	rawConfig := cty.ObjectVal(map[string]cty.Value{})
 	rawState := cty.ObjectVal(map[string]cty.Value{
