@@ -777,7 +777,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 			properties = make(map[string]string)
 		}
 
-		properties = filterTopicProperties(properties, topicPropertiesManagedKeys(d))
+		properties = ignoreServerSetTopicProperties(topicPropertiesManagedKeys(d), properties)
 
 		if err := d.Set("topic_properties", properties); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
@@ -1903,22 +1903,6 @@ func rawValueTopicPropertiesKeys(rawValue cty.Value) map[string]struct{} {
 	}
 
 	return managedKeys
-}
-
-func filterTopicProperties(properties map[string]string, managedKeys map[string]struct{}) map[string]string {
-	filteredProperties := make(map[string]string)
-
-	if len(properties) == 0 || len(managedKeys) == 0 {
-		return filteredProperties
-	}
-
-	for key, value := range properties {
-		if _, ok := managedKeys[key]; ok {
-			filteredProperties[key] = value
-		}
-	}
-
-	return filteredProperties
 }
 
 func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {

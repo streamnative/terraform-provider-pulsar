@@ -177,7 +177,7 @@ func TestRawConfigTopicPropertiesTakesPrecedenceOverRawState(t *testing.T) {
 	}
 }
 
-func TestFilterTopicProperties(t *testing.T) {
+func TestIgnoreServerSetTopicProperties(t *testing.T) {
 	properties := map[string]string{
 		"managed":        "v1",
 		"kafkaTopicUUID": "uuid-like-value",
@@ -187,7 +187,7 @@ func TestFilterTopicProperties(t *testing.T) {
 		"managed": {},
 	}
 
-	got := filterTopicProperties(properties, managedKeys)
+	got := ignoreServerSetTopicProperties(managedKeys, properties)
 	want := map[string]string{
 		"managed": "v1",
 	}
