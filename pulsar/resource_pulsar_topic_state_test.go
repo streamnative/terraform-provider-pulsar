@@ -1,6 +1,7 @@
 package pulsar
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -102,6 +103,97 @@ func TestRawConfigTakesPrecedenceOverRawStateForSchemaCompatibilityStrategy(t *t
 
 	if rawConfigOrStateHasTopicSchemaCompatibilityStrategy(rawConfig, rawState) {
 		t.Fatal("expected raw config to take precedence over raw state")
+	}
+}
+
+func TestRawValueTopicPropertiesKeys(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.ObjectVal(map[string]cty.Value{
+			"k1": cty.StringVal("v1"),
+			"k2": cty.StringVal("v2"),
+		}),
+	})
+
+	got := rawValueTopicPropertiesKeys(rawConfig)
+	want := map[string]struct{}{
+		"k1": {},
+		"k2": {},
+	}
+
+	if !maps.Equal(got, want) {
+		t.Fatalf("unexpected managed keys: got %#v, want %#v", got, want)
+	}
+}
+
+func TestRawValueTopicPropertiesKeysUnset(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{})
+
+	got := rawValueTopicPropertiesKeys(rawConfig)
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
+func TestRawValueTopicPropertiesKeysNull(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.NullVal(cty.Map(cty.String)),
+	})
+
+	got := rawValueTopicPropertiesKeys(rawConfig)
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
+func TestTopicPropertiesManagedKeysFallsBackToRawState(t *testing.T) {
+	rawConfig := cty.NullVal(cty.EmptyObject)
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed": cty.StringVal("v1"),
+		}),
+	})
+
+	got := rawConfigOrStateTopicPropertiesKeys(rawConfig, rawState)
+	want := map[string]struct{}{
+		"managed": {},
+	}
+
+	if !maps.Equal(got, want) {
+		t.Fatalf("unexpected managed keys from raw state: got %#v, want %#v", got, want)
+	}
+}
+
+func TestRawConfigTopicPropertiesTakesPrecedenceOverRawState(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{})
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed": cty.StringVal("v1"),
+		}),
+	})
+
+	got := rawConfigOrStateTopicPropertiesKeys(rawConfig, rawState)
+	if len(got) != 0 {
+		t.Fatalf("expected raw config to take precedence, got %#v", got)
+	}
+}
+
+func TestFilterTopicProperties(t *testing.T) {
+	properties := map[string]string{
+		"managed":        "v1",
+		"kafkaTopicUUID": "uuid-like-value",
+		"external_key":   "external",
+	}
+	managedKeys := map[string]struct{}{
+		"managed": {},
+	}
+
+	got := filterTopicProperties(properties, managedKeys)
+	want := map[string]string{
+		"managed": "v1",
+	}
+
+	if !maps.Equal(got, want) {
+		t.Fatalf("unexpected filtered properties: got %#v, want %#v", got, want)
 	}
 }
 

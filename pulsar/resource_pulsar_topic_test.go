@@ -1496,6 +1496,63 @@ func TestTopicWithPropertiesUpdate(t *testing.T) {
 	})
 }
 
+func TestTopicWithExternalPropertiesDoesNotDrift(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
+					ttype, pnum, `topic_properties = { managed = "v1" }`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.%", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.managed", "v1"),
+					func(s *terraform.State) error {
+						client := getClientFromMeta(testAccProvider.Meta()).Topics()
+
+						topicName, err := utils.GetTopicName(fullID)
+						if err != nil {
+							return fmt.Errorf("ERROR_GETTING_TOPIC_NAME: %v", err)
+						}
+
+						if err := client.UpdateProperties(*topicName, map[string]string{
+							"external_key": "uuid-like-value",
+						}); err != nil {
+							return fmt.Errorf("ERROR_UPDATING_EXTERNAL_TOPIC_PROPERTIES: %v", err)
+						}
+
+						properties, err := client.GetProperties(*topicName)
+						if err != nil {
+							return fmt.Errorf("ERROR_GETTING_EXTERNAL_TOPIC_PROPERTIES: %v", err)
+						}
+
+						if v := properties["external_key"]; v != "uuid-like-value" {
+							return fmt.Errorf("unexpected external_key value: %s", v)
+						}
+
+						return nil
+					},
+				),
+			},
+			{
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
+					ttype, pnum, `topic_properties = { managed = "v1" }`),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func TestNonPersistentTopicWithPropertiesFails(t *testing.T) {
 	tname := acctest.RandString(10)
 	ttype := "non-persistent"

@@ -322,7 +322,7 @@ func resourcePulsarTopic() *schema.Resource {
 			"topic_properties": {
 				Type:        schema.TypeMap,
 				Optional:    true,
-				Description: "Custom properties for the topic",
+				Description: "Custom properties managed for the topic. Only declared keys are stored in Terraform state; undeclared remote properties are ignored during refresh.",
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -759,7 +759,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
-	// Read topic properties if they are configured
+	// Read topic properties and keep only Terraform-managed keys in state.
 	time.Sleep(time.Millisecond * 100)
 	if topicName.IsPersistent() {
 		properties, err := client.GetProperties(*topicName)
@@ -776,6 +776,8 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 			// If the API returns a nil map without an error, treat it as empty.
 			properties = make(map[string]string)
 		}
+
+		properties = filterTopicProperties(properties, topicPropertiesManagedKeys(d))
 
 		if err := d.Set("topic_properties", properties); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
@@ -1858,6 +1860,65 @@ func rawValueHasTopicSchemaCompatibilityStrategy(rawValue cty.Value) bool {
 	}
 
 	return strategy.AsString() != ""
+}
+
+func topicPropertiesManagedKeys(d *schema.ResourceData) map[string]struct{} {
+	return rawConfigOrStateTopicPropertiesKeys(d.GetRawConfig(), d.GetRawState())
+}
+
+func rawConfigOrStateTopicPropertiesKeys(rawConfig cty.Value, rawState cty.Value) map[string]struct{} {
+	if !rawConfig.IsNull() {
+		return rawValueTopicPropertiesKeys(rawConfig)
+	}
+
+	return rawValueTopicPropertiesKeys(rawState)
+}
+
+func rawValueTopicPropertiesKeys(rawValue cty.Value) map[string]struct{} {
+	managedKeys := make(map[string]struct{})
+
+	if !rawValue.IsKnown() || rawValue.IsNull() {
+		return managedKeys
+	}
+
+	if !rawValue.Type().IsObjectType() || !rawValue.Type().HasAttribute("topic_properties") {
+		return managedKeys
+	}
+
+	topicProperties := rawValue.GetAttr("topic_properties")
+	if !topicProperties.IsKnown() || topicProperties.IsNull() {
+		return managedKeys
+	}
+
+	if !topicProperties.Type().IsMapType() && !topicProperties.Type().IsObjectType() {
+		return managedKeys
+	}
+
+	for key, value := range topicProperties.AsValueMap() {
+		if !value.IsKnown() || value.IsNull() {
+			continue
+		}
+
+		managedKeys[key] = struct{}{}
+	}
+
+	return managedKeys
+}
+
+func filterTopicProperties(properties map[string]string, managedKeys map[string]struct{}) map[string]string {
+	filteredProperties := make(map[string]string)
+
+	if len(properties) == 0 || len(managedKeys) == 0 {
+		return filteredProperties
+	}
+
+	for key, value := range properties {
+		if _, ok := managedKeys[key]; ok {
+			filteredProperties[key] = value
+		}
+	}
+
+	return filteredProperties
 }
 
 func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
