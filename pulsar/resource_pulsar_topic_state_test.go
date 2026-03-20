@@ -114,10 +114,14 @@ func TestRawValueTopicPropertiesKeys(t *testing.T) {
 		}),
 	})
 
-	got := rawValueTopicPropertiesKeys(rawConfig)
+	got, known := rawValueTopicPropertiesKeys(rawConfig)
 	want := map[string]struct{}{
 		"k1": {},
 		"k2": {},
+	}
+
+	if !known {
+		t.Fatal("expected topic_properties to be treated as a known source")
 	}
 
 	if !maps.Equal(got, want) {
@@ -128,7 +132,11 @@ func TestRawValueTopicPropertiesKeys(t *testing.T) {
 func TestRawValueTopicPropertiesKeysUnset(t *testing.T) {
 	rawConfig := cty.ObjectVal(map[string]cty.Value{})
 
-	got := rawValueTopicPropertiesKeys(rawConfig)
+	got, known := rawValueTopicPropertiesKeys(rawConfig)
+	if known {
+		t.Fatal("expected missing topic_properties to be treated as unknown")
+	}
+
 	if len(got) != 0 {
 		t.Fatalf("expected no managed keys, got %#v", got)
 	}
@@ -139,23 +147,46 @@ func TestRawValueTopicPropertiesKeysNull(t *testing.T) {
 		"topic_properties": cty.NullVal(cty.Map(cty.String)),
 	})
 
-	got := rawValueTopicPropertiesKeys(rawConfig)
+	got, known := rawValueTopicPropertiesKeys(rawConfig)
+	if !known {
+		t.Fatal("expected null topic_properties to be treated as an explicit source")
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
+func TestRawValueTopicPropertiesKeysEmptyMap(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapValEmpty(cty.String),
+	})
+
+	got, known := rawValueTopicPropertiesKeys(rawConfig)
+	if !known {
+		t.Fatal("expected empty topic_properties map to be treated as a known source")
+	}
+
 	if len(got) != 0 {
 		t.Fatalf("expected no managed keys, got %#v", got)
 	}
 }
 
 func TestTopicPropertiesManagedKeysFallsBackToRawState(t *testing.T) {
-	rawConfig := cty.NullVal(cty.EmptyObject)
+	rawConfig := cty.ObjectVal(map[string]cty.Value{})
 	rawState := cty.ObjectVal(map[string]cty.Value{
 		"topic_properties": cty.MapVal(map[string]cty.Value{
 			"managed": cty.StringVal("v1"),
 		}),
 	})
 
-	got := rawConfigOrStateTopicPropertiesKeys(rawConfig, rawState)
+	got, known := rawConfigOrStateTopicPropertiesKeys(rawConfig, rawState)
 	want := map[string]struct{}{
 		"managed": {},
+	}
+
+	if !known {
+		t.Fatal("expected raw state to provide managed keys")
 	}
 
 	if !maps.Equal(got, want) {
@@ -174,9 +205,13 @@ func TestTopicPropertiesManagedKeysFallsBackToResourceData(t *testing.T) {
 		t.Fatalf("failed to set topic_properties: %v", err)
 	}
 
-	got := topicPropertiesManagedKeys(d)
+	got, known := topicPropertiesManagedKeys(d)
 	want := map[string]struct{}{
 		"managed": {},
+	}
+
+	if !known {
+		t.Fatal("expected resource data to provide managed keys")
 	}
 
 	if !maps.Equal(got, want) {
@@ -184,15 +219,34 @@ func TestTopicPropertiesManagedKeysFallsBackToResourceData(t *testing.T) {
 	}
 }
 
+func TestTopicPropertiesManagedKeysUnknownWithoutConfigStateOrResourceData(t *testing.T) {
+	d := resourcePulsarTopic().TestResourceData()
+
+	got, known := topicPropertiesManagedKeys(d)
+	if known {
+		t.Fatal("expected managed keys to remain unknown")
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
 func TestRawConfigTopicPropertiesTakesPrecedenceOverRawState(t *testing.T) {
-	rawConfig := cty.ObjectVal(map[string]cty.Value{})
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapValEmpty(cty.String),
+	})
 	rawState := cty.ObjectVal(map[string]cty.Value{
 		"topic_properties": cty.MapVal(map[string]cty.Value{
 			"managed": cty.StringVal("v1"),
 		}),
 	})
 
-	got := rawConfigOrStateTopicPropertiesKeys(rawConfig, rawState)
+	got, known := rawConfigOrStateTopicPropertiesKeys(rawConfig, rawState)
+	if !known {
+		t.Fatal("expected explicit empty config to take precedence")
+	}
+
 	if len(got) != 0 {
 		t.Fatalf("expected raw config to take precedence, got %#v", got)
 	}

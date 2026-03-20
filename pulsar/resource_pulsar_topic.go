@@ -779,7 +779,9 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 			properties = make(map[string]string)
 		}
 
-		properties = ignoreServerSetTopicProperties(topicPropertiesManagedKeys(d), properties)
+		if managedKeys, ok := topicPropertiesManagedKeys(d); ok {
+			properties = ignoreServerSetTopicProperties(managedKeys, properties)
+		}
 
 		if err := d.Set("topic_properties", properties); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_PROPERTIES: %w", err))
@@ -1864,14 +1866,13 @@ func rawValueHasTopicSchemaCompatibilityStrategy(rawValue cty.Value) bool {
 	return strategy.AsString() != ""
 }
 
-func topicPropertiesManagedKeys(d *schema.ResourceData) map[string]struct{} {
-	rawConfig := d.GetRawConfig()
-	if !rawConfig.IsNull() {
-		return rawValueTopicPropertiesKeys(rawConfig)
+func topicPropertiesManagedKeys(d *schema.ResourceData) (map[string]struct{}, bool) {
+	if managedKeys, ok := rawValueTopicPropertiesKeys(d.GetRawConfig()); ok {
+		return managedKeys, true
 	}
 
 	if managedKeys, ok := topicPropertiesManagedKeysFromResourceData(d); ok {
-		return managedKeys
+		return managedKeys, true
 	}
 
 	return rawValueTopicPropertiesKeys(d.GetRawState())
@@ -1896,32 +1897,32 @@ func topicPropertiesManagedKeysFromResourceData(d *schema.ResourceData) (map[str
 	return managedKeys, len(managedKeys) > 0
 }
 
-func rawConfigOrStateTopicPropertiesKeys(rawConfig cty.Value, rawState cty.Value) map[string]struct{} {
-	if !rawConfig.IsNull() {
-		return rawValueTopicPropertiesKeys(rawConfig)
+func rawConfigOrStateTopicPropertiesKeys(rawConfig cty.Value, rawState cty.Value) (map[string]struct{}, bool) {
+	if managedKeys, ok := rawValueTopicPropertiesKeys(rawConfig); ok {
+		return managedKeys, true
 	}
 
 	return rawValueTopicPropertiesKeys(rawState)
 }
 
-func rawValueTopicPropertiesKeys(rawValue cty.Value) map[string]struct{} {
+func rawValueTopicPropertiesKeys(rawValue cty.Value) (map[string]struct{}, bool) {
 	managedKeys := make(map[string]struct{})
 
 	if !rawValue.IsKnown() || rawValue.IsNull() {
-		return managedKeys
+		return managedKeys, false
 	}
 
 	if !rawValue.Type().IsObjectType() || !rawValue.Type().HasAttribute("topic_properties") {
-		return managedKeys
+		return managedKeys, false
 	}
 
 	topicProperties := rawValue.GetAttr("topic_properties")
 	if !topicProperties.IsKnown() || topicProperties.IsNull() {
-		return managedKeys
+		return managedKeys, true
 	}
 
 	if !topicProperties.Type().IsMapType() && !topicProperties.Type().IsObjectType() {
-		return managedKeys
+		return managedKeys, false
 	}
 
 	for key, value := range topicProperties.AsValueMap() {
@@ -1932,7 +1933,7 @@ func rawValueTopicPropertiesKeys(rawValue cty.Value) map[string]struct{} {
 		managedKeys[key] = struct{}{}
 	}
 
-	return managedKeys
+	return managedKeys, true
 }
 
 func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
