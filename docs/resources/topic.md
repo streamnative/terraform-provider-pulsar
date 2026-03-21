@@ -33,7 +33,7 @@ description: |-
 - `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `topic_config` (Block List) The topic configuration (see [below for nested schema](#nestedblock--topic_config))
-- `topic_properties` (Map of String) Custom properties for the topic
+- `topic_properties` (Map of String) Custom properties managed for the topic. Only declared keys are stored in Terraform state; undeclared remote properties are ignored during refresh.
 
 ### Read-Only
 
