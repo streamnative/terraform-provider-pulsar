@@ -196,6 +196,7 @@ func TestTopicPropertiesManagedKeysFallsBackToRawState(t *testing.T) {
 
 func TestTopicPropertiesManagedKeysFallsBackToResourceData(t *testing.T) {
 	d := resourcePulsarTopic().TestResourceData()
+	d.SetId("persistent://public/default/test-topic")
 
 	if !d.GetRawConfig().IsNull() {
 		t.Fatal("expected raw config to be null")
@@ -221,6 +222,7 @@ func TestTopicPropertiesManagedKeysFallsBackToResourceData(t *testing.T) {
 
 func TestTopicPropertiesManagedKeysFallsBackToEmptyResourceData(t *testing.T) {
 	d := resourcePulsarTopic().TestResourceData()
+	d.SetId("persistent://public/default/test-topic")
 
 	if !d.GetRawConfig().IsNull() {
 		t.Fatal("expected raw config to be null")
@@ -242,6 +244,7 @@ func TestTopicPropertiesManagedKeysFallsBackToEmptyResourceData(t *testing.T) {
 
 func TestTopicPropertiesManagedKeysUnknownWithoutConfigStateOrResourceData(t *testing.T) {
 	d := resourcePulsarTopic().TestResourceData()
+	d.SetId("persistent://public/default/test-topic")
 
 	got, known := topicPropertiesManagedKeys(d)
 	if known {
