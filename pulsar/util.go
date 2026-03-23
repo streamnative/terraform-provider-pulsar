@@ -60,3 +60,22 @@ func ignoreServerSetCustomRuntimeOptions(tfGenString string, readString string) 
 	}
 	return string(s), nil
 }
+
+func ignoreServerSetTopicProperties(
+	managedKeys map[string]struct{},
+	readProperties map[string]string,
+) map[string]string {
+	filteredProperties := make(map[string]string)
+
+	if len(managedKeys) == 0 || len(readProperties) == 0 {
+		return filteredProperties
+	}
+
+	for key, value := range readProperties {
+		if _, ok := managedKeys[key]; ok {
+			filteredProperties[key] = value
+		}
+	}
+
+	return filteredProperties
+}

@@ -1168,7 +1168,7 @@ resource "pulsar_topic" "test" {
 `, url, ttype, tname, pnum, topicConfig)
 }
 
-func testPulsarTopicWithProperties(url, tname, ttype string, pnum int, propertiesHCL string) string {
+func testPulsarTopicWithProperties(url, tname string, pnum int, propertiesHCL string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
@@ -1177,7 +1177,7 @@ provider "pulsar" {
 resource "pulsar_topic" "test" {
   tenant     = "public"
   namespace  = "default"
-  topic_type = "%s"
+  topic_type = "persistent"
   topic_name = "%s"
   partitions = %d
 
@@ -1188,10 +1188,14 @@ resource "pulsar_topic" "test" {
 
   %s
 }
-`, url, ttype, tname, pnum, propertiesHCL)
+`, url, tname, pnum, propertiesHCL)
 }
 
-func testNonPersistentPulsarTopicWithProperties(url, tname, ttype string, pnum int, propertiesHCL string) string {
+func testNonPersistentPulsarTopicWithProperties(
+	url, tname, ttype string,
+	pnum int,
+	propertiesHCL string,
+) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
@@ -1464,7 +1468,6 @@ func TestTopicWithPropertiesUpdate(t *testing.T) {
 	skipIfNoTopicPolicies(t)
 	resourceName := "pulsar_topic.test"
 	tname := acctest.RandString(10)
-	ttype := "persistent"
 	pnum := 0
 
 	resource.Test(t, resource.TestCase{
@@ -1474,7 +1477,7 @@ func TestTopicWithPropertiesUpdate(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
-					ttype, pnum, `topic_properties = { k1 = "v1", k2 = "v2" }`),
+					pnum, `topic_properties = { k1 = "v1", k2 = "v2" }`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "topic_properties.%", "2"),
@@ -1484,13 +1487,70 @@ func TestTopicWithPropertiesUpdate(t *testing.T) {
 			},
 			{
 				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
-					ttype, pnum, `topic_properties = { k2 = "v2new", k3 = "v3" }`),
+					pnum, `topic_properties = { k2 = "v2new", k3 = "v3" }`),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "topic_properties.%", "2"),
 					resource.TestCheckResourceAttr(resourceName, "topic_properties.k2", "v2new"),
 					resource.TestCheckResourceAttr(resourceName, "topic_properties.k3", "v3"),
 				),
+			},
+		},
+	})
+}
+
+func TestTopicWithExternalPropertiesDoesNotDrift(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	ttype := "persistent"
+	pnum := 0
+	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
+					pnum, `topic_properties = { managed = "v1" }`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.%", "1"),
+					resource.TestCheckResourceAttr(resourceName, "topic_properties.managed", "v1"),
+					func(s *terraform.State) error {
+						client := getClientFromMeta(testAccProvider.Meta()).Topics()
+
+						topicName, err := utils.GetTopicName(fullID)
+						if err != nil {
+							return fmt.Errorf("ERROR_GETTING_TOPIC_NAME: %v", err)
+						}
+
+						if err := client.UpdateProperties(*topicName, map[string]string{
+							"external_key": "uuid-like-value",
+						}); err != nil {
+							return fmt.Errorf("ERROR_UPDATING_EXTERNAL_TOPIC_PROPERTIES: %v", err)
+						}
+
+						properties, err := client.GetProperties(*topicName)
+						if err != nil {
+							return fmt.Errorf("ERROR_GETTING_EXTERNAL_TOPIC_PROPERTIES: %v", err)
+						}
+
+						if v := properties["external_key"]; v != "uuid-like-value" {
+							return fmt.Errorf("unexpected external_key value: %s", v)
+						}
+
+						return nil
+					},
+				),
+			},
+			{
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname,
+					pnum, `topic_properties = { managed = "v1" }`),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
@@ -1546,7 +1606,7 @@ func TestImportTopicWithProperties(t *testing.T) {
 			{
 				ResourceName: resourceName,
 				ImportState:  true,
-				Config: testPulsarTopicWithProperties(testWebServiceURL, tname, ttype, pnum,
+				Config: testPulsarTopicWithProperties(testWebServiceURL, tname, pnum,
 					`topic_properties = { importK1 = "importV1", importK2 = "importV2" }`),
 				ImportStateId: fullID,
 				ImportStateCheck: func(s []*terraform.InstanceState) error {

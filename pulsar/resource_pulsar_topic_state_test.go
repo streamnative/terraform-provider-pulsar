@@ -1,6 +1,7 @@
 package pulsar
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -102,6 +103,196 @@ func TestRawConfigTakesPrecedenceOverRawStateForSchemaCompatibilityStrategy(t *t
 
 	if rawConfigOrStateHasTopicSchemaCompatibilityStrategy(rawConfig, rawState) {
 		t.Fatal("expected raw config to take precedence over raw state")
+	}
+}
+
+func TestRawValueTopicPropertiesKeys(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.ObjectVal(map[string]cty.Value{
+			"k1": cty.StringVal("v1"),
+			"k2": cty.StringVal("v2"),
+		}),
+	})
+
+	got, known := rawValueTopicPropertiesKeys(rawConfig)
+	want := map[string]struct{}{
+		"k1": {},
+		"k2": {},
+	}
+
+	if !known {
+		t.Fatal("expected topic_properties to be treated as a known source")
+	}
+
+	if !maps.Equal(got, want) {
+		t.Fatalf("unexpected managed keys: got %#v, want %#v", got, want)
+	}
+}
+
+func TestRawValueTopicPropertiesKeysUnset(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{})
+
+	got, known := rawValueTopicPropertiesKeys(rawConfig)
+	if known {
+		t.Fatal("expected missing topic_properties to be treated as unknown")
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
+func TestRawValueTopicPropertiesKeysNull(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.NullVal(cty.Map(cty.String)),
+	})
+
+	got, known := rawValueTopicPropertiesKeys(rawConfig)
+	if !known {
+		t.Fatal("expected null topic_properties to be treated as an explicit source")
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
+func TestRawValueTopicPropertiesKeysEmptyMap(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapValEmpty(cty.String),
+	})
+
+	got, known := rawValueTopicPropertiesKeys(rawConfig)
+	if !known {
+		t.Fatal("expected empty topic_properties map to be treated as a known source")
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
+func TestTopicPropertiesManagedKeysFallsBackToRawState(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{})
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed": cty.StringVal("v1"),
+		}),
+	})
+
+	got, known := rawConfigOrStateTopicPropertiesKeys(rawConfig, rawState)
+	want := map[string]struct{}{
+		"managed": {},
+	}
+
+	if !known {
+		t.Fatal("expected raw state to provide managed keys")
+	}
+
+	if !maps.Equal(got, want) {
+		t.Fatalf("unexpected managed keys from raw state: got %#v, want %#v", got, want)
+	}
+}
+
+func TestTopicPropertiesManagedKeysFallsBackToResourceData(t *testing.T) {
+	d := resourcePulsarTopic().TestResourceData()
+	d.SetId("persistent://public/default/test-topic")
+
+	if !d.GetRawConfig().IsNull() {
+		t.Fatal("expected raw config to be null")
+	}
+
+	if err := d.Set("topic_properties", map[string]string{"managed": "v1"}); err != nil {
+		t.Fatalf("failed to set topic_properties: %v", err)
+	}
+
+	got, known := topicPropertiesManagedKeys(d)
+	want := map[string]struct{}{
+		"managed": {},
+	}
+
+	if !known {
+		t.Fatal("expected resource data to provide managed keys")
+	}
+
+	if !maps.Equal(got, want) {
+		t.Fatalf("unexpected managed keys from resource data: got %#v, want %#v", got, want)
+	}
+}
+
+func TestTopicPropertiesManagedKeysFallsBackToEmptyResourceData(t *testing.T) {
+	d := resourcePulsarTopic().TestResourceData()
+	d.SetId("persistent://public/default/test-topic")
+
+	if !d.GetRawConfig().IsNull() {
+		t.Fatal("expected raw config to be null")
+	}
+
+	if err := d.Set("topic_properties", map[string]string{}); err != nil {
+		t.Fatalf("failed to set empty topic_properties: %v", err)
+	}
+
+	got, known := topicPropertiesManagedKeys(d)
+	if !known {
+		t.Fatal("expected empty resource data topic_properties to be treated as known")
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
+func TestTopicPropertiesManagedKeysUnknownWithoutConfigStateOrResourceData(t *testing.T) {
+	d := resourcePulsarTopic().TestResourceData()
+	d.SetId("persistent://public/default/test-topic")
+
+	got, known := topicPropertiesManagedKeys(d)
+	if known {
+		t.Fatal("expected managed keys to remain unknown")
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
+func TestRawConfigTopicPropertiesTakesPrecedenceOverRawState(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapValEmpty(cty.String),
+	})
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed": cty.StringVal("v1"),
+		}),
+	})
+
+	got, known := rawConfigOrStateTopicPropertiesKeys(rawConfig, rawState)
+	if !known {
+		t.Fatal("expected explicit empty config to take precedence")
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected raw config to take precedence, got %#v", got)
+	}
+}
+
+func TestIgnoreServerSetTopicProperties(t *testing.T) {
+	properties := map[string]string{
+		"managed":        "v1",
+		"kafkaTopicUUID": "uuid-like-value",
+		"external_key":   "external",
+	}
+	managedKeys := map[string]struct{}{
+		"managed": {},
+	}
+
+	got := ignoreServerSetTopicProperties(managedKeys, properties)
+	want := map[string]string{
+		"managed": "v1",
+	}
+
+	if !maps.Equal(got, want) {
+		t.Fatalf("unexpected filtered properties: got %#v, want %#v", got, want)
 	}
 }
 
