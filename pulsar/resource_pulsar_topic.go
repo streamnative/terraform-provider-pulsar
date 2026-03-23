@@ -1879,7 +1879,8 @@ func topicPropertiesManagedKeys(d *schema.ResourceData) (map[string]struct{}, bo
 }
 
 func topicPropertiesManagedKeysFromResourceData(d *schema.ResourceData) (map[string]struct{}, bool) {
-	props, ok := d.GetOk("topic_properties")
+	// Use GetOkExists so an explicitly empty map remains a known source.
+	props, ok := d.GetOkExists("topic_properties")
 	if !ok {
 		return nil, false
 	}
@@ -1894,7 +1895,7 @@ func topicPropertiesManagedKeysFromResourceData(d *schema.ResourceData) (map[str
 		managedKeys[key] = struct{}{}
 	}
 
-	return managedKeys, len(managedKeys) > 0
+	return managedKeys, true
 }
 
 func rawConfigOrStateTopicPropertiesKeys(rawConfig cty.Value, rawState cty.Value) (map[string]struct{}, bool) {

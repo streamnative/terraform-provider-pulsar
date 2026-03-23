@@ -219,6 +219,27 @@ func TestTopicPropertiesManagedKeysFallsBackToResourceData(t *testing.T) {
 	}
 }
 
+func TestTopicPropertiesManagedKeysFallsBackToEmptyResourceData(t *testing.T) {
+	d := resourcePulsarTopic().TestResourceData()
+
+	if !d.GetRawConfig().IsNull() {
+		t.Fatal("expected raw config to be null")
+	}
+
+	if err := d.Set("topic_properties", map[string]string{}); err != nil {
+		t.Fatalf("failed to set empty topic_properties: %v", err)
+	}
+
+	got, known := topicPropertiesManagedKeys(d)
+	if !known {
+		t.Fatal("expected empty resource data topic_properties to be treated as known")
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected no managed keys, got %#v", got)
+	}
+}
+
 func TestTopicPropertiesManagedKeysUnknownWithoutConfigStateOrResourceData(t *testing.T) {
 	d := resourcePulsarTopic().TestResourceData()
 
