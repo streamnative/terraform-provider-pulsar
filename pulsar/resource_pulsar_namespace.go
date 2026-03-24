@@ -1060,19 +1060,65 @@ func unmarshalNamespaceConfigList(v []interface{}) *types.NamespaceConfig {
 }
 
 func namespaceConfigHasSchemaCompatibilityStrategy(d *schema.ResourceData) bool {
-	return rawConfigOrStateHasNamespaceConfigStringField(
-		d.GetRawConfig(),
-		d.GetRawState(),
-		"schema_compatibility_strategy",
-	)
+	return namespaceConfigHasStringField(d, "schema_compatibility_strategy")
 }
 
 func namespaceConfigHasSchemaAutoUpdateCompatibilityStrategy(d *schema.ResourceData) bool {
-	return rawConfigOrStateHasNamespaceConfigStringField(
-		d.GetRawConfig(),
-		d.GetRawState(),
-		"schema_auto_update_compatibility_strategy",
-	)
+	return namespaceConfigHasStringField(d, "schema_auto_update_compatibility_strategy")
+}
+
+func namespaceConfigHasStringField(d *schema.ResourceData, field string) bool {
+	rawConfig := d.GetRawConfig()
+	if !rawConfig.IsNull() {
+		return rawValueHasNamespaceConfigStringField(rawConfig, field)
+	}
+
+	if managed, known := namespaceConfigStringFieldFromResourceData(d, field); known {
+		return managed
+	}
+
+	return false
+}
+
+func namespaceConfigStringFieldFromResourceData(d *schema.ResourceData, field string) (bool, bool) {
+	state := d.State()
+	if state == nil {
+		return false, false
+	}
+
+	if _, ok := state.Attributes["namespace_config.#"]; !ok {
+		return false, false
+	}
+
+	namespaceConfig, ok := d.Get("namespace_config").([]interface{})
+	if !ok {
+		return false, true
+	}
+
+	return namespaceConfigListHasStringField(namespaceConfig, field), true
+}
+
+func namespaceConfigListHasStringField(namespaceConfig []interface{}, field string) bool {
+	if len(namespaceConfig) == 0 || namespaceConfig[0] == nil {
+		return false
+	}
+
+	configBlock, ok := namespaceConfig[0].(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	fieldValue, ok := configBlock[field]
+	if !ok || fieldValue == nil {
+		return false
+	}
+
+	value, ok := fieldValue.(string)
+	if !ok {
+		return false
+	}
+
+	return value != ""
 }
 
 func namespaceSchemaCompatibilityStrategyStateValue(

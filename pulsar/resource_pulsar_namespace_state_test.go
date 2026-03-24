@@ -134,6 +134,193 @@ func TestRawConfigOrStateHasNamespaceConfigStringField(t *testing.T) {
 	}
 }
 
+func TestNamespaceConfigStringFieldFromResourceData(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		namespaceConfig []interface{}
+		field           string
+		wantManaged     bool
+		wantKnown       bool
+	}{
+		{
+			name:            "missing namespace config remains unknown",
+			namespaceConfig: nil,
+			field:           "schema_auto_update_compatibility_strategy",
+			wantManaged:     false,
+			wantKnown:       false,
+		},
+		{
+			name: "namespace config without strategy is unmanaged",
+			namespaceConfig: []interface{}{
+				map[string]interface{}{
+					"anti_affinity":           "anti-aff",
+					"max_producers_per_topic": 50,
+				},
+			},
+			field:       "schema_auto_update_compatibility_strategy",
+			wantManaged: false,
+			wantKnown:   true,
+		},
+		{
+			name: "namespace config with explicit strategy is managed",
+			namespaceConfig: []interface{}{
+				map[string]interface{}{
+					"schema_auto_update_compatibility_strategy": "Full",
+				},
+			},
+			field:       "schema_auto_update_compatibility_strategy",
+			wantManaged: true,
+			wantKnown:   true,
+		},
+		{
+			name: "namespace config with explicit schema compatibility strategy is managed",
+			namespaceConfig: []interface{}{
+				map[string]interface{}{
+					"schema_compatibility_strategy": "Undefined",
+				},
+			},
+			field:       "schema_compatibility_strategy",
+			wantManaged: true,
+			wantKnown:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			d := resourcePulsarNamespace().TestResourceData()
+			d.SetId("public/default")
+
+			if tt.namespaceConfig != nil {
+				if err := d.Set("namespace_config", tt.namespaceConfig); err != nil {
+					t.Fatalf("failed to set namespace_config: %v", err)
+				}
+			}
+
+			gotManaged, gotKnown := namespaceConfigStringFieldFromResourceData(d, tt.field)
+			if gotManaged != tt.wantManaged || gotKnown != tt.wantKnown {
+				t.Fatalf(
+					"unexpected managed result: got (%t, %t), want (%t, %t)",
+					gotManaged,
+					gotKnown,
+					tt.wantManaged,
+					tt.wantKnown,
+				)
+			}
+		})
+	}
+}
+
+func TestNamespaceConfigHasStringFieldFallsBackToResourceData(t *testing.T) {
+	t.Parallel()
+
+	d := resourcePulsarNamespace().TestResourceData()
+	d.SetId("public/default")
+
+	if !d.GetRawConfig().IsNull() {
+		t.Fatal("expected raw config to be null")
+	}
+
+	if err := d.Set("namespace_config", []interface{}{
+		map[string]interface{}{
+			"schema_auto_update_compatibility_strategy": "Full",
+		},
+	}); err != nil {
+		t.Fatalf("failed to set namespace_config: %v", err)
+	}
+
+	if !namespaceConfigHasSchemaAutoUpdateCompatibilityStrategy(d) {
+		t.Fatal("expected resource data to mark schema auto update compatibility strategy as managed")
+	}
+}
+
+func TestNamespaceConfigHasStringFieldResourceDataSuppressesAbsentStrategy(t *testing.T) {
+	t.Parallel()
+
+	d := resourcePulsarNamespace().TestResourceData()
+	d.SetId("public/default")
+
+	if !d.GetRawConfig().IsNull() {
+		t.Fatal("expected raw config to be null")
+	}
+
+	if err := d.Set("namespace_config", []interface{}{
+		map[string]interface{}{
+			"anti_affinity":           "anti-aff",
+			"max_producers_per_topic": 50,
+		},
+	}); err != nil {
+		t.Fatalf("failed to set namespace_config: %v", err)
+	}
+
+	if namespaceConfigHasSchemaAutoUpdateCompatibilityStrategy(d) {
+		t.Fatal("expected absent schema auto update compatibility strategy to remain unmanaged")
+	}
+}
+
+func TestNamespaceConfigStateIncludesAbsentStrategiesWhenKeysAreOmitted(t *testing.T) {
+	t.Parallel()
+
+	d := resourcePulsarNamespace().TestResourceData()
+	d.SetId("public/default")
+
+	if err := d.Set("namespace_config", []interface{}{
+		map[string]interface{}{
+			"anti_affinity":           "anti-aff",
+			"max_producers_per_topic": 50,
+		},
+	}); err != nil {
+		t.Fatalf("failed to set namespace_config: %v", err)
+	}
+
+	state := d.State()
+	if state == nil {
+		t.Fatal("expected state to be available")
+	}
+
+	if _, ok := state.Attributes["namespace_config.0.schema_auto_update_compatibility_strategy"]; !ok {
+		t.Fatal("expected schema auto update compatibility strategy to be materialized in state when key is omitted")
+	}
+
+	if _, ok := state.Attributes["namespace_config.0.schema_compatibility_strategy"]; !ok {
+		t.Fatal("expected schema compatibility strategy to be materialized in state when key is omitted")
+	}
+}
+
+func TestNamespaceConfigStateIncludesStrategiesWhenKeysAreNil(t *testing.T) {
+	t.Parallel()
+
+	d := resourcePulsarNamespace().TestResourceData()
+	d.SetId("public/default")
+
+	if err := d.Set("namespace_config", []interface{}{
+		map[string]interface{}{
+			"anti_affinity":                             "anti-aff",
+			"max_producers_per_topic":                   50,
+			"schema_auto_update_compatibility_strategy": nil,
+			"schema_compatibility_strategy":             nil,
+		},
+	}); err != nil {
+		t.Fatalf("failed to set namespace_config: %v", err)
+	}
+
+	state := d.State()
+	if state == nil {
+		t.Fatal("expected state to be available")
+	}
+
+	if _, ok := state.Attributes["namespace_config.0.schema_auto_update_compatibility_strategy"]; !ok {
+		t.Fatal("expected schema auto update compatibility strategy to remain materialized in state")
+	}
+
+	if _, ok := state.Attributes["namespace_config.0.schema_compatibility_strategy"]; !ok {
+		t.Fatal("expected schema compatibility strategy to remain materialized in state")
+	}
+}
+
 func TestNamespaceSchemaCompatibilityStrategyStateValue(t *testing.T) {
 	t.Parallel()
 
