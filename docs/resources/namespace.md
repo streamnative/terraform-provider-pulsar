@@ -71,8 +71,8 @@ Optional:
 - `message_ttl_seconds` (Number) Message TTL in seconds. 0 = never expire, >0 = expire after N seconds. Omit to use broker defaults.
 - `offload_threshold_size_in_mb` (Number)
 - `replication_clusters` (Set of String)
-- `schema_auto_update_compatibility_strategy` (String)
-- `schema_compatibility_strategy` (String)
+- `schema_auto_update_compatibility_strategy` (String) Schema auto-update compatibility strategy. Managed only when explicitly set.
+- `schema_compatibility_strategy` (String) Schema compatibility strategy. Managed only when explicitly set. Use `Undefined` to remove it.
 - `schema_validation_enforce` (Boolean)
 - `subscription_expiration_time_minutes` (Number) Subscription expiration time in minutes. 0 = never expire, >0 = expire after N minutes. Omit to use broker defaults.
 

@@ -280,8 +280,8 @@ namespace_config nested schema
 | `message_ttl_seconds`                  | Sets the message TTL in seconds                  | No       |
 | `offload_threshold_size_in_mb`         | Set topic offload threshold size in MB           | No       |
 | `replication_clusters`                 | List of replication clusters for the namespace   | No       |
-| `schema_compatibility_strategy`        | Set schema compatibility strategy                | No       |
-| `schema_auto_update_compatibility_strategy` | Set schema auto-update compatibility strategy    | No       |
+| `schema_compatibility_strategy`        | Set schema compatibility strategy. Managed only when explicitly set. Use `Undefined` to remove it | No       |
+| `schema_auto_update_compatibility_strategy` | Set schema auto-update compatibility strategy. Managed only when explicitly set | No       |
 | `schema_validation_enforce`            | Enable or disable schema validation              | No       |
 | `subscription_expiration_time_minutes` | Sets the subscription expiration time in minutes | No       |
 
