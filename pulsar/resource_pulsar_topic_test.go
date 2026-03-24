@@ -1980,7 +1980,10 @@ func testTopicReplicationClusters(resourceName string, expected []string) resour
 
 		current, err := topicPolicies.GetReplicationClusters(context.Background(), *topicName, false)
 		if err != nil {
-			return fmt.Errorf("ERROR_READING_TOPIC_REPLICATION_CLUSTERS: %w", err)
+			if !isIgnorableTopicPolicyError(err) {
+				return fmt.Errorf("ERROR_READING_TOPIC_REPLICATION_CLUSTERS: %w", err)
+			}
+			current = nil
 		}
 
 		currentSet := schema.NewSet(schema.HashString, stringSliceToInterfaces(current))
