@@ -287,15 +287,17 @@ namespace_config nested schema
 
 The `schema_compatibility_strategy` can take the following values:
 
-- UNDEFINED
-- ALWAYS_INCOMPATIBLE
-- ALWAYS_COMPATIBLE
-- BACKWARD
-- FORWARD
-- FULL
-- BACKWARD_TRANSITIVE
-- FORWARD_TRANSITIVE
-- FULL_TRANSITIVE
+- Undefined
+- AlwaysIncompatible
+- AlwaysCompatible
+- Backward
+- Forward
+- Full
+- BackwardTransitive
+- ForwardTransitive
+- FullTransitive
+
+Legacy SCREAMING_SNAKE values are still accepted for backward compatibility, but Terraform configuration should use the CamelCase values above.
 
 The `schema_auto_update_compatibility_strategy` can take the following values:
 
