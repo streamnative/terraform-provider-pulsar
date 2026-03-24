@@ -1286,7 +1286,21 @@ func shouldReadTopicTopLevelAttribute(d *schema.ResourceData, attr string) bool 
 		return true
 	}
 
+	if topLevelAttributeManagedByResourceData(d, attr) {
+		return true
+	}
+
 	return rawValueHasTopLevelAttribute(d.GetRawState(), attr)
+}
+
+func topLevelAttributeManagedByResourceData(d *schema.ResourceData, attr string) bool {
+	state := d.State()
+	if state == nil {
+		return false
+	}
+
+	_, ok := state.Attributes[attr+".#"]
+	return ok
 }
 
 func rawValueHasTopLevelAttribute(rawValue cty.Value, attr string) bool {
