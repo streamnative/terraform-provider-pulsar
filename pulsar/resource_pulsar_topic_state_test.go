@@ -296,6 +296,34 @@ func TestIgnoreServerSetTopicProperties(t *testing.T) {
 	}
 }
 
+func TestRawValueHasTopLevelAttribute(t *testing.T) {
+	rawValue := cty.ObjectVal(map[string]cty.Value{
+		"replication_clusters": cty.SetVal([]cty.Value{cty.StringVal("standalone")}),
+	})
+
+	if !rawValueHasTopLevelAttribute(rawValue, "replication_clusters") {
+		t.Fatal("expected replication_clusters to be detected")
+	}
+}
+
+func TestRawValueHasTopLevelAttributeUnset(t *testing.T) {
+	rawValue := cty.ObjectVal(map[string]cty.Value{
+		"replication_clusters": cty.NullVal(cty.Set(cty.String)),
+	})
+
+	if rawValueHasTopLevelAttribute(rawValue, "replication_clusters") {
+		t.Fatal("expected null replication_clusters to be treated as unset")
+	}
+}
+
+func TestRawValueHasTopLevelAttributeMissing(t *testing.T) {
+	rawValue := cty.ObjectVal(map[string]cty.Value{})
+
+	if rawValueHasTopLevelAttribute(rawValue, "replication_clusters") {
+		t.Fatal("expected missing replication_clusters to be treated as absent")
+	}
+}
+
 func TestTopicSchemaCompatibilityStrategyStateValue(t *testing.T) {
 	tests := []struct {
 		name             string

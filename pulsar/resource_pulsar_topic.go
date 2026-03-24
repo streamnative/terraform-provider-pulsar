@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	pulsaradmin "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/cenkalti/backoff/v4"
@@ -165,6 +166,15 @@ func resourcePulsarTopic() *schema.Resource {
 						},
 					},
 				},
+			},
+			"replication_clusters": {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Description: "Topic-level replication clusters override for this topic.",
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
 			},
 			"backlog_quota": {
 				Type:     schema.TypeSet,
@@ -441,6 +451,14 @@ func internalPulsarTopicPoliciesCreate(d *schema.ResourceData, meta interface{},
 	}
 
 	err = retry(func() error {
+		return updateReplicationClusters(d, meta, topicName)
+	})
+	if err != nil {
+		diags = append(diags, diag.FromErr(fmt.Errorf("ERROR_CREATE_TOPIC_REPLICATION_CLUSTERS: %w", err))...)
+		return diags
+	}
+
+	err = retry(func() error {
 		return updateDeduplicationStatus(d, meta, topicName)
 	})
 	if err != nil {
@@ -552,6 +570,31 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 			}
 		} else {
 			return diag.FromErr(errors.New("ERROR_READ_TOPIC: unsupported get retention policies for non-persistent topic"))
+		}
+	}
+
+	if shouldReadTopicTopLevelAttribute(d, "replication_clusters") {
+		if !topicName.IsPersistent() {
+			if err := d.Set("replication_clusters", stringSliceToStringSet(nil)); err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_CLEAR_TOPIC_REPLICATION_CLUSTERS: %w", err))
+			}
+		} else {
+			topicPolicies, err := getTopicPolicies(meta)
+			if err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: TopicPoliciesOf: %w", err))
+			}
+
+			replicationClusters, err := topicPolicies.GetReplicationClusters(context.Background(), *topicName, false)
+			if err != nil {
+				if !isIgnorableTopicPolicyError(err) {
+					return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetReplicationClusters: %w", err))
+				}
+				replicationClusters = nil
+			}
+
+			if err := d.Set("replication_clusters", stringSliceToStringSet(replicationClusters)); err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_SET_TOPIC_REPLICATION_CLUSTERS: %w", err))
+			}
 		}
 	}
 
@@ -818,6 +861,13 @@ func resourcePulsarTopicUpdate(ctx context.Context, d *schema.ResourceData, meta
 
 	if d.HasChange("retention_policies") {
 		err := updateRetentionPolicies(d, meta, topicName)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("replication_clusters") {
+		err := updateReplicationClusters(d, meta, topicName)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -1100,6 +1150,64 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 	})
 }
 
+func updateReplicationClusters(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
+	replicationClusters := handleHCLArrayV2(d.Get("replication_clusters").(*schema.Set).List())
+
+	if !topicName.IsPersistent() {
+		if len(replicationClusters) > 0 {
+			return errors.New("ERROR_UPDATE_REPLICATION_CLUSTERS: replication_clusters can only be set on persistent topics")
+		}
+		return nil
+	}
+
+	if len(replicationClusters) == 0 && !d.HasChange("replication_clusters") {
+		return nil
+	}
+
+	topicPolicies, err := getTopicPolicies(meta)
+	if err != nil {
+		return fmt.Errorf("ERROR_UPDATE_REPLICATION_CLUSTERS: TopicPoliciesOf: %w", err)
+	}
+
+	if len(replicationClusters) > 0 {
+		if err := topicPolicies.SetReplicationClusters(context.Background(), *topicName, replicationClusters); err != nil {
+			if !isIgnorableTopicPolicyError(err) {
+				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_REPLICATION_CLUSTERS: SetReplicationClusters: %w", err))
+			}
+			return fmt.Errorf("ERROR_UPDATE_REPLICATION_CLUSTERS: SetReplicationClusters: %w", err)
+		}
+
+		expectedClusters := stringSliceToStringSet(replicationClusters)
+		return waitForTopicConfigUpdate(d, topicName, "REPLICATION_CLUSTERS", func() (bool, error) {
+			currentClusters, err := topicPolicies.GetReplicationClusters(context.Background(), *topicName, false)
+			if err != nil {
+				return false, fmt.Errorf("ERROR_UPDATE_REPLICATION_CLUSTERS: GetReplicationClusters: %w", err)
+			}
+
+			return expectedClusters.Equal(stringSliceToStringSet(currentClusters)), nil
+		})
+	}
+
+	if err := topicPolicies.RemoveReplicationClusters(context.Background(), *topicName); err != nil {
+		if !isIgnorableTopicPolicyError(err) {
+			return backoff.Permanent(fmt.Errorf("ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters: %w", err))
+		}
+		return nil
+	}
+
+	return waitForTopicConfigUpdate(d, topicName, "REPLICATION_CLUSTERS", func() (bool, error) {
+		currentClusters, err := topicPolicies.GetReplicationClusters(context.Background(), *topicName, false)
+		if err != nil {
+			if isIgnorableTopicPolicyError(err) {
+				return true, nil
+			}
+			return false, fmt.Errorf("ERROR_REMOVE_REPLICATION_CLUSTERS: GetReplicationClusters: %w", err)
+		}
+
+		return len(currentClusters) == 0, nil
+	})
+}
+
 func updatePartitions(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName, partitions int) error {
 	client := getClientFromMeta(meta).Topics()
 
@@ -1144,15 +1252,41 @@ func retry(operation func() error) error {
 
 func isTopicAttrConfigured(d *schema.ResourceData, attr string) bool {
 	rawConfig := d.GetRawConfig()
-	if rawConfig.IsNull() || !rawConfig.IsKnown() {
-		return false
+	return rawValueHasTopLevelAttribute(rawConfig, attr)
+}
+
+func shouldReadTopicTopLevelAttribute(d *schema.ResourceData, attr string) bool {
+	if rawValueHasTopLevelAttribute(d.GetRawConfig(), attr) {
+		return true
 	}
-	if !rawConfig.Type().HasAttribute(attr) {
+
+	return rawValueHasTopLevelAttribute(d.GetRawState(), attr)
+}
+
+func rawValueHasTopLevelAttribute(rawValue cty.Value, attr string) bool {
+	if rawValue.IsNull() || !rawValue.IsKnown() {
 		return false
 	}
 
-	attrValue := rawConfig.GetAttr(attr)
+	if !rawValue.Type().HasAttribute(attr) {
+		return false
+	}
+
+	attrValue := rawValue.GetAttr(attr)
 	return !attrValue.IsNull()
+}
+
+func getTopicPolicies(meta interface{}) (pulsaradmin.TopicPolicies, error) {
+	return pulsaradmin.TopicPoliciesOf(getClientFromMeta(meta), false)
+}
+
+func stringSliceToStringSet(values []string) *schema.Set {
+	stringValues := make([]interface{}, len(values))
+	for i, value := range values {
+		stringValues[i] = value
+	}
+
+	return schema.NewSet(schema.HashString, stringValues)
 }
 
 func topicDispatchRateToHash(v interface{}) int {

@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -29,6 +30,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
@@ -221,6 +223,177 @@ func TestImportTopicWithConfig(t *testing.T) {
 
 					return nil
 				},
+			},
+		},
+	})
+}
+
+func TestTopicWithReplicationClustersUpdate(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarTopicWithReplicationClusters(testWebServiceURL, tname, "persistent", 0,
+					`["standalone"]`),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "replication_clusters.#", "1"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "replication_clusters.*", "standalone"),
+					testTopicReplicationClusters(resourceName, []string{"standalone"}),
+				),
+			},
+			{
+				Config:             testPulsarTopicWithReplicationClusters(testWebServiceURL, tname, "persistent", 0, `["standalone"]`),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestTopicReplicationClustersRemovalWithNamespaceInheritance(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tenantName := acctest.RandString(10)
+	namespaceName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+
+	namespaceConfig := `
+  namespace_config {
+    replication_clusters = ["standalone"]
+  }
+`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceWithTopicConfig(
+					testWebServiceURL,
+					tenantName,
+					namespaceName,
+					topicName,
+					namespaceConfig,
+					`replication_clusters = ["standalone"]`,
+				),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "replication_clusters.#", "1"),
+					resource.TestCheckTypeSetElemAttr(resourceName, "replication_clusters.*", "standalone"),
+					testTopicReplicationClusters(resourceName, []string{"standalone"}),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithTopicConfig(
+					testWebServiceURL,
+					tenantName,
+					namespaceName,
+					topicName,
+					namespaceConfig,
+					"",
+				),
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarTopicExists(resourceName, t),
+					resource.TestCheckResourceAttr(resourceName, "replication_clusters.#", "0"),
+					testTopicReplicationClusters(resourceName, nil),
+				),
+			},
+			{
+				Config: testPulsarNamespaceWithTopicConfig(
+					testWebServiceURL,
+					tenantName,
+					namespaceName,
+					topicName,
+					namespaceConfig,
+					"",
+				),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestImportTopicWithReplicationClusters(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	pnum := 0
+	ttype := "persistent"
+	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+	topicName, err := utils.GetTopicName(fullID)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			client := getClientFromMeta(testAccProvider.Meta())
+			if err := client.Topics().Create(*topicName, pnum); err != nil {
+				t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
+			}
+
+			topicPolicies, err := admin.TopicPoliciesOf(client, false)
+			if err != nil {
+				t.Fatalf("ERROR_GETTING_TOPIC_POLICIES: %v", err)
+			}
+
+			if err := topicPolicies.SetReplicationClusters(context.Background(), *topicName, []string{"standalone"}); err != nil {
+				t.Fatalf("ERROR_SETTING_TOPIC_REPLICATION_CLUSTERS: %v", err)
+			}
+
+			t.Cleanup(func() {
+				_ = client.Topics().Delete(*topicName, true, pnum == 0)
+			})
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  resourceName,
+				ImportState:   true,
+				Config:        testPulsarTopicWithReplicationClusters(testWebServiceURL, tname, ttype, pnum, `["standalone"]`),
+				ImportStateId: fullID,
+				ImportStateCheck: func(s []*terraform.InstanceState) error {
+					if len(s) != 1 {
+						return fmt.Errorf("expected 1 state, got %d", len(s))
+					}
+					if s[0].Attributes["replication_clusters.#"] != "1" {
+						return fmt.Errorf(
+							"expected 1 replication_clusters entry, got %s",
+							s[0].Attributes["replication_clusters.#"],
+						)
+					}
+					for key, value := range s[0].Attributes {
+						if strings.HasPrefix(key, "replication_clusters.") && key != "replication_clusters.#" && value == "standalone" {
+							return nil
+						}
+					}
+					return fmt.Errorf("expected replication_clusters to contain standalone, got %#v", s[0].Attributes)
+				},
+			},
+		},
+	})
+}
+
+func TestNonPersistentTopicWithReplicationClustersFails(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config:      testPulsarTopicWithReplicationClusters(testWebServiceURL, acctest.RandString(10), "non-persistent", 0, `["standalone"]`),
+				ExpectError: regexp.MustCompile("replication_clusters can only be set on persistent topics"),
 			},
 		},
 	})
@@ -1168,6 +1341,24 @@ resource "pulsar_topic" "test" {
 `, url, ttype, tname, pnum, topicConfig)
 }
 
+func testPulsarTopicWithReplicationClusters(url, tname, ttype string, pnum int, replicationClusters string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "%s"
+  topic_name = "%s"
+  partitions = %d
+
+  replication_clusters = %s
+}
+`, url, ttype, tname, pnum, replicationClusters)
+}
+
 func testPulsarTopicWithProperties(url, tname string, pnum int, propertiesHCL string) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
@@ -1768,4 +1959,44 @@ func testTopicPermissionExists(topic, role string) resource.TestCheckFunc {
 
 		return nil
 	}
+}
+
+func testTopicReplicationClusters(resourceName string, expected []string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource %s not found", resourceName)
+		}
+
+		topicName, err := utils.GetTopicName(rs.Primary.ID)
+		if err != nil {
+			return fmt.Errorf("ERROR_PARSING_TOPIC: %w", err)
+		}
+
+		topicPolicies, err := admin.TopicPoliciesOf(getClientFromMeta(testAccProvider.Meta()), false)
+		if err != nil {
+			return fmt.Errorf("ERROR_GETTING_TOPIC_POLICIES: %w", err)
+		}
+
+		current, err := topicPolicies.GetReplicationClusters(context.Background(), *topicName, false)
+		if err != nil {
+			return fmt.Errorf("ERROR_READING_TOPIC_REPLICATION_CLUSTERS: %w", err)
+		}
+
+		currentSet := schema.NewSet(schema.HashString, stringSliceToInterfaces(current))
+		expectedSet := schema.NewSet(schema.HashString, stringSliceToInterfaces(expected))
+		if !currentSet.Equal(expectedSet) {
+			return fmt.Errorf("unexpected replication clusters: got %v, want %v", current, expected)
+		}
+
+		return nil
+	}
+}
+
+func stringSliceToInterfaces(values []string) []interface{} {
+	out := make([]interface{}, len(values))
+	for i, value := range values {
+		out[i] = value
+	}
+	return out
 }

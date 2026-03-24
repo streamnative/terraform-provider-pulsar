@@ -30,6 +30,7 @@ description: |-
 - `enable_deduplication` (Boolean)
 - `permission_grant` (Block Set) Manages permissions within this topic. **Warning:** Do not use this for roles that are already managed by the standalone pulsar_permission_grant resource, as it will cause conflicts. (see [below for nested schema](#nestedblock--permission_grant))
 - `persistence_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--persistence_policies))
+- `replication_clusters` (Set of String) Topic-level replication clusters override for this topic. Removing it deletes the topic override and lets inherited policy apply. Only supported on persistent topics.
 - `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `topic_config` (Block List) The topic configuration (see [below for nested schema](#nestedblock--topic_config))
