@@ -239,8 +239,12 @@ func TestTopicWithReplicationClustersUpdate(t *testing.T) {
 		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarTopicWithReplicationClusters(testWebServiceURL, tname, "persistent", 0,
-					`["standalone"]`),
+				Config: testPulsarTopicWithReplicationClusters(
+					testWebServiceURL,
+					tname,
+					"persistent",
+					0,
+				),
 				Check: resource.ComposeTestCheckFunc(
 					testPulsarTopicExists(resourceName, t),
 					resource.TestCheckResourceAttr(resourceName, "replication_clusters.#", "1"),
@@ -249,7 +253,12 @@ func TestTopicWithReplicationClustersUpdate(t *testing.T) {
 				),
 			},
 			{
-				Config:             testPulsarTopicWithReplicationClusters(testWebServiceURL, tname, "persistent", 0, `["standalone"]`),
+				Config: testPulsarTopicWithReplicationClusters(
+					testWebServiceURL,
+					tname,
+					"persistent",
+					0,
+				),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -347,7 +356,11 @@ func TestImportTopicWithReplicationClusters(t *testing.T) {
 				t.Fatalf("ERROR_GETTING_TOPIC_POLICIES: %v", err)
 			}
 
-			if err := topicPolicies.SetReplicationClusters(context.Background(), *topicName, []string{"standalone"}); err != nil {
+			if err := topicPolicies.SetReplicationClusters(
+				context.Background(),
+				*topicName,
+				[]string{"standalone"},
+			); err != nil {
 				t.Fatalf("ERROR_SETTING_TOPIC_REPLICATION_CLUSTERS: %v", err)
 			}
 
@@ -361,7 +374,7 @@ func TestImportTopicWithReplicationClusters(t *testing.T) {
 			{
 				ResourceName:  resourceName,
 				ImportState:   true,
-				Config:        testPulsarTopicWithReplicationClusters(testWebServiceURL, tname, ttype, pnum, `["standalone"]`),
+				Config:        testPulsarTopicWithReplicationClusters(testWebServiceURL, tname, ttype, pnum),
 				ImportStateId: fullID,
 				ImportStateCheck: func(s []*terraform.InstanceState) error {
 					if len(s) != 1 {
@@ -392,7 +405,12 @@ func TestNonPersistentTopicWithReplicationClustersFails(t *testing.T) {
 		CheckDestroy:      testPulsarTopicDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config:      testPulsarTopicWithReplicationClusters(testWebServiceURL, acctest.RandString(10), "non-persistent", 0, `["standalone"]`),
+				Config: testPulsarTopicWithReplicationClusters(
+					testWebServiceURL,
+					acctest.RandString(10),
+					"non-persistent",
+					0,
+				),
 				ExpectError: regexp.MustCompile("replication_clusters can only be set on persistent topics"),
 			},
 		},
@@ -1341,7 +1359,7 @@ resource "pulsar_topic" "test" {
 `, url, ttype, tname, pnum, topicConfig)
 }
 
-func testPulsarTopicWithReplicationClusters(url, tname, ttype string, pnum int, replicationClusters string) string {
+func testPulsarTopicWithReplicationClusters(url, tname, ttype string, pnum int) string {
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = "%s"
@@ -1354,9 +1372,9 @@ resource "pulsar_topic" "test" {
   topic_name = "%s"
   partitions = %d
 
-  replication_clusters = %s
+  replication_clusters = ["standalone"]
 }
-`, url, ttype, tname, pnum, replicationClusters)
+`, url, ttype, tname, pnum)
 }
 
 func testPulsarTopicWithProperties(url, tname string, pnum int, propertiesHCL string) string {

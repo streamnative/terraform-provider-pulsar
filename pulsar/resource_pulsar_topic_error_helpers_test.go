@@ -24,7 +24,15 @@ func TestIsIgnorableTopicPolicyError(t *testing.T) {
 
 	require.True(t, isIgnorableTopicPolicyError(rest.Error{Code: 404, Reason: "Not Found"}))
 	require.True(t, isIgnorableTopicPolicyError(rest.Error{Code: 405, Reason: topicLevelPoliciesDisabledReason}))
-	require.True(t, isIgnorableTopicPolicyError(fmt.Errorf("wrapped: %w", rest.Error{Code: 405, Reason: topicLevelPoliciesDisabledReason})))
+	require.True(
+		t,
+		isIgnorableTopicPolicyError(
+			fmt.Errorf(
+				"wrapped: %w",
+				rest.Error{Code: 405, Reason: topicLevelPoliciesDisabledReason},
+			),
+		),
+	)
 	require.False(t, isIgnorableTopicPolicyError(rest.Error{Code: 500, Reason: "Internal Server Error"}))
 }
 

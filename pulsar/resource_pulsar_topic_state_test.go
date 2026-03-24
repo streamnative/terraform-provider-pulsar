@@ -324,7 +324,7 @@ func TestRawValueHasTopLevelAttributeMissing(t *testing.T) {
 	}
 }
 
-func TestShouldReadTopicTopLevelAttributeFromResourceData(t *testing.T) {
+func TestShouldReadTopicReplicationClustersFromResourceData(t *testing.T) {
 	d := resourcePulsarTopic().TestResourceData()
 	d.SetId("persistent://public/default/test-topic")
 
@@ -332,12 +332,12 @@ func TestShouldReadTopicTopLevelAttributeFromResourceData(t *testing.T) {
 		t.Fatalf("failed to set replication_clusters: %v", err)
 	}
 
-	if !shouldReadTopicTopLevelAttribute(d, "replication_clusters") {
+	if !shouldReadTopicReplicationClusters(d) {
 		t.Fatal("expected replication_clusters in resource data to be treated as managed")
 	}
 }
 
-func TestShouldReadTopicTopLevelAttributeFromEmptyResourceData(t *testing.T) {
+func TestShouldReadTopicReplicationClustersFromEmptyResourceData(t *testing.T) {
 	d := resourcePulsarTopic().TestResourceData()
 	d.SetId("persistent://public/default/test-topic")
 
@@ -345,16 +345,16 @@ func TestShouldReadTopicTopLevelAttributeFromEmptyResourceData(t *testing.T) {
 		t.Fatalf("failed to set empty replication_clusters: %v", err)
 	}
 
-	if !shouldReadTopicTopLevelAttribute(d, "replication_clusters") {
+	if !shouldReadTopicReplicationClusters(d) {
 		t.Fatal("expected empty replication_clusters in resource data to be treated as managed")
 	}
 }
 
-func TestShouldReadTopicTopLevelAttributeUnsetWithoutConfigStateOrResourceData(t *testing.T) {
+func TestShouldReadTopicReplicationClustersUnsetWithoutConfigStateOrResourceData(t *testing.T) {
 	d := resourcePulsarTopic().TestResourceData()
 	d.SetId("persistent://public/default/test-topic")
 
-	if shouldReadTopicTopLevelAttribute(d, "replication_clusters") {
+	if shouldReadTopicReplicationClusters(d) {
 		t.Fatal("expected replication_clusters to remain unmanaged without config, state, or resource data")
 	}
 }
