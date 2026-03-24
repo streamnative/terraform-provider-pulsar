@@ -38,6 +38,8 @@ import (
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
 
+const topicLevelPoliciesDisabledReason = "Topic level policies is disabled"
+
 // isIgnorableTopicPolicyError checks if an error indicates that a topic policy was not found
 // or is disabled at the cluster level. This includes HTTP 404 errors, or specific
 // HTTP 405 errors when topic-level policies are disabled.
@@ -50,12 +52,43 @@ func isIgnorableTopicPolicyError(err error) bool {
 		if cliErr.Code == 404 {
 			return true
 		}
-		// Check for the specific 405 error reason: "Topic level policies is disabled"
-		if cliErr.Code == 405 && strings.Contains(cliErr.Reason, "Topic level policies is disabled") {
-			return true
-		}
+		return isDisabledTopicPolicyError(err)
 	}
 	return false
+}
+
+func isDisabledTopicPolicyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var cliErr rest.Error
+	if errors.As(err, &cliErr) {
+		return cliErr.Code == 405 && strings.Contains(cliErr.Reason, topicLevelPoliciesDisabledReason)
+	}
+
+	return false
+}
+
+func wrapTopicPolicyWriteError(prefix string, err error) error {
+	if isDisabledTopicPolicyError(err) {
+		return backoff.Permanent(fmt.Errorf("%s: topic-level policies are disabled in the cluster: %w", prefix, err))
+	}
+
+	if !isIgnorableTopicPolicyError(err) {
+		return backoff.Permanent(fmt.Errorf("%s: %w", prefix, err))
+	}
+
+	return fmt.Errorf("%s: %w", prefix, err)
+}
+
+func isPermanentBackoffError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var permanentErr *backoff.PermanentError
+	return errors.As(err, &permanentErr)
 }
 
 func resourcePulsarTopic() *schema.Resource {
@@ -1100,11 +1133,7 @@ func updateRetentionPolicies(d *schema.ResourceData, meta interface{}, topicName
 
 		// First apply the retention policy
 		if err := client.SetRetention(*topicName, policies); err != nil {
-			if !isIgnorableTopicPolicyError(err) {
-				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err))
-			} else {
-				return fmt.Errorf("ERROR_UPDATE_RETENTION_POLICIES: SetRetention: %w", err)
-			}
+			return wrapTopicPolicyWriteError("ERROR_UPDATE_RETENTION_POLICIES: SetRetention", err)
 		}
 
 		// Then verify it was successfully applied using the new polling mechanism
@@ -1171,10 +1200,7 @@ func updateReplicationClusters(d *schema.ResourceData, meta interface{}, topicNa
 
 	if len(replicationClusters) > 0 {
 		if err := topicPolicies.SetReplicationClusters(context.Background(), *topicName, replicationClusters); err != nil {
-			if !isIgnorableTopicPolicyError(err) {
-				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_REPLICATION_CLUSTERS: SetReplicationClusters: %w", err))
-			}
-			return fmt.Errorf("ERROR_UPDATE_REPLICATION_CLUSTERS: SetReplicationClusters: %w", err)
+			return wrapTopicPolicyWriteError("ERROR_UPDATE_REPLICATION_CLUSTERS: SetReplicationClusters", err)
 		}
 
 		expectedClusters := stringSliceToStringSet(replicationClusters)
@@ -1400,11 +1426,7 @@ func updatePersistencePolicies(d *schema.ResourceData, meta interface{}, topicNa
 
 	// First apply the persistence policy
 	if err := client.SetPersistence(*topicName, persistenceData); err != nil {
-		if !isIgnorableTopicPolicyError(err) {
-			return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err))
-		} else {
-			return fmt.Errorf("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence: %w", err)
-		}
+		return wrapTopicPolicyWriteError("ERROR_UPDATE_PERSISTENCE_POLICIES: SetPersistence", err)
 	}
 
 	// Then verify it was successfully applied using the new polling mechanism
@@ -1443,8 +1465,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 	if val, ok := topicConfig["compaction_threshold"]; ok {
 		compactionThresholdVal := int64(val.(int))
 		if err := client.SetCompactionThreshold(*topicName, compactionThresholdVal); err != nil {
-			if !isIgnorableTopicPolicyError(err) {
-				return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_COMPACTION_THRESHOLD: SetCompactionThreshold: %w", err))
+			if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_COMPACTION_THRESHOLD: SetCompactionThreshold", err); isPermanentBackoffError(wrappedErr) {
+				return wrappedErr
 			} else {
 				errs = errors.Wrap(errs, fmt.Sprintf("SetCompactionThreshold error: %v", err))
 			}
@@ -1479,8 +1501,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			}
 
 			if err := client.SetDelayedDelivery(*topicName, delayedDeliveryData); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_DELAYED_DELIVERY: SetDelayedDelivery: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_DELAYED_DELIVERY: SetDelayedDelivery", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("SetDelayedDelivery error: %v", err))
 				}
@@ -1524,8 +1546,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			inactiveTopicPolicies := utils.NewInactiveTopicPolicies(&deleteMode, maxInactiveDurationSeconds, enableDelete)
 
 			if err := client.SetInactiveTopicPolicies(*topicName, inactiveTopicPolicies); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: SetInactiveTopicPolicies: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_INACTIVE_TOPIC_POLICIES: SetInactiveTopicPolicies", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("SetInactiveTopicPolicies error: %v", err))
 				}
@@ -1561,8 +1583,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 		if maxConsVal == -1 {
 			if err := client.RemoveMaxConsumers(*topicName); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: RemoveMaxConsumers: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_MAX_CONSUMERS: RemoveMaxConsumers", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxConsumers error: %v", err))
 				}
@@ -1571,8 +1593,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			}
 		} else {
 			if err := client.SetMaxConsumers(*topicName, maxConsVal); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_CONSUMERS: SetMaxConsumers: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_MAX_CONSUMERS: SetMaxConsumers", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxConsumers error: %v", err))
 				}
@@ -1605,8 +1627,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 		if maxProdVal == -1 {
 			if err := client.RemoveMaxProducers(*topicName); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: RemoveMaxProducers: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_MAX_PRODUCERS: RemoveMaxProducers", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxProducers error: %v", err))
 				}
@@ -1615,8 +1637,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			}
 		} else {
 			if err := client.SetMaxProducers(*topicName, maxProdVal); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MAX_PRODUCERS: SetMaxProducers: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_MAX_PRODUCERS: SetMaxProducers", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxProducers error: %v", err))
 				}
@@ -1649,8 +1671,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 		if ttlVal == -1 {
 			if err := client.RemoveMessageTTL(*topicName); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: RemoveMessageTTL: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_MESSAGE_TTL: RemoveMessageTTL", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMessageTTL error: %v", err))
 				}
@@ -1659,8 +1681,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			}
 		} else {
 			if err := client.SetMessageTTL(*topicName, ttlVal); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_MESSAGE_TTL: SetMessageTTL: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_MESSAGE_TTL: SetMessageTTL", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("SetMessageTTL error: %v", err))
 				}
@@ -1692,9 +1714,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 		if maxVal == -1 {
 			if err := client.RemoveMaxUnackMessagesPerConsumer(*topicName); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(
-						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: RemoveMaxUnackMessagesPerConsumer: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError(
+					"ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: RemoveMaxUnackMessagesPerConsumer",
+					err,
+				); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxUnackMessagesPerConsumer error: %v", err))
 				}
@@ -1703,9 +1727,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			}
 		} else {
 			if err := client.SetMaxUnackMessagesPerConsumer(*topicName, maxVal); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(
-						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: SetMaxUnackMessagesPerConsumer: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError(
+					"ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_CONSUMER: SetMaxUnackMessagesPerConsumer",
+					err,
+				); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerConsumer error: %v", err))
 				}
@@ -1737,9 +1763,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 		if maxVal == -1 {
 			if err := client.RemoveMaxUnackMessagesPerSubscription(*topicName); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(
-						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: RemoveMaxUnackMessagesPerSubscription: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError(
+					"ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: RemoveMaxUnackMessagesPerSubscription",
+					err,
+				); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("RemoveMaxUnackMessagesPerSubscription error: %v", err))
 				}
@@ -1748,9 +1776,11 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			}
 		} else {
 			if err := client.SetMaxUnackMessagesPerSubscription(*topicName, maxVal); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(
-						fmt.Errorf("ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: SetMaxUnackMessagesPerSubscription: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError(
+					"ERROR_UPDATE_MAX_UNACK_MESSAGES_PER_SUBSCRIPTION: SetMaxUnackMessagesPerSubscription",
+					err,
+				); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("SetMaxUnackMessagesPerSubscription error: %v", err))
 				}
@@ -1797,8 +1827,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 		if isRemoval {
 			// Remove publish rate when both are -1
 			if err := client.RemovePublishRate(*topicName); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: RemovePublishRate: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_PUBLISH_RATE: RemovePublishRate", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("RemovePublishRate error: %v", err))
 				}
@@ -1813,8 +1843,8 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 			}
 
 			if err := client.SetPublishRate(*topicName, publishRateData); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(fmt.Errorf("ERROR_UPDATE_PUBLISH_RATE: SetPublishRate: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError("ERROR_UPDATE_PUBLISH_RATE: SetPublishRate", err); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				} else {
 					errs = errors.Wrap(errs, fmt.Sprintf("SetPublishRate error: %v", err))
 				}
@@ -1862,19 +1892,22 @@ func updateTopicConfig(d *schema.ResourceData, meta interface{}, topicName *util
 
 			if isRemoveSchemaCompatibilityStrategy {
 				if err := client.RemoveSchemaCompatibilityStrategy(*topicName); err != nil {
-					if !isIgnorableTopicPolicyError(err) {
-						return backoff.Permanent(
-							fmt.Errorf(
-								"ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: RemoveSchemaCompatibilityStrategy: %w", err))
+					if wrappedErr := wrapTopicPolicyWriteError(
+						"ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: RemoveSchemaCompatibilityStrategy",
+						err,
+					); isPermanentBackoffError(wrappedErr) {
+						return wrappedErr
 					}
 					errs = errors.Wrap(errs, fmt.Sprintf("RemoveSchemaCompatibilityStrategy error: %v", err))
 				} else {
 					operationSucceeded = true
 				}
 			} else if err := client.SetSchemaCompatibilityStrategy(*topicName, strategy); err != nil {
-				if !isIgnorableTopicPolicyError(err) {
-					return backoff.Permanent(
-						fmt.Errorf("ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: SetSchemaCompatibilityStrategy: %w", err))
+				if wrappedErr := wrapTopicPolicyWriteError(
+					"ERROR_UPDATE_SCHEMA_COMPATIBILITY_STRATEGY: SetSchemaCompatibilityStrategy",
+					err,
+				); isPermanentBackoffError(wrappedErr) {
+					return wrappedErr
 				}
 				errs = errors.Wrap(errs, fmt.Sprintf("SetSchemaCompatibilityStrategy error: %v", err))
 			} else {
