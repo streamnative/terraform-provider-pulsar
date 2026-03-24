@@ -444,26 +444,33 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			namespaceConfig["schema_validation_enforce"] = schemaValidationEnforce
 		}
 
-		if namespaceConfigHasSchemaAutoUpdateCompatibilityStrategy(d) {
+		hasSchemaAutoUpdateCompatibilityStrategy := namespaceConfigHasSchemaAutoUpdateCompatibilityStrategy(d)
+		if hasSchemaAutoUpdateCompatibilityStrategy {
 			schemaAutoUpdateCompatibilityStrategy, err := client.GetSchemaAutoUpdateCompatibilityStrategy(*ns)
 			if err != nil {
 				if !strings.Contains(err.Error(), "Invalid auth strategy") && !strings.Contains(err.Error(), "404") {
 					return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaAutoUpdateCompatibilityStrategy: %w", err))
 				}
-			} else {
-				namespaceConfig["schema_auto_update_compatibility_strategy"] = schemaAutoUpdateCompatibilityStrategy.String()
+			} else if value, ok := namespaceSchemaAutoUpdateCompatibilityStrategyStateValue(
+				schemaAutoUpdateCompatibilityStrategy,
+				hasSchemaAutoUpdateCompatibilityStrategy,
+			); ok {
+				namespaceConfig["schema_auto_update_compatibility_strategy"] = value
 			}
 		}
 
-		if namespaceConfigHasSchemaCompatibilityStrategy(d) {
+		hasSchemaCompatibilityStrategy := namespaceConfigHasSchemaCompatibilityStrategy(d)
+		if hasSchemaCompatibilityStrategy {
 			schemaCompatibilityStrategy, err := client.GetSchemaCompatibilityStrategy(*ns)
 			if err != nil {
 				if !strings.Contains(err.Error(), "Invalid auth strategy") && !strings.Contains(err.Error(), "404") {
 					return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSchemaCompatibilityStrategy: %w", err))
 				}
-			} else {
-				namespaceConfig["schema_compatibility_strategy"] =
-					schemaCompatibilityStrategyToTerraformValue(schemaCompatibilityStrategy)
+			} else if value, ok := namespaceSchemaCompatibilityStrategyStateValue(
+				schemaCompatibilityStrategy,
+				hasSchemaCompatibilityStrategy,
+			); ok {
+				namespaceConfig["schema_compatibility_strategy"] = value
 			}
 		}
 
@@ -1068,12 +1075,43 @@ func namespaceConfigHasSchemaAutoUpdateCompatibilityStrategy(d *schema.ResourceD
 	)
 }
 
-func rawConfigOrStateHasNamespaceConfigStringField(rawConfig cty.Value, rawState cty.Value, field string) bool {
-	if rawConfig.IsNull() || !rawConfig.IsKnown() {
-		return rawValueHasNamespaceConfigStringField(rawState, field)
+func namespaceSchemaCompatibilityStrategyStateValue(
+	strategy utils.SchemaCompatibilityStrategy,
+	hasExplicitValue bool,
+) (string, bool) {
+	if strategy == "" || strategy == utils.SchemaCompatibilityStrategyUndefined {
+		if !hasExplicitValue {
+			return "", false
+		}
+
+		return schemaCompatibilityStrategyToTerraformValue(utils.SchemaCompatibilityStrategyUndefined), true
 	}
 
-	return rawValueHasNamespaceConfigStringField(rawConfig, field)
+	terraformValue := schemaCompatibilityStrategyToTerraformValue(strategy)
+	if terraformValue == "" {
+		return "", false
+	}
+
+	return terraformValue, true
+}
+
+func namespaceSchemaAutoUpdateCompatibilityStrategyStateValue(
+	strategy utils.SchemaAutoUpdateCompatibilityStrategy,
+	hasExplicitValue bool,
+) (string, bool) {
+	if !hasExplicitValue || strategy == "" {
+		return "", false
+	}
+
+	return strategy.String(), true
+}
+
+func rawConfigOrStateHasNamespaceConfigStringField(rawConfig cty.Value, rawState cty.Value, field string) bool {
+	if !rawConfig.IsNull() {
+		return rawValueHasNamespaceConfigStringField(rawConfig, field)
+	}
+
+	return rawValueHasNamespaceConfigStringField(rawState, field)
 }
 
 func rawValueHasNamespaceConfigStringField(rawValue cty.Value, field string) bool {

@@ -3,6 +3,7 @@ package pulsar
 import (
 	"testing"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/go-cty/cty"
 )
 
@@ -89,13 +90,13 @@ func TestRawConfigOrStateHasNamespaceConfigStringField(t *testing.T) {
 			want:  true,
 		},
 		{
-			name:      "falls back to raw state when config is unknown",
+			name:      "unknown config does not fall back to raw state",
 			rawConfig: cty.UnknownVal(cty.EmptyObject),
 			rawState: namespaceConfigRawValue(map[string]cty.Value{
 				"schema_compatibility_strategy": cty.StringVal("Undefined"),
 			}),
 			field: "schema_compatibility_strategy",
-			want:  true,
+			want:  false,
 		},
 		{
 			name: "raw config takes precedence over raw state",
@@ -128,6 +129,118 @@ func TestRawConfigOrStateHasNamespaceConfigStringField(t *testing.T) {
 			got := rawConfigOrStateHasNamespaceConfigStringField(tt.rawConfig, tt.rawState, tt.field)
 			if got != tt.want {
 				t.Fatalf("unexpected result: got %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNamespaceSchemaCompatibilityStrategyStateValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		strategy         utils.SchemaCompatibilityStrategy
+		hasExplicitValue bool
+		wantValue        string
+		wantOK           bool
+	}{
+		{
+			name:             "undefined without explicit value",
+			strategy:         utils.SchemaCompatibilityStrategyUndefined,
+			hasExplicitValue: false,
+			wantValue:        "",
+			wantOK:           false,
+		},
+		{
+			name:             "undefined with explicit value",
+			strategy:         utils.SchemaCompatibilityStrategyUndefined,
+			hasExplicitValue: true,
+			wantValue:        "Undefined",
+			wantOK:           true,
+		},
+		{
+			name:             "empty strategy with explicit value",
+			strategy:         "",
+			hasExplicitValue: true,
+			wantValue:        "Undefined",
+			wantOK:           true,
+		},
+		{
+			name:             "backward transitive strategy",
+			strategy:         utils.SchemaCompatibilityStrategyBackwardTransitive,
+			hasExplicitValue: true,
+			wantValue:        "BackwardTransitive",
+			wantOK:           true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotValue, gotOK := namespaceSchemaCompatibilityStrategyStateValue(tt.strategy, tt.hasExplicitValue)
+			if gotValue != tt.wantValue || gotOK != tt.wantOK {
+				t.Fatalf(
+					"unexpected state value: got (%q, %t), want (%q, %t)",
+					gotValue,
+					gotOK,
+					tt.wantValue,
+					tt.wantOK,
+				)
+			}
+		})
+	}
+}
+
+func TestNamespaceSchemaAutoUpdateCompatibilityStrategyStateValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		strategy         utils.SchemaAutoUpdateCompatibilityStrategy
+		hasExplicitValue bool
+		wantValue        string
+		wantOK           bool
+	}{
+		{
+			name:             "unset without explicit value",
+			strategy:         utils.Full,
+			hasExplicitValue: false,
+			wantValue:        "",
+			wantOK:           false,
+		},
+		{
+			name:             "empty strategy with explicit value",
+			strategy:         "",
+			hasExplicitValue: true,
+			wantValue:        "",
+			wantOK:           false,
+		},
+		{
+			name:             "explicit full strategy",
+			strategy:         utils.Full,
+			hasExplicitValue: true,
+			wantValue:        "Full",
+			wantOK:           true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotValue, gotOK := namespaceSchemaAutoUpdateCompatibilityStrategyStateValue(
+				tt.strategy,
+				tt.hasExplicitValue,
+			)
+			if gotValue != tt.wantValue || gotOK != tt.wantOK {
+				t.Fatalf(
+					"unexpected state value: got (%q, %t), want (%q, %t)",
+					gotValue,
+					gotOK,
+					tt.wantValue,
+					tt.wantOK,
+				)
 			}
 		})
 	}
