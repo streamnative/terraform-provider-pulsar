@@ -159,6 +159,11 @@ func TestNamespaceWithUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "topic_auto_creation.0.partitions", "3"),
 				),
 			},
+			{
+				Config:             testPulsarNamespace(testWebServiceURL, cName, tName, nsName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
 		},
 	})
 }
@@ -198,15 +203,13 @@ func TestNamespaceWithUndefinedOptionalsUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "retention_policies.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "0"),
 					resource.TestCheckResourceAttr(resourceName, "namespace_config.#", "1"),
-					resource.TestCheckResourceAttr(
+					resource.TestCheckNoResourceAttr(
 						resourceName,
 						"namespace_config.0.schema_auto_update_compatibility_strategy",
-						"Full",
 					),
-					resource.TestCheckResourceAttr(
+					resource.TestCheckNoResourceAttr(
 						resourceName,
 						"namespace_config.0.schema_compatibility_strategy",
-						"Full",
 					),
 					resource.TestCheckNoResourceAttr(resourceName, "enable_deduplication"),
 					resource.TestCheckNoResourceAttr(resourceName, "permission_grant.#"),
