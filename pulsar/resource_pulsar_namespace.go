@@ -1069,11 +1069,11 @@ func namespaceConfigHasSchemaAutoUpdateCompatibilityStrategy(d *schema.ResourceD
 }
 
 func rawConfigOrStateHasNamespaceConfigStringField(rawConfig cty.Value, rawState cty.Value, field string) bool {
-	if !rawConfig.IsNull() {
-		return rawValueHasNamespaceConfigStringField(rawConfig, field)
+	if rawConfig.IsNull() || !rawConfig.IsKnown() {
+		return rawValueHasNamespaceConfigStringField(rawState, field)
 	}
 
-	return rawValueHasNamespaceConfigStringField(rawState, field)
+	return rawValueHasNamespaceConfigStringField(rawConfig, field)
 }
 
 func rawValueHasNamespaceConfigStringField(rawValue cty.Value, field string) bool {

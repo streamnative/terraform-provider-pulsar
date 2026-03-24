@@ -89,6 +89,15 @@ func TestRawConfigOrStateHasNamespaceConfigStringField(t *testing.T) {
 			want:  true,
 		},
 		{
+			name:      "falls back to raw state when config is unknown",
+			rawConfig: cty.UnknownVal(cty.EmptyObject),
+			rawState: namespaceConfigRawValue(map[string]cty.Value{
+				"schema_compatibility_strategy": cty.StringVal("Undefined"),
+			}),
+			field: "schema_compatibility_strategy",
+			want:  true,
+		},
+		{
 			name: "raw config takes precedence over raw state",
 			rawConfig: namespaceConfigRawValue(map[string]cty.Value{
 				"schema_compatibility_strategy": cty.NullVal(cty.String),
