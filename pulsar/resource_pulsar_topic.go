@@ -394,6 +394,10 @@ func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
 	_ = d.Set("topic_type", topic.GetDomain())
 	_ = d.Set("topic_name", topic.GetLocalName())
 
+	if err := preloadImportedTopicReplicationClusters(ctx, d, meta, topic); err != nil {
+		return nil, fmt.Errorf("import %q: %w", importID, err)
+	}
+
 	// When importing, we don't set topic_config explicitly here
 	// Instead, we let resourcePulsarTopicRead detect non-default values
 	// This ensures that we only import configurations that are non-default
@@ -409,6 +413,41 @@ func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
 		)
 	}
 	return []*schema.ResourceData{d}, nil
+}
+
+func preloadImportedTopicReplicationClusters(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{},
+	topicName *utils.TopicName,
+) error {
+	if !topicName.IsPersistent() {
+		return nil
+	}
+
+	topicPolicies, err := getTopicPolicies(meta)
+	if err != nil {
+		return fmt.Errorf("ERROR_IMPORT_TOPIC_REPLICATION_CLUSTERS: TopicPoliciesOf: %w", err)
+	}
+
+	replicationClusters, err := topicPolicies.GetReplicationClusters(ctx, *topicName, false)
+	if err != nil {
+		if isIgnorableTopicPolicyError(err) {
+			return nil
+		}
+
+		return fmt.Errorf("ERROR_IMPORT_TOPIC_REPLICATION_CLUSTERS: GetReplicationClusters: %w", err)
+	}
+
+	if len(replicationClusters) == 0 {
+		return nil
+	}
+
+	if err := d.Set("replication_clusters", stringSliceToStringSet(replicationClusters)); err != nil {
+		return fmt.Errorf("ERROR_IMPORT_TOPIC_REPLICATION_CLUSTERS: Set: %w", err)
+	}
+
+	return nil
 }
 
 func resourcePulsarTopicCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -1294,6 +1333,10 @@ func shouldReadTopicReplicationClusters(d *schema.ResourceData) bool {
 }
 
 func replicationClustersManagedByResourceData(d *schema.ResourceData) bool {
+	if _, ok := d.GetOk("replication_clusters"); ok {
+		return true
+	}
+
 	state := d.State()
 	if state == nil {
 		return false
