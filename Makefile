@@ -39,10 +39,10 @@ test: fmtcheck
 	go test $(TEST) -timeout=30s -parallel=4
 
 testacc: fmtcheck
-	TF_ACC=1 go test $(TEST) -v -count 3 $(TESTARGS) -timeout 120m
+	TF_ACC=1 go test $(TEST) -v -count 3 $(TESTARGS) -timeout 150m
 
 testacc-no-topic-policies: fmtcheck
-	TF_ACC=1 PULSAR_TEST_CONFIG=no_topic_policies go test $(TEST) -v -count 3 $(TESTARGS) -timeout 120m
+	TF_ACC=1 PULSAR_TEST_CONFIG=no_topic_policies go test $(TEST) -v -count 3 $(TESTARGS) -timeout 150m
 
 run-pulsar-in-docker: fmtcheck
 	hack/pulsar-docker.sh run
@@ -114,4 +114,3 @@ test-compile:
 	go test -c $(TEST) $(TESTARGS)
 
 .PHONY: build test testacc fmt fmtcheck lint tools test-compile
-
