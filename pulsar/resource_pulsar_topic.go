@@ -38,7 +38,10 @@ import (
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 )
 
-const topicLevelPoliciesDisabledReason = "Topic level policies is disabled"
+const (
+	topicLevelPoliciesDisabledReason     = "Topic level policies is disabled"
+	removeReplicationClustersErrorPrefix = "ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters"
+)
 
 // isIgnorableTopicPolicyError checks if an error indicates that a topic policy was not found
 // or is disabled at the cluster level. This includes HTTP 404 errors, or specific
@@ -82,20 +85,22 @@ func wrapTopicPolicyWriteError(prefix string, err error) error {
 	return fmt.Errorf("%s: %w", prefix, err)
 }
 
-func wrapTopicPolicyDeleteError(prefix string, err error) error {
+func wrapTopicPolicyDeleteError(err error) error {
 	if err == nil {
 		return nil
 	}
 
 	if isDisabledTopicPolicyError(err) {
-		return wrapTopicPolicyWriteError(prefix, err)
+		return wrapTopicPolicyWriteError(removeReplicationClustersErrorPrefix, err)
 	}
 
 	if isIgnorableTopicPolicyError(err) {
 		return nil
 	}
 
-	return backoff.Permanent(fmt.Errorf("%s: %w", prefix, err))
+	return backoff.Permanent(
+		fmt.Errorf("%s: %w", removeReplicationClustersErrorPrefix, err),
+	)
 }
 
 func isPermanentBackoffError(err error) bool {
@@ -1270,10 +1275,7 @@ func updateReplicationClusters(d *schema.ResourceData, meta interface{}, topicNa
 	}
 
 	if err := topicPolicies.RemoveReplicationClusters(context.Background(), *topicName); err != nil {
-		if wrappedErr := wrapTopicPolicyDeleteError(
-			"ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters",
-			err,
-		); wrappedErr != nil {
+		if wrappedErr := wrapTopicPolicyDeleteError(err); wrappedErr != nil {
 			return wrappedErr
 		}
 		return nil
