@@ -43,6 +43,8 @@ resource "pulsar_topic" "my_topic" {
   topic_type = "persistent"
   partitions = 1
 
+  replication_clusters = ["standalone"]
+
   topic_properties = {
   "owner" = "data-engineering"
   "env"   = "production"
