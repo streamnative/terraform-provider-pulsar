@@ -60,6 +60,29 @@ func TestWrapTopicPolicyWriteError(t *testing.T) {
 	require.True(t, isPermanentBackoffError(internalErr))
 }
 
+func TestWrapTopicPolicyDeleteError(t *testing.T) {
+	t.Parallel()
+
+	disabledErr := wrapTopicPolicyDeleteError(
+		"ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters",
+		rest.Error{Code: 405, Reason: topicLevelPoliciesDisabledReason},
+	)
+	require.True(t, isPermanentBackoffError(disabledErr))
+	require.ErrorContains(t, disabledErr, "topic-level policies are disabled in the cluster")
+
+	notFoundErr := wrapTopicPolicyDeleteError(
+		"ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters",
+		rest.Error{Code: 404, Reason: "Not Found"},
+	)
+	require.NoError(t, notFoundErr)
+
+	internalErr := wrapTopicPolicyDeleteError(
+		"ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters",
+		rest.Error{Code: 500, Reason: "Internal Server Error"},
+	)
+	require.True(t, isPermanentBackoffError(internalErr))
+}
+
 func TestRetryFastFailsOnDisabledTopicPolicyError(t *testing.T) {
 	t.Parallel()
 

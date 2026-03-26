@@ -82,6 +82,22 @@ func wrapTopicPolicyWriteError(prefix string, err error) error {
 	return fmt.Errorf("%s: %w", prefix, err)
 }
 
+func wrapTopicPolicyDeleteError(prefix string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if isDisabledTopicPolicyError(err) {
+		return wrapTopicPolicyWriteError(prefix, err)
+	}
+
+	if isIgnorableTopicPolicyError(err) {
+		return nil
+	}
+
+	return backoff.Permanent(fmt.Errorf("%s: %w", prefix, err))
+}
+
 func isPermanentBackoffError(err error) bool {
 	if err == nil {
 		return false
@@ -1254,8 +1270,11 @@ func updateReplicationClusters(d *schema.ResourceData, meta interface{}, topicNa
 	}
 
 	if err := topicPolicies.RemoveReplicationClusters(context.Background(), *topicName); err != nil {
-		if !isIgnorableTopicPolicyError(err) {
-			return backoff.Permanent(fmt.Errorf("ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters: %w", err))
+		if wrappedErr := wrapTopicPolicyDeleteError(
+			"ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters",
+			err,
+		); wrappedErr != nil {
+			return wrappedErr
 		}
 		return nil
 	}
