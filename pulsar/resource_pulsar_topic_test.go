@@ -1079,8 +1079,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 33 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 33, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 34 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 34, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -1394,6 +1394,24 @@ resource "pulsar_topic" "test" {
     retention_time_minutes = 1600
     retention_size_mb      = 20000
   }
+
+  %s
+}
+`, url, tname, pnum, propertiesHCL)
+}
+
+func testPulsarTopicImportPropertiesTarget(url, tname string, pnum int, propertiesHCL string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = "%s"
+}
+
+resource "pulsar_topic" "test" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "persistent"
+  topic_name = "%s"
+  partitions = %d
 
   %s
 }
@@ -1833,6 +1851,131 @@ func TestImportTopicWithProperties(t *testing.T) {
 					}
 					return nil
 				},
+			},
+		},
+	})
+}
+
+func TestImportTopicWithManagedPropertiesDoesNotDriftOnUnmanagedKeys(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	pnum := 0
+	ttype := "persistent"
+	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+	topicName, err := utils.GetTopicName(fullID)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+
+			client := getClientFromMeta(testAccProvider.Meta()).Topics()
+			props := map[string]string{
+				"managed":  "v1",
+				"external": "persisted-outside-state",
+			}
+			if err := client.CreateWithProperties(*topicName, pnum, props); err != nil {
+				t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
+			}
+
+			t.Cleanup(func() {
+				_ = client.Delete(*topicName, true, true)
+			})
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:       resourceName,
+				ImportState:        true,
+				ImportStatePersist: true,
+				Config:             testPulsarTopicImportPropertiesTarget(testWebServiceURL, tname, pnum, ""),
+				ImportStateId:      fullID,
+				ImportStateCheck: func(s []*terraform.InstanceState) error {
+					if len(s) != 1 {
+						return fmt.Errorf("expected 1 imported state, got %d", len(s))
+					}
+
+					if s[0].Attributes["topic_properties.%"] != "2" {
+						return fmt.Errorf("expected 2 topic_properties, got %s", s[0].Attributes["topic_properties.%"])
+					}
+					if v := s[0].Attributes["topic_properties.managed"]; v != "v1" {
+						return fmt.Errorf("unexpected managed value: %s", v)
+					}
+					if v := s[0].Attributes["topic_properties.external"]; v != "persisted-outside-state" {
+						return fmt.Errorf("unexpected external value: %s", v)
+					}
+
+					return nil
+				},
+			},
+			{
+				Config: testPulsarTopicImportPropertiesTarget(testWebServiceURL, tname, pnum,
+					`topic_properties = { managed = "v1" }`),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestImportTopicWithReplicationClustersDoesNotDriftOnImplicitTopicProperties(t *testing.T) {
+	skipIfNoTopicPolicies(t)
+	resourceName := "pulsar_topic.test"
+	tname := acctest.RandString(10)
+	pnum := 0
+	ttype := "persistent"
+	fullID := strings.Join([]string{ttype + ":/", "public", "default", tname}, "/")
+	topicName, err := utils.GetTopicName(fullID)
+	if err != nil {
+		t.Fatalf("ERROR_GETTING_TOPIC_NAME: %v", err)
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+
+			client := getClientFromMeta(testAccProvider.Meta())
+			if err := client.Topics().CreateWithProperties(*topicName, pnum, map[string]string{
+				"external": "persisted-outside-state",
+			}); err != nil {
+				t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
+			}
+
+			topicPolicies, err := admin.TopicPoliciesOf(client, false)
+			if err != nil {
+				t.Fatalf("ERROR_GETTING_TOPIC_POLICIES: %v", err)
+			}
+
+			if err := topicPolicies.SetReplicationClusters(
+				context.Background(),
+				*topicName,
+				[]string{"standalone"},
+			); err != nil {
+				t.Fatalf("ERROR_SETTING_TOPIC_REPLICATION_CLUSTERS: %v", err)
+			}
+
+			t.Cleanup(func() {
+				_ = client.Topics().Delete(*topicName, true, true)
+			})
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarTopicDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:       resourceName,
+				ImportState:        true,
+				ImportStatePersist: true,
+				Config:             testPulsarTopicWithReplicationClusters(testWebServiceURL, tname, ttype, pnum),
+				ImportStateId:      fullID,
+			},
+			{
+				Config:             testPulsarTopicWithReplicationClusters(testWebServiceURL, tname, ttype, pnum),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})

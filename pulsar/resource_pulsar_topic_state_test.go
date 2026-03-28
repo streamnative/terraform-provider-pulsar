@@ -2,6 +2,7 @@ package pulsar
 
 import (
 	"maps"
+	"reflect"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -293,6 +294,169 @@ func TestIgnoreServerSetTopicProperties(t *testing.T) {
 
 	if !maps.Equal(got, want) {
 		t.Fatalf("unexpected filtered properties: got %#v, want %#v", got, want)
+	}
+}
+
+func TestRawValueTopicPropertiesValues(t *testing.T) {
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed":  cty.StringVal("v1"),
+			"external": cty.StringVal("v2"),
+		}),
+	})
+
+	got, known := rawValueTopicPropertiesValues(rawState)
+	want := map[string]string{
+		"managed":  "v1",
+		"external": "v2",
+	}
+
+	if !known {
+		t.Fatal("expected topic_properties values to be treated as known")
+	}
+
+	if !maps.Equal(got, want) {
+		t.Fatalf("unexpected topic_properties values: got %#v, want %#v", got, want)
+	}
+}
+
+func TestRawStateHasImportedTopicPropertiesMarker(t *testing.T) {
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		importedTopicPropertiesStateAttr: cty.True,
+	})
+
+	if !rawStateHasImportedTopicPropertiesMarker(rawState) {
+		t.Fatal("expected import marker to be detected")
+	}
+}
+
+func TestRawStateHasImportedTopicPropertiesMarkerFalse(t *testing.T) {
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		importedTopicPropertiesStateAttr: cty.False,
+	})
+
+	if rawStateHasImportedTopicPropertiesMarker(rawState) {
+		t.Fatal("expected false import marker to be ignored")
+	}
+}
+
+func TestRawStateHasImportedTopicPropertiesMarkerMissing(t *testing.T) {
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed": cty.StringVal("v1"),
+		}),
+	})
+
+	if rawStateHasImportedTopicPropertiesMarker(rawState) {
+		t.Fatal("expected missing import marker to be ignored")
+	}
+}
+
+func TestTopicPropertiesPlannedMapForImportDriftWithoutConfiguredTopicProperties(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{})
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		importedTopicPropertiesStateAttr: cty.True,
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"external": cty.StringVal("persisted-outside-state"),
+		}),
+	})
+
+	got, changed := topicPropertiesPlannedMapForImportDrift(
+		rawConfig,
+		rawState,
+		map[string]interface{}{"external": "persisted-outside-state"},
+		nil,
+	)
+	if !changed {
+		t.Fatal("expected implicit topic_properties drift to be suppressed")
+	}
+
+	want := map[string]interface{}{"external": "persisted-outside-state"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected planned topic_properties: got %#v, want %#v", got, want)
+	}
+}
+
+func TestTopicPropertiesPlannedMapForImportDriftForUndeclaredKeys(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed": cty.StringVal("v1"),
+		}),
+	})
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		importedTopicPropertiesStateAttr: cty.True,
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed":  cty.StringVal("v1"),
+			"external": cty.StringVal("persisted-outside-state"),
+		}),
+	})
+
+	got, changed := topicPropertiesPlannedMapForImportDrift(
+		rawConfig,
+		rawState,
+		map[string]interface{}{
+			"managed":  "v1",
+			"external": "persisted-outside-state",
+		},
+		map[string]interface{}{
+			"managed": "v1",
+		},
+	)
+	if !changed {
+		t.Fatal("expected undeclared topic properties drift to be suppressed")
+	}
+
+	want := map[string]interface{}{
+		"managed":  "v1",
+		"external": "persisted-outside-state",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected planned topic_properties: got %#v, want %#v", got, want)
+	}
+}
+
+func TestTopicPropertiesPlannedMapForImportDriftDoesNotSuppressExplicitEmptyMap(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapValEmpty(cty.String),
+	})
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		importedTopicPropertiesStateAttr: cty.True,
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed":  cty.StringVal("v1"),
+			"external": cty.StringVal("persisted-outside-state"),
+		}),
+	})
+
+	if _, changed := topicPropertiesPlannedMapForImportDrift(
+		rawConfig,
+		rawState,
+		map[string]interface{}{"managed": "v1", "external": "persisted-outside-state"},
+		map[string]interface{}{},
+	); changed {
+		t.Fatal("expected explicit empty topic_properties to preserve delete semantics")
+	}
+}
+
+func TestTopicPropertiesPlannedMapForImportDriftDoesNotSuppressCleanState(t *testing.T) {
+	rawConfig := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed": cty.StringVal("v1"),
+		}),
+	})
+	rawState := cty.ObjectVal(map[string]cty.Value{
+		"topic_properties": cty.MapVal(map[string]cty.Value{
+			"managed": cty.StringVal("v1"),
+			"k2":      cty.StringVal("v2"),
+		}),
+	})
+
+	if _, changed := topicPropertiesPlannedMapForImportDrift(
+		rawConfig,
+		rawState,
+		map[string]interface{}{"managed": "v1", "k2": "v2"},
+		map[string]interface{}{"managed": "v1"},
+	); changed {
+		t.Fatal("expected clean state deletions to remain visible")
 	}
 }
 
