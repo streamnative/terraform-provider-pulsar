@@ -1079,8 +1079,8 @@ func testTopicImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 33 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 33, len(s[0].Attributes), s[0].Attributes)
+		if len(s[0].Attributes) != 34 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 34, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
@@ -1876,7 +1876,6 @@ func TestImportTopicWithManagedPropertiesDoesNotDriftOnUnmanagedKeys(t *testing.
 			props := map[string]string{
 				"managed":  "v1",
 				"external": "persisted-outside-state",
-				"index":    "-1",
 			}
 			if err := client.CreateWithProperties(*topicName, pnum, props); err != nil {
 				t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
@@ -1893,9 +1892,25 @@ func TestImportTopicWithManagedPropertiesDoesNotDriftOnUnmanagedKeys(t *testing.
 				ResourceName:       resourceName,
 				ImportState:        true,
 				ImportStatePersist: true,
-				Config: testPulsarTopicImportPropertiesTarget(testWebServiceURL, tname, pnum,
-					`topic_properties = { managed = "v1" }`),
-				ImportStateId: fullID,
+				Config:             testPulsarTopicImportPropertiesTarget(testWebServiceURL, tname, pnum, ""),
+				ImportStateId:      fullID,
+				ImportStateCheck: func(s []*terraform.InstanceState) error {
+					if len(s) != 1 {
+						return fmt.Errorf("expected 1 imported state, got %d", len(s))
+					}
+
+					if s[0].Attributes["topic_properties.%"] != "2" {
+						return fmt.Errorf("expected 2 topic_properties, got %s", s[0].Attributes["topic_properties.%"])
+					}
+					if v := s[0].Attributes["topic_properties.managed"]; v != "v1" {
+						return fmt.Errorf("unexpected managed value: %s", v)
+					}
+					if v := s[0].Attributes["topic_properties.external"]; v != "persisted-outside-state" {
+						return fmt.Errorf("unexpected external value: %s", v)
+					}
+
+					return nil
+				},
 			},
 			{
 				Config: testPulsarTopicImportPropertiesTarget(testWebServiceURL, tname, pnum,
@@ -1925,7 +1940,7 @@ func TestImportTopicWithReplicationClustersDoesNotDriftOnImplicitTopicProperties
 
 			client := getClientFromMeta(testAccProvider.Meta())
 			if err := client.Topics().CreateWithProperties(*topicName, pnum, map[string]string{
-				"index": "-1",
+				"external": "persisted-outside-state",
 			}); err != nil {
 				t.Fatalf("ERROR_CREATING_TEST_TOPIC: %v", err)
 			}

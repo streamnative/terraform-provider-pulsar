@@ -42,6 +42,7 @@ import (
 const (
 	topicLevelPoliciesDisabledReason     = "Topic level policies is disabled"
 	removeReplicationClustersErrorPrefix = "ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters"
+	importedTopicPropertiesStateAttr     = "_imported_topic_properties"
 )
 
 // isIgnorableTopicPolicyError checks if an error indicates that a topic policy was not found
@@ -390,11 +391,16 @@ func resourcePulsarTopic() *schema.Resource {
 				Optional: true,
 				Computed: true,
 				Description: "Custom properties managed for the topic. " +
-					"Only declared keys are stored in Terraform state; " +
-					"undeclared remote properties are ignored during refresh.",
+					"When topic_properties is configured or already tracked in state, " +
+					"only declared keys are stored in Terraform state; otherwise remote properties are preserved during refresh.",
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
+			},
+			importedTopicPropertiesStateAttr: {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Internal state flag used to preserve the imported topic_properties baseline during planning.",
 			},
 		},
 		Timeouts: &schema.ResourceTimeout{
@@ -450,6 +456,10 @@ func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
 			"import %q: topic not found in Pulsar; verify the topic exists and the identifier is correct",
 			importID,
 		)
+	}
+
+	if err := d.Set(importedTopicPropertiesStateAttr, true); err != nil {
+		return nil, fmt.Errorf("import %q: set imported topic_properties marker: %w", importID, err)
 	}
 	return []*schema.ResourceData{d}, nil
 }
@@ -915,7 +925,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
-	// Read topic properties and keep only Terraform-managed keys in state.
+	// Read topic properties and keep only Terraform-managed keys in state when those keys are known.
 	time.Sleep(time.Millisecond * 100)
 	if topicName.IsPersistent() {
 		properties, err := client.GetProperties(*topicName)
@@ -2238,12 +2248,16 @@ func rawValueTopicPropertiesKeys(rawValue cty.Value) (map[string]struct{}, bool)
 }
 
 func rawStateHasImportedTopicPropertiesMarker(rawState cty.Value) bool {
-	properties, ok := rawValueTopicPropertiesValues(rawState)
-	if !ok {
+	if !rawValueHasTopLevelAttribute(rawState, importedTopicPropertiesStateAttr) {
 		return false
 	}
 
-	return properties["index"] == "-1"
+	marker := rawState.GetAttr(importedTopicPropertiesStateAttr)
+	if !marker.IsKnown() || marker.IsNull() || marker.Type() != cty.Bool {
+		return false
+	}
+
+	return marker.True()
 }
 
 func rawValueTopicPropertiesValues(rawValue cty.Value) (map[string]string, bool) {
