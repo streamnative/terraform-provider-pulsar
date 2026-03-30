@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,7 @@ import (
 const (
 	topicLevelPoliciesDisabledReason     = "Topic level policies is disabled"
 	removeReplicationClustersErrorPrefix = "ERROR_REMOVE_REPLICATION_CLUSTERS: RemoveReplicationClusters"
+	importedTopicPropertiesStateAttr     = "_imported_topic_properties"
 )
 
 // isIgnorableTopicPolicyError checks if an error indicates that a topic policy was not found
@@ -118,6 +120,7 @@ func resourcePulsarTopic() *schema.Resource {
 		ReadContext:   resourcePulsarTopicRead,
 		UpdateContext: resourcePulsarTopicUpdate,
 		DeleteContext: resourcePulsarTopicDelete,
+		CustomizeDiff: resourcePulsarTopicCustomizeDiff,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourcePulsarTopicImport,
 		},
@@ -386,12 +389,18 @@ func resourcePulsarTopic() *schema.Resource {
 			"topic_properties": {
 				Type:     schema.TypeMap,
 				Optional: true,
+				Computed: true,
 				Description: "Custom properties managed for the topic. " +
-					"Only declared keys are stored in Terraform state; " +
-					"undeclared remote properties are ignored during refresh.",
+					"When topic_properties is configured or already tracked in state, " +
+					"only declared keys are stored in Terraform state; otherwise remote properties are preserved during refresh.",
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
+			},
+			importedTopicPropertiesStateAttr: {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Internal state flag used to preserve the imported topic_properties baseline during planning.",
 			},
 		},
 		Timeouts: &schema.ResourceTimeout{
@@ -400,6 +409,21 @@ func resourcePulsarTopic() *schema.Resource {
 			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 	}
+}
+
+func resourcePulsarTopicCustomizeDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
+	oldValue, newValue := diff.GetChange("topic_properties")
+	plannedMap, ok := topicPropertiesPlannedMapForImportDrift(
+		diff.GetRawConfig(),
+		diff.GetRawState(),
+		oldValue,
+		newValue,
+	)
+	if !ok {
+		return nil
+	}
+
+	return diff.SetNew("topic_properties", plannedMap)
 }
 
 func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
@@ -432,6 +456,10 @@ func resourcePulsarTopicImport(ctx context.Context, d *schema.ResourceData,
 			"import %q: topic not found in Pulsar; verify the topic exists and the identifier is correct",
 			importID,
 		)
+	}
+
+	if err := d.Set(importedTopicPropertiesStateAttr, true); err != nil {
+		return nil, fmt.Errorf("import %q: set imported topic_properties marker: %w", importID, err)
 	}
 	return []*schema.ResourceData{d}, nil
 }
@@ -897,7 +925,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
-	// Read topic properties and keep only Terraform-managed keys in state.
+	// Read topic properties and keep only Terraform-managed keys in state when those keys are known.
 	time.Sleep(time.Millisecond * 100)
 	if topicName.IsPersistent() {
 		properties, err := client.GetProperties(*topicName)
@@ -2217,6 +2245,124 @@ func rawValueTopicPropertiesKeys(rawValue cty.Value) (map[string]struct{}, bool)
 	}
 
 	return managedKeys, true
+}
+
+func rawStateHasImportedTopicPropertiesMarker(rawState cty.Value) bool {
+	if !rawValueHasTopLevelAttribute(rawState, importedTopicPropertiesStateAttr) {
+		return false
+	}
+
+	marker := rawState.GetAttr(importedTopicPropertiesStateAttr)
+	if !marker.IsKnown() || marker.IsNull() || marker.Type() != cty.Bool {
+		return false
+	}
+
+	return marker.True()
+}
+
+func rawValueTopicPropertiesValues(rawValue cty.Value) (map[string]string, bool) {
+	properties := make(map[string]string)
+
+	if !rawValue.IsKnown() || rawValue.IsNull() {
+		return properties, false
+	}
+
+	if !rawValue.Type().IsObjectType() || !rawValue.Type().HasAttribute("topic_properties") {
+		return properties, false
+	}
+
+	topicProperties := rawValue.GetAttr("topic_properties")
+	if !topicProperties.IsKnown() || topicProperties.IsNull() {
+		return properties, true
+	}
+
+	if !topicProperties.Type().IsMapType() && !topicProperties.Type().IsObjectType() {
+		return properties, false
+	}
+
+	for key, value := range topicProperties.AsValueMap() {
+		if !value.IsKnown() || value.IsNull() || value.Type() != cty.String {
+			continue
+		}
+
+		properties[key] = value.AsString()
+	}
+
+	return properties, true
+}
+
+func topicPropertiesPlannedMapForImportDrift(
+	rawConfig cty.Value,
+	rawState cty.Value,
+	oldValue interface{},
+	newValue interface{},
+) (map[string]interface{}, bool) {
+	if !rawStateHasImportedTopicPropertiesMarker(rawState) {
+		return nil, false
+	}
+
+	oldMap := topicPropertiesDiffMap(oldValue)
+	newMap := topicPropertiesDiffMap(newValue)
+
+	managedKeys, known := rawValueTopicPropertiesKeys(rawConfig)
+	if !known {
+		if reflect.DeepEqual(oldMap, newMap) {
+			return nil, false
+		}
+
+		return oldMap, true
+	}
+
+	if len(managedKeys) == 0 {
+		return nil, false
+	}
+
+	plannedMap := cloneTopicPropertiesDiffMap(newMap)
+	for key, value := range oldMap {
+		if _, managed := managedKeys[key]; managed {
+			continue
+		}
+
+		if _, ok := plannedMap[key]; ok {
+			continue
+		}
+
+		plannedMap[key] = value
+	}
+
+	if reflect.DeepEqual(plannedMap, newMap) {
+		return nil, false
+	}
+
+	return plannedMap, true
+}
+
+func topicPropertiesDiffMap(value interface{}) map[string]interface{} {
+	if value == nil {
+		return map[string]interface{}{}
+	}
+
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		return cloneTopicPropertiesDiffMap(typed)
+	case map[string]string:
+		result := make(map[string]interface{}, len(typed))
+		for key, item := range typed {
+			result[key] = item
+		}
+		return result
+	default:
+		return map[string]interface{}{}
+	}
+}
+
+func cloneTopicPropertiesDiffMap(input map[string]interface{}) map[string]interface{} {
+	cloned := make(map[string]interface{}, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+
+	return cloned
 }
 
 func updateTopicProperties(d *schema.ResourceData, meta interface{}, topicName *utils.TopicName) error {
