@@ -299,6 +299,7 @@ func resourcePulsarFunction() *schema.Resource {
 			},
 			resourceFunctionRetainOrderingKey: {
 				Type:        schema.TypeBool,
+				ForceNew:    true,
 				Optional:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionRetainOrderingKey],
 			},

@@ -261,6 +261,7 @@ func resourcePulsarSink() *schema.Resource {
 			},
 			resourceSinkRetainOrderingKey: {
 				Type:        schema.TypeBool,
+				ForceNew:    true,
 				Optional:    true,
 				Default:     true,
 				Description: resourceSinkDescriptions[resourceSinkRetainOrderingKey],
