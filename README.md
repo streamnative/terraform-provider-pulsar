@@ -605,8 +605,28 @@ resource "pulsar_source" "source-1" {
   cpu = 2
   disk_mb = 20480
   ram_mb = 2048
+
+  // Keep credentials out of `configs` (which is stored in plaintext in the
+  // function metadata topic, `pulsar-admin sources get` output, and state).
+  // Reference them through the worker's secrets provider instead.
+  secrets = jsonencode(
+  {
+    "gsaKey": {
+      "path": "my-k8s-secret"
+      "key": "gsa-key.json"
+    }
+  })
 }
 ```
+
+> **Handling credentials:** values placed in `configs` are stored and returned
+> in plaintext (function metadata topic, `pulsar-admin sources get`, Terraform
+> state). For API keys, passwords, and service-account keys use the `secrets`
+> argument instead. Each entry maps a secret name (the key the connector reads)
+> to a `{ "path": ..., "key": ... }` reference that the worker's configured
+> `SecretsProvider` (for example the `KubernetesSecretsProviderConfigurator`)
+> resolves at runtime, so only the reference — never the value — lands in
+> config, metadata, or state.
 
 #### Properties
 
@@ -626,6 +646,9 @@ resource "pulsar_source" "source-1" {
 | `ram_mb`                    | The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes)                                                                                         | False    |
 | `disk_mb`                   | The disk that need to be allocated per source instance (applicable only to Docker runtime)                                                                                                         | False    |
 | `runtime_flags`             | User defined configs key/values (JSON string)                                                                                                                                                      | False    |
+| `schema_type`               | The schema type (either a builtin schema like 'avro', 'json', etc.. or custom Schema class name to be used to encode messages emitted from the source                                              | False    |
+| `custom_runtime_options`    | A string that encodes options to customize the runtime, see docs for configured runtime for details                                                                                                | False    |
+| `secrets`                   | The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider                                                                                  | False    |
 
 ### `pulsar_sink`
 
@@ -653,7 +676,18 @@ resource "pulsar_sink" "sample-sink-1" {
   processing_guarantees = "EFFECTIVELY_ONCE"
 
   archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.10.4.nar"
-  configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
+  configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
+
+  // Reference the database password through the secrets provider rather than
+  // embedding it in `configs` (see the credential-handling note under
+  // `pulsar_source`). The sink reads it under the `password` secret name.
+  secrets = jsonencode(
+  {
+    "password": {
+      "path": "clickhouse-credentials"
+      "key": "password"
+    }
+  })
 }
 ```
 
@@ -683,6 +717,7 @@ resource "pulsar_sink" "sample-sink-1" {
 | `custom_schema_inputs`   | The map of input topics to Schema types or class names (as a JSON string)                                                                                                                     | False    |
 | `custom_serde_inputs`    | The map of input topics to SerDe class names (as a JSON string)                                                                                                                               | False    |
 | `custom_runtime_options` | A string that encodes options to customize the runtime                                                                                                                                        | False    |
+| `secrets`                | The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider                                                                              | False    |
 
 ### `pulsar_subscription`
 
