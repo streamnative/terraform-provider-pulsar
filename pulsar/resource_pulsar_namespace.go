@@ -54,7 +54,9 @@ func resourcePulsarNamespace() *schema.Resource {
 				_ = d.Set("tenant", nsParts[0])
 				_ = d.Set("namespace", nsParts[1])
 
-				diags := resourcePulsarNamespaceRead(ctx, d, meta)
+				// forceHydrate=true so optional sub-blocks are populated from Pulsar during import
+				// (prior state is empty, so the normal d.GetOk gate would leave them unhydrated).
+				diags := resourcePulsarNamespaceReadWithHydration(ctx, d, meta, true)
 				if diags.HasError() {
 					return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
 				}
@@ -369,6 +371,29 @@ func resourcePulsarNamespaceCreate(ctx context.Context, d *schema.ResourceData, 
 }
 
 func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	return resourcePulsarNamespaceReadWithHydration(ctx, d, meta, false)
+}
+
+// resourcePulsarNamespaceReadWithHydration reads a namespace into state.
+//
+// On a normal refresh (forceHydrate=false) each optional sub-block is only populated when it already
+// exists in prior state (the d.GetOk gate). This deliberately keeps policies "unset by default" so a
+// config that omits a block never shows drift.
+//
+// During import (forceHydrate=true) prior state is empty, so the gate would leave every sub-block
+// unhydrated and produce spurious drift on the next plan (issues #206 / support #4724). In that mode
+// each leaf block is fetched unconditionally, best-effort (a not-found policy is skipped rather than
+// failing the whole import), and only written when the server value is actually configured — so
+// unset policies are left absent and cannot cause reverse drift. namespace_config is intentionally
+// excluded: it is a single Optional (non-Computed) aggregate whose replication_clusters is always
+// server-populated, so force-hydrating it would make the whole block appear in state and drift for
+// users who omit it; importing it correctly needs schema changes and is left as a follow-up.
+func resourcePulsarNamespaceReadWithHydration(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{},
+	forceHydrate bool,
+) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
 	tenant := d.Get("tenant").(string)
@@ -391,6 +416,8 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 	_ = d.Set("namespace", namespace)
 	_ = d.Set("tenant", tenant)
 
+	// namespace_config is intentionally NOT force-hydrated on import (see the doc comment above):
+	// it is a single Optional aggregate block that would drift for users who omit it.
 	if _, ok := d.GetOk("namespace_config"); ok {
 		var namespaceConfig = make(map[string]interface{})
 		afgrp, err := client.GetNamespaceAntiAffinityGroup(ns.String())
@@ -486,134 +513,155 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		})
 	}
 
-	if persPoliciesCfg, ok := d.GetOk("persistence_policies"); ok && persPoliciesCfg.(*schema.Set).Len() > 0 {
+	if persPoliciesCfg, ok := d.GetOk("persistence_policies"); forceHydrate || (ok && persPoliciesCfg.(*schema.Set).Len() > 0) {
 		persistence, err := client.GetPersistence(ns.String())
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetPersistence: %w", err))
+			if !forceHydrate || !isIgnorableNotFoundError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetPersistence: %w", err))
+			}
+		} else if persistence != nil && (!forceHydrate || isPersistenceConfigured(persistence)) {
+			_ = d.Set("persistence_policies", schema.NewSet(persistencePoliciesToHash, []interface{}{
+				map[string]interface{}{
+					"bookkeeper_ensemble":                 persistence.BookkeeperEnsemble,
+					"bookkeeper_write_quorum":             persistence.BookkeeperWriteQuorum,
+					"bookkeeper_ack_quorum":               persistence.BookkeeperAckQuorum,
+					"managed_ledger_max_mark_delete_rate": persistence.ManagedLedgerMaxMarkDeleteRate,
+				},
+			}))
 		}
-
-		_ = d.Set("persistence_policies", schema.NewSet(persistencePoliciesToHash, []interface{}{
-			map[string]interface{}{
-				"bookkeeper_ensemble":                 persistence.BookkeeperEnsemble,
-				"bookkeeper_write_quorum":             persistence.BookkeeperWriteQuorum,
-				"bookkeeper_ack_quorum":               persistence.BookkeeperAckQuorum,
-				"managed_ledger_max_mark_delete_rate": persistence.ManagedLedgerMaxMarkDeleteRate,
-			},
-		}))
 	}
 
-	if retPoliciesCfg, ok := d.GetOk("retention_policies"); ok && retPoliciesCfg.(*schema.Set).Len() > 0 {
+	if retPoliciesCfg, ok := d.GetOk("retention_policies"); forceHydrate || (ok && retPoliciesCfg.(*schema.Set).Len() > 0) {
 		ret, err := client.GetRetention(ns.String())
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetRetention: %w", err))
-		}
-
-		if ret != nil {
+			if !forceHydrate || !isIgnorableNotFoundError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetRetention: %w", err))
+			}
+		} else if ret != nil && (!forceHydrate || isRetentionConfigured(ret)) {
 			_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{
 				map[string]interface{}{
 					"retention_minutes":    fmt.Sprint(ret.RetentionTimeInMinutes),
 					"retention_size_in_mb": fmt.Sprint(ret.RetentionSizeInMB),
 				},
 			}))
-		} else {
+		} else if !forceHydrate {
 			_ = d.Set("retention_policies", schema.NewSet(retentionPoliciesToHash, []interface{}{}))
 		}
 	}
 
-	if inactiveTopicCfg, ok := d.GetOk("inactive_topic"); ok && inactiveTopicCfg.(*schema.Set).Len() > 0 {
+	if inactiveTopicCfg, ok := d.GetOk("inactive_topic"); forceHydrate || (ok && inactiveTopicCfg.(*schema.Set).Len() > 0) {
 		inactiveTopicPolicies, err := client.GetInactiveTopicPolicies(*ns)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetInactiveTopicPolicies: %w", err))
-		}
+			if !forceHydrate || !isIgnorableNotFoundError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetInactiveTopicPolicies: %w", err))
+			}
+		} else if !forceHydrate || inactiveTopicPolicies.InactiveTopicDeleteMode != nil {
+			deleteMode := "delete_when_no_subscriptions"
+			if inactiveTopicPolicies.InactiveTopicDeleteMode != nil {
+				deleteMode = inactiveTopicPolicies.InactiveTopicDeleteMode.String()
+			}
 
-		deleteMode := "delete_when_no_subscriptions"
-		if inactiveTopicPolicies.InactiveTopicDeleteMode != nil {
-			deleteMode = inactiveTopicPolicies.InactiveTopicDeleteMode.String()
+			_ = d.Set("inactive_topic", schema.NewSet(inactiveTopicPoliciesToHash, []interface{}{
+				map[string]interface{}{
+					"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
+					"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
+					"delete_mode":                  deleteMode,
+				},
+			}))
 		}
-
-		_ = d.Set("inactive_topic", schema.NewSet(inactiveTopicPoliciesToHash, []interface{}{
-			map[string]interface{}{
-				"enable_delete_while_inactive": inactiveTopicPolicies.DeleteWhileInactive,
-				"max_inactive_duration":        fmt.Sprintf("%ds", inactiveTopicPolicies.MaxInactiveDurationSeconds),
-				"delete_mode":                  deleteMode,
-			},
-		}))
 	}
 
-	if backlogQuotaCfg, ok := d.GetOk("backlog_quota"); ok && backlogQuotaCfg.(*schema.Set).Len() > 0 {
+	if backlogQuotaCfg, ok := d.GetOk("backlog_quota"); forceHydrate || (ok && backlogQuotaCfg.(*schema.Set).Len() > 0) {
 		qt, err := client.GetBacklogQuotaMap(ns.String())
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetBacklogQuotaMap: %w", err))
-		}
+			if !forceHydrate || !isIgnorableNotFoundError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetBacklogQuotaMap: %w", err))
+			}
+		} else {
+			var backlogQuotas []interface{}
+			for backlogQuotaType, data := range qt {
+				backlogQuotas = append(backlogQuotas, map[string]interface{}{
+					"limit_bytes":   strconv.FormatInt(data.LimitSize, 10),
+					"limit_seconds": strconv.FormatInt(data.LimitTime, 10),
+					"policy":        string(data.Policy),
+					"type":          string(backlogQuotaType),
+				})
+			}
 
-		var backlogQuotas []interface{}
-		for backlogQuotaType, data := range qt {
-			backlogQuotas = append(backlogQuotas, map[string]interface{}{
-				"limit_bytes":   strconv.FormatInt(data.LimitSize, 10),
-				"limit_seconds": strconv.FormatInt(data.LimitTime, 10),
-				"policy":        string(data.Policy),
-				"type":          string(backlogQuotaType),
-			})
+			if !forceHydrate || len(backlogQuotas) > 0 {
+				_ = d.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), backlogQuotas))
+			}
 		}
-
-		_ = d.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), backlogQuotas))
 	}
 
-	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
+	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); forceHydrate || (ok && dispatchRateCfg.(*schema.Set).Len() > 0) {
 		dr, err := client.GetDispatchRate(*ns)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetDispatchRate: %w", err))
+			if !forceHydrate || !isIgnorableNotFoundError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetDispatchRate: %w", err))
+			}
+		} else if !forceHydrate || isDispatchRateConfigured(dr) {
+			_ = d.Set("dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
+				map[string]interface{}{
+					"dispatch_msg_throttling_rate":  dr.DispatchThrottlingRateInMsg,
+					"rate_period_seconds":           dr.RatePeriodInSecond,
+					"dispatch_byte_throttling_rate": int(dr.DispatchThrottlingRateInByte),
+				},
+			}))
 		}
-
-		_ = d.Set("dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
-			map[string]interface{}{
-				"dispatch_msg_throttling_rate":  dr.DispatchThrottlingRateInMsg,
-				"rate_period_seconds":           dr.RatePeriodInSecond,
-				"dispatch_byte_throttling_rate": int(dr.DispatchThrottlingRateInByte),
-			},
-		}))
 	}
 
-	if subscriptionDispatchRateCfg, ok := d.GetOk("subscription_dispatch_rate"); ok &&
-		subscriptionDispatchRateCfg.(*schema.Set).Len() > 0 {
+	if subscriptionDispatchRateCfg, ok := d.GetOk("subscription_dispatch_rate"); forceHydrate ||
+		(ok && subscriptionDispatchRateCfg.(*schema.Set).Len() > 0) {
 		sdr, err := client.GetSubscriptionDispatchRate(*ns)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSubscriptionDispatchRate: %w", err))
+			if !forceHydrate || !isIgnorableNotFoundError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSubscriptionDispatchRate: %w", err))
+			}
+		} else if !forceHydrate || isDispatchRateConfigured(sdr) {
+			_ = d.Set("subscription_dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
+				map[string]interface{}{
+					"dispatch_msg_throttling_rate":  sdr.DispatchThrottlingRateInMsg,
+					"rate_period_seconds":           sdr.RatePeriodInSecond,
+					"dispatch_byte_throttling_rate": int(sdr.DispatchThrottlingRateInByte),
+				},
+			}))
 		}
-
-		_ = d.Set("subscription_dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
-			map[string]interface{}{
-				"dispatch_msg_throttling_rate":  sdr.DispatchThrottlingRateInMsg,
-				"rate_period_seconds":           sdr.RatePeriodInSecond,
-				"dispatch_byte_throttling_rate": int(sdr.DispatchThrottlingRateInByte),
-			},
-		}))
 	}
 
-	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.(*schema.Set).List()) > 0 {
+	if permissionGrantCfg, ok := d.GetOk("permission_grant"); forceHydrate ||
+		(ok && len(permissionGrantCfg.(*schema.Set).List()) > 0) {
 		grants, err := client.GetNamespacePermissions(*ns)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err))
+			if !forceHydrate || !isIgnorableNotFoundError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespacePermissions: %w", err))
+			}
+		} else {
+			// On import (forceHydrate) adopt every server grant; on refresh keep the managed-role
+			// filter so externally-managed grants are left untouched.
+			setPermissionGrantFiltered(d, grants, forceHydrate)
 		}
-
-		setPermissionGrantFiltered(d, grants)
 	}
 
-	if topicAutoCreation, ok := d.GetOk("topic_auto_creation"); ok && topicAutoCreation.(*schema.Set).Len() > 0 {
+	if topicAutoCreationCfg, ok := d.GetOk("topic_auto_creation"); forceHydrate ||
+		(ok && topicAutoCreationCfg.(*schema.Set).Len() > 0) {
 		autoCreation, err := client.GetTopicAutoCreation(*ns)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetTopicAutoCreation: %w", err))
-		}
+			if !forceHydrate || !isIgnorableNotFoundError(err) {
+				return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetTopicAutoCreation: %w", err))
+			}
+		} else if autoCreation != nil {
+			// A nil pointer means the namespace override is unset; only hydrate when configured.
+			data := map[string]interface{}{
+				"enable": autoCreation.Allow,
+				"type":   autoCreation.Type.String(),
+			}
+			if autoCreation.Partitions != nil {
+				data["partitions"] = *autoCreation.Partitions
+			}
 
-		data := map[string]interface{}{
-			"enable": autoCreation.Allow,
-			"type":   autoCreation.Type.String(),
+			_ = d.Set("topic_auto_creation", schema.NewSet(topicAutoCreationPoliciesToHash, []interface{}{data}))
 		}
-		if autoCreation.Partitions != nil {
-			data["partitions"] = *autoCreation.Partitions
-		}
-
-		_ = d.Set("topic_auto_creation", schema.NewSet(topicAutoCreationPoliciesToHash, []interface{}{data}))
 	}
 
 	return nil
@@ -873,6 +921,30 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 func hasInactiveTopicPoliciesConfigured(data interface{}) bool {
 	cfg, ok := data.(*schema.Set)
 	return ok && cfg != nil && cfg.Len() > 0
+}
+
+// isDispatchRateConfigured reports whether a dispatch rate returned by the admin API represents an
+// explicitly configured policy rather than an unset/zero-value default. A genuinely configured
+// dispatch rate always has RatePeriodInSecond >= 1 (Pulsar rejects ratePeriodInSecond <= 0 on set),
+// whereas an unset policy decodes to the zero value. Note that -1 msg/byte is a legitimate
+// "unlimited" value and is preserved because the period is still >= 1.
+func isDispatchRateConfigured(rate utils.DispatchRate) bool {
+	return rate.RatePeriodInSecond != 0
+}
+
+// isRetentionConfigured reports whether a retention policy is explicitly configured. The admin API
+// returns nil or a zero-value {0,0} policy for an unset namespace, which is indistinguishable from
+// an explicit 0/0 (a functional no-op equal to the broker default), so both are treated as unset.
+func isRetentionConfigured(ret *utils.RetentionPolicies) bool {
+	return ret != nil && (ret.RetentionTimeInMinutes != 0 || ret.RetentionSizeInMB != 0)
+}
+
+// isPersistenceConfigured reports whether a persistence policy is explicitly configured. The admin
+// API returns a nil pointer for an unset policy (empty body) and, on some brokers, a non-nil
+// zero-value struct for a literal JSON null; a real BookKeeper ensemble size is always >= 1, so an
+// all-zero struct can only be a default/unset sentinel.
+func isPersistenceConfigured(p *utils.PersistencePolicies) bool {
+	return p != nil && p.BookkeeperEnsemble != 0
 }
 
 func policyNullableIntToStateValue(value *int) int {

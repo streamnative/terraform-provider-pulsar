@@ -665,7 +665,7 @@ func resourcePulsarTopicRead(ctx context.Context, d *schema.ResourceData, meta i
 			return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC: GetPermissions: %w", err))
 		}
 
-		setPermissionGrantFiltered(d, grants)
+		setPermissionGrantFiltered(d, grants, false)
 	}
 
 	if retPoliciesCfg, ok := d.GetOk("retention_policies"); ok && retPoliciesCfg.(*schema.Set).Len() > 0 {

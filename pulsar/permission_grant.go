@@ -63,8 +63,14 @@ func unmarshalPermissionGrants(v *schema.Set) ([]*types.PermissionGrant, error) 
 	return permissionGrants, nil
 }
 
-// setPermissionGrantFiltered only sets permissions for roles that are explicitly defined in the Terraform configuration
-func setPermissionGrantFiltered(d *schema.ResourceData, grants map[string][]utils.AuthAction) {
+// setPermissionGrantFiltered writes namespace permission grants into state.
+//
+// When adoptAll is false (normal refresh) it only sets permissions for roles that are already
+// explicitly managed by this Terraform resource, leaving grants created out-of-band (e.g. via the
+// standalone pulsar_permission_grant resource) untouched. When adoptAll is true (used during
+// import, where prior state is empty) it hydrates every grant returned by the server so the block
+// is captured; users are then expected to reconcile any externally-managed roles in their config.
+func setPermissionGrantFiltered(d *schema.ResourceData, grants map[string][]utils.AuthAction, adoptAll bool) {
 	// Get the current permission_grant configuration to see which roles are managed by Terraform
 	currentConfig := d.Get("permission_grant").(*schema.Set)
 	managedRoles := make(map[string]bool)
@@ -75,10 +81,11 @@ func setPermissionGrantFiltered(d *schema.ResourceData, grants map[string][]util
 		managedRoles[role] = true
 	}
 
-	// Only include permissions for roles that are explicitly managed by this Terraform resource
+	// Only include permissions for roles that are explicitly managed by this Terraform resource,
+	// unless adoptAll is set (import) in which case every server-reported grant is captured.
 	permissionGrants := []interface{}{}
 	for role, roleActions := range grants {
-		if managedRoles[role] {
+		if adoptAll || managedRoles[role] {
 			actions := []string{}
 			for _, action := range roleActions {
 				actions = append(actions, action.String())
