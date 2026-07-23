@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -72,6 +73,7 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 		ReadContext:   resourcePulsarPermissionGrantRead,
 		UpdateContext: resourcePulsarPermissionGrantUpdate,
 		DeleteContext: resourcePulsarPermissionGrantDelete,
+		CustomizeDiff: resourcePulsarPermissionGrantCustomizeDiff,
 
 		Description: `Provides a resource for managing permissions on either Pulsar namespaces or topics.
 Permission can be granted to specific roles using this resource.
@@ -121,6 +123,80 @@ See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` a
 			},
 		},
 	}
+}
+
+// resourcePulsarPermissionGrantCustomizeDiff runs during the plan phase and fails
+// the plan when the grant references a namespace that is known not to exist. Without
+// this check the missing namespace is only discovered at apply time as a
+// "404 Namespace not found" error, after the change has already been merged.
+func resourcePulsarPermissionGrantCustomizeDiff(_ context.Context, diff *schema.ResourceDiff,
+	meta interface{}) error {
+	// meta is nil when the provider is not configured (e.g. `terraform validate`).
+	// There is no client to consult, so skip the check rather than failing.
+	if meta == nil {
+		return nil
+	}
+	client := getClientFromMeta(meta)
+
+	namespace, _ := diff.GetOk("namespace")
+	topic, _ := diff.GetOk("topic")
+
+	return verifyGrantNamespaceExists(client, namespace.(string), topic.(string))
+}
+
+// verifyGrantNamespaceExists returns a diagnostic-style error when the namespace
+// targeted by the grant (either directly, or the namespace owning the topic) is
+// known not to exist.
+//
+// It intentionally errs on the side of NOT failing the plan: if the namespace
+// cannot be determined (unparseable input, or the tenant listing call fails —
+// which also covers the tenant itself not existing yet, and transient/network
+// errors), the check is skipped. It only returns an error when the tenant's
+// namespace listing succeeds AND the target namespace is provably absent. This
+// avoids false positives during a fresh apply where the tenant/namespace are
+// being created in the same run.
+func verifyGrantNamespaceExists(client admin.Client, namespace, topic string) error {
+	var nsName *utils.NameSpaceName
+
+	switch {
+	case namespace != "":
+		parsed, err := utils.GetNamespaceName(namespace)
+		if err != nil {
+			// Malformed input is reported by the CRUD path; don't block the plan here.
+			return nil
+		}
+		nsName = parsed
+	case topic != "":
+		topicName, err := utils.GetTopicName(topic)
+		if err != nil {
+			return nil
+		}
+		parsed, err := utils.GetNameSpaceName(topicName.GetTenant(), topicName.GetNamespace())
+		if err != nil {
+			return nil
+		}
+		nsName = parsed
+	default:
+		// Neither set: the schema's ExactlyOneOf validation handles this.
+		return nil
+	}
+
+	// NameSpaceName only exposes String() ("tenant/namespace"); the tenant is the
+	// first segment and is required to list the tenant's namespaces.
+	tenant := strings.SplitN(nsName.String(), "/", 2)[0]
+	namespaces, err := client.Namespaces().GetNamespaces(tenant)
+	if err != nil {
+		// Cannot determine existence (tenant missing, network error, etc.). Skip.
+		return nil
+	}
+
+	if !contains(namespaces, nsName.String()) {
+		return fmt.Errorf(
+			"namespace %q does not exist; create it before granting permissions "+
+				"(referenced by pulsar_permission_grant)", nsName.String())
+	}
+
+	return nil
 }
 
 func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.ResourceData,
