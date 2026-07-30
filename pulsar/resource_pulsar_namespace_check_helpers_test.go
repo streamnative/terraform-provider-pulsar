@@ -113,3 +113,89 @@ func TestPolicyNullableIntToStateValue(t *testing.T) {
 		})
 	}
 }
+
+func TestIsDispatchRateConfigured(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		rate     utils.DispatchRate
+		expected bool
+	}{
+		{
+			name:     "zero_value_is_unset",
+			rate:     utils.DispatchRate{},
+			expected: false,
+		},
+		{
+			name: "explicit_values",
+			rate: utils.DispatchRate{
+				DispatchThrottlingRateInMsg:  50,
+				DispatchThrottlingRateInByte: 2048,
+				RatePeriodInSecond:           50,
+			},
+			expected: true,
+		},
+		{
+			name: "explicit_unlimited_still_configured",
+			// A real configured "unlimited" dispatch rate is {-1,-1,1}; the period is always >= 1.
+			rate: utils.DispatchRate{
+				DispatchThrottlingRateInMsg:  -1,
+				DispatchThrottlingRateInByte: -1,
+				RatePeriodInSecond:           1,
+			},
+			expected: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, isDispatchRateConfigured(tc.rate))
+		})
+	}
+}
+
+func TestIsPersistenceConfigured(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, isPersistenceConfigured(nil))
+	// An all-zero struct can only be a null/default sentinel: a real ensemble size is always >= 1.
+	require.False(t, isPersistenceConfigured(&utils.PersistencePolicies{}))
+	require.True(t, isPersistenceConfigured(&utils.PersistencePolicies{BookkeeperEnsemble: 2}))
+}
+
+// TestSetBacklogQuotaFiltered locks the non-authoritative refresh semantics of backlog_quota:
+// an empty prior state (import) adopts every quota type the server reports, while a non-empty prior
+// state only refreshes the types Terraform already tracks, leaving out-of-band types alone.
+func TestSetBacklogQuotaFiltered(t *testing.T) {
+	t.Parallel()
+
+	quotas := map[utils.BacklogQuotaType]utils.BacklogQuota{
+		utils.DestinationStorage: {LimitSize: 10000, LimitTime: -1, Policy: utils.ProducerRequestHold},
+		utils.MessageAge:         {LimitSize: -1, LimitTime: 3600, Policy: utils.ConsumerBacklogEviction},
+	}
+
+	// Import path: empty prior state -> adopt every type.
+	dImport := resourcePulsarNamespace().TestResourceData()
+	setBacklogQuotaFiltered(dImport, quotas)
+	require.Equal(t, 2, dImport.Get("backlog_quota").(*schema.Set).Len())
+
+	// Refresh path: only the tracked type is kept, the out-of-band one is ignored.
+	dRefresh := resourcePulsarNamespace().TestResourceData()
+	require.NoError(t, dRefresh.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), []interface{}{
+		map[string]interface{}{
+			"limit_bytes":   "1",
+			"limit_seconds": "-1",
+			"policy":        string(utils.ProducerRequestHold),
+			"type":          string(utils.DestinationStorage),
+		},
+	})))
+	setBacklogQuotaFiltered(dRefresh, quotas)
+
+	kept := dRefresh.Get("backlog_quota").(*schema.Set).List()
+	require.Len(t, kept, 1)
+	require.Equal(t, string(utils.DestinationStorage), kept[0].(map[string]interface{})["type"])
+	require.Equal(t, "10000", kept[0].(map[string]interface{})["limit_bytes"])
+}

@@ -35,6 +35,15 @@ import (
 
 const DefaultPulsarAPIVersion string = "0" // 0 will automatically match the default api version
 
+// policyBlockOptionalComputedNote documents the Optional+Computed policy blocks on pulsar_namespace:
+// they are always refreshed from the broker, so `terraform import` captures them and out-of-band
+// edits show up as drift, and omitting the block means "not managed by Terraform" rather than
+// "delete it from the broker".
+const policyBlockOptionalComputedNote = "This block is read back from the broker on every refresh, " +
+	"so `terraform import` captures it and changes made outside Terraform are detected. Omitting the " +
+	"block leaves any existing policy in place instead of removing it; to reset the policy, use " +
+	"`pulsar-admin` or set explicit values."
+
 var descriptions map[string]string
 
 func init() {
@@ -58,18 +67,25 @@ func init() {
 		"max_consumers_per_subscription": "Max number of consumers per subscription",
 		"max_consumers_per_topic":        "Max number of consumers per topic",
 		"message_ttl_seconds":            "Sets the message time to live",
-		"dispatch_rate":                  "Data transfer rate for all the topics under the given namespace",
-		"subscription_dispatch_rate":     "Data transfer rate for all the subscriptions under the given namespace",
-		"persistence_policy":             "Policy for the namespace for data persistence",
-		"backlog_quota":                  "",
-		"issuer_url":                     "The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token",
-		"audience":                       "The OAuth 2.0 resource server identifier for the Pulsar cluster",
-		"client_id":                      "The OAuth 2.0 client identifier",
-		"scope":                          "The OAuth 2.0 scope(s) to request",
-		"key_file_path":                  "The path of the private key file",
-		"message_ttl":                    "The message time to live in seconds",
-		"namespace_config":               "The namespace configuration",
-		"topic_config":                   "The topic configuration",
+		"dispatch_rate": "Data transfer rate for all the topics under the given namespace. " +
+			policyBlockOptionalComputedNote,
+		"subscription_dispatch_rate": "Data transfer rate for all the subscriptions under the given namespace. " +
+			policyBlockOptionalComputedNote,
+		"persistence_policy": "Policy for the namespace for data persistence",
+		"persistence_policies": "BookKeeper persistence settings for the topics under the given namespace. " +
+			policyBlockOptionalComputedNote,
+		"backlog_quota": "Backlog quotas for the topics under the given namespace. " +
+			policyBlockOptionalComputedNote +
+			" Only the quota types already tracked in state are refreshed, so a quota type configured " +
+			"outside Terraform is left untouched.",
+		"issuer_url":       "The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token",
+		"audience":         "The OAuth 2.0 resource server identifier for the Pulsar cluster",
+		"client_id":        "The OAuth 2.0 client identifier",
+		"scope":            "The OAuth 2.0 scope(s) to request",
+		"key_file_path":    "The path of the private key file",
+		"message_ttl":      "The message time to live in seconds",
+		"namespace_config": "The namespace configuration",
+		"topic_config":     "The topic configuration",
 	}
 }
 
