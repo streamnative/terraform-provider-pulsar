@@ -83,8 +83,13 @@ func resourcePulsarNamespace() *schema.Resource {
 				Optional: true,
 			},
 			"dispatch_rate": {
-				Type:        schema.TypeSet,
+				Type: schema.TypeSet,
+				// Optional+Computed: the namespace-level dispatch rate is read back unconditionally, so
+				// `terraform import` captures it and out-of-band changes are detected. Omitting the block
+				// means "not managed here" rather than "must not exist", so a rate configured outside
+				// Terraform is recorded in state without producing drift. See resourcePulsarNamespaceRead.
 				Optional:    true,
+				Computed:    true,
 				Description: descriptions["dispatch_rate"],
 				MaxItems:    1,
 				Elem: &schema.Resource{
@@ -106,8 +111,10 @@ func resourcePulsarNamespace() *schema.Resource {
 				Set: dispatchRateToHash,
 			},
 			"subscription_dispatch_rate": {
-				Type:        schema.TypeSet,
+				Type: schema.TypeSet,
+				// Optional+Computed, see "dispatch_rate".
 				Optional:    true,
+				Computed:    true,
 				Description: descriptions["subscription_dispatch_rate"],
 				MaxItems:    1,
 				Elem: &schema.Resource{
@@ -172,10 +179,15 @@ func resourcePulsarNamespace() *schema.Resource {
 				Set: inactiveTopicPoliciesToHash,
 			},
 			"backlog_quota": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem:     schemaBacklogQuotaSubset(),
-				Set:      hashBacklogQuotaSubset(),
+				Type: schema.TypeSet,
+				// Optional+Computed, see "dispatch_rate". Only the quota types already tracked in state
+				// are refreshed, so a quota type set outside Terraform is never adopted mid-life; see
+				// setBacklogQuotaFiltered.
+				Optional:    true,
+				Computed:    true,
+				Description: descriptions["backlog_quota"],
+				Elem:        schemaBacklogQuotaSubset(),
+				Set:         hashBacklogQuotaSubset(),
 			},
 			"namespace_config": {
 				Type:        schema.TypeList,
@@ -269,9 +281,12 @@ func resourcePulsarNamespace() *schema.Resource {
 				},
 			},
 			"persistence_policies": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				MaxItems: 1,
+				Type: schema.TypeSet,
+				// Optional+Computed, see "dispatch_rate".
+				Optional:    true,
+				Computed:    true,
+				Description: descriptions["persistence_policies"],
+				MaxItems:    1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"bookkeeper_ensemble": {
@@ -368,6 +383,23 @@ func resourcePulsarNamespaceCreate(ctx context.Context, d *schema.ResourceData, 
 	return nil
 }
 
+// resourcePulsarNamespaceRead refreshes a namespace into state.
+//
+// Optional sub-blocks fall into two groups, which are read differently on purpose:
+//
+//   - Optional+Computed blocks (dispatch_rate, subscription_dispatch_rate, persistence_policies,
+//     backlog_quota) are read unconditionally. Their Update path only ever *sets* the policy — it
+//     has no removal branch — so hydrating them can never turn into a destructive plan, and doing so
+//     is what makes `terraform import` capture them (issues #206 / support #4724) and what lets
+//     out-of-band edits surface as drift. Because they are Computed, a config that omits the block
+//     keeps whatever the server reports instead of proposing to delete it.
+//
+//   - Plain Optional blocks (retention_policies, inactive_topic, topic_auto_creation,
+//     permission_grant, namespace_config) are still gated on prior state. For these, "absent from
+//     config" means "remove it from the server" (see resourcePulsarNamespaceUpdate), so hydrating
+//     them from an empty post-import state would make the first apply revoke permissions or drop
+//     retention that Terraform never owned. They stay unhydrated; the resulting drift is additive
+//     and safe to apply.
 func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
@@ -486,12 +518,18 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		})
 	}
 
-	if persPoliciesCfg, ok := d.GetOk("persistence_policies"); ok && persPoliciesCfg.(*schema.Set).Len() > 0 {
-		persistence, err := client.GetPersistence(ns.String())
-		if err != nil {
+	// persistence_policies is Optional+Computed and read unconditionally. A non-nil but all-zero
+	// policy is ambiguous (some brokers answer a literal JSON null that way), so in that case prior
+	// state is left untouched rather than cleared.
+	if persistence, err := client.GetPersistence(ns.String()); err != nil {
+		if !isIgnorableNotFoundError(err) {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetPersistence: %w", err))
 		}
-
+		_ = d.Set("persistence_policies", emptySet(persistencePoliciesToHash))
+	} else if persistence == nil {
+		// An empty response body means the namespace has no persistence override.
+		_ = d.Set("persistence_policies", emptySet(persistencePoliciesToHash))
+	} else if isPersistenceConfigured(persistence) {
 		_ = d.Set("persistence_policies", schema.NewSet(persistencePoliciesToHash, []interface{}{
 			map[string]interface{}{
 				"bookkeeper_ensemble":                 persistence.BookkeeperEnsemble,
@@ -540,31 +578,24 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		}))
 	}
 
-	if backlogQuotaCfg, ok := d.GetOk("backlog_quota"); ok && backlogQuotaCfg.(*schema.Set).Len() > 0 {
-		qt, err := client.GetBacklogQuotaMap(ns.String())
-		if err != nil {
+	// backlog_quota is Optional+Computed and read unconditionally.
+	if qt, err := client.GetBacklogQuotaMap(ns.String()); err != nil {
+		if !isIgnorableNotFoundError(err) {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetBacklogQuotaMap: %w", err))
 		}
-
-		var backlogQuotas []interface{}
-		for backlogQuotaType, data := range qt {
-			backlogQuotas = append(backlogQuotas, map[string]interface{}{
-				"limit_bytes":   strconv.FormatInt(data.LimitSize, 10),
-				"limit_seconds": strconv.FormatInt(data.LimitTime, 10),
-				"policy":        string(data.Policy),
-				"type":          string(backlogQuotaType),
-			})
-		}
-
-		_ = d.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), backlogQuotas))
+		_ = d.Set("backlog_quota", emptySet(hashBacklogQuotaSubset()))
+	} else {
+		setBacklogQuotaFiltered(d, qt)
 	}
 
-	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
-		dr, err := client.GetDispatchRate(*ns)
-		if err != nil {
+	// dispatch_rate is Optional+Computed and read unconditionally.
+	if dr, err := client.GetDispatchRate(*ns); err != nil {
+		if !isIgnorableNotFoundError(err) {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetDispatchRate: %w", err))
 		}
-
+		// 404 is how Pulsar reports "no dispatch rate configured for this namespace".
+		_ = d.Set("dispatch_rate", emptySet(dispatchRateToHash))
+	} else if isDispatchRateConfigured(dr) {
 		_ = d.Set("dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
 			map[string]interface{}{
 				"dispatch_msg_throttling_rate":  dr.DispatchThrottlingRateInMsg,
@@ -574,13 +605,13 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		}))
 	}
 
-	if subscriptionDispatchRateCfg, ok := d.GetOk("subscription_dispatch_rate"); ok &&
-		subscriptionDispatchRateCfg.(*schema.Set).Len() > 0 {
-		sdr, err := client.GetSubscriptionDispatchRate(*ns)
-		if err != nil {
+	// subscription_dispatch_rate is Optional+Computed and read unconditionally.
+	if sdr, err := client.GetSubscriptionDispatchRate(*ns); err != nil {
+		if !isIgnorableNotFoundError(err) {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSubscriptionDispatchRate: %w", err))
 		}
-
+		_ = d.Set("subscription_dispatch_rate", emptySet(dispatchRateToHash))
+	} else if isDispatchRateConfigured(sdr) {
 		_ = d.Set("subscription_dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
 			map[string]interface{}{
 				"dispatch_msg_throttling_rate":  sdr.DispatchThrottlingRateInMsg,
@@ -605,15 +636,21 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetTopicAutoCreation: %w", err))
 		}
 
-		data := map[string]interface{}{
-			"enable": autoCreation.Allow,
-			"type":   autoCreation.Type.String(),
-		}
-		if autoCreation.Partitions != nil {
-			data["partitions"] = *autoCreation.Partitions
-		}
+		// A nil response means the namespace override was removed out-of-band; report it as drift
+		// rather than dereferencing a nil pointer.
+		if autoCreation == nil {
+			_ = d.Set("topic_auto_creation", emptySet(topicAutoCreationPoliciesToHash))
+		} else {
+			data := map[string]interface{}{
+				"enable": autoCreation.Allow,
+				"type":   autoCreation.Type.String(),
+			}
+			if autoCreation.Partitions != nil {
+				data["partitions"] = *autoCreation.Partitions
+			}
 
-		_ = d.Set("topic_auto_creation", schema.NewSet(topicAutoCreationPoliciesToHash, []interface{}{data}))
+			_ = d.Set("topic_auto_creation", schema.NewSet(topicAutoCreationPoliciesToHash, []interface{}{data}))
+		}
 	}
 
 	return nil
@@ -856,9 +893,15 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 				errs = multierror.Append(errs, fmt.Errorf("SetTopicAutoCreation: %w", err))
 			}
 		}
-	} else { // remove the topicAutoCreation
-		if err = client.RemoveTopicAutoCreation(*nsName); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("RemoveTopicAutoCreation: %w", err))
+	} else {
+		// Only remove the override when Terraform previously owned it. Removing unconditionally would
+		// wipe an override this resource never managed — e.g. one set by the console or pulsar-admin —
+		// on any unrelated namespace update.
+		oldTopicAutoCreation, _ := d.GetChange("topic_auto_creation")
+		if oldCfg, ok := oldTopicAutoCreation.(*schema.Set); ok && oldCfg.Len() > 0 {
+			if err = client.RemoveTopicAutoCreation(*nsName); err != nil && !isIgnorableNotFoundError(err) {
+				errs = multierror.Append(errs, fmt.Errorf("RemoveTopicAutoCreation: %w", err))
+			}
 		}
 	}
 
@@ -873,6 +916,61 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 func hasInactiveTopicPoliciesConfigured(data interface{}) bool {
 	cfg, ok := data.(*schema.Set)
 	return ok && cfg != nil && cfg.Len() > 0
+}
+
+// emptySet returns an empty set for the given hash function, used to clear an Optional+Computed
+// block when the server reports the policy as unset.
+func emptySet(f schema.SchemaSetFunc) *schema.Set {
+	return schema.NewSet(f, []interface{}{})
+}
+
+// isDispatchRateConfigured reports whether a dispatch rate returned by the admin API represents an
+// explicitly configured policy rather than an unset/zero-value default.
+//
+// Pulsar answers 404 for an unconfigured namespace dispatch rate, which the caller handles; this
+// guards the other shape seen in the wild, where the endpoint answers 200 with an empty or null body
+// and the client decodes it into a zero value. A configured rate always carries a rate period of at
+// least one second, while -1 msg/byte is a legitimate "unlimited" value that must be preserved.
+func isDispatchRateConfigured(rate utils.DispatchRate) bool {
+	return rate.RatePeriodInSecond != 0
+}
+
+// isPersistenceConfigured reports whether a persistence policy is explicitly configured. The admin
+// API returns a nil pointer for an unset policy (empty body) and, on some brokers, a non-nil
+// zero-value struct for a literal JSON null; a real BookKeeper ensemble size is always >= 1, so an
+// all-zero struct can only be a default/unset sentinel.
+func isPersistenceConfigured(p *utils.PersistencePolicies) bool {
+	return p != nil && p.BookkeeperEnsemble != 0
+}
+
+// setBacklogQuotaFiltered writes the namespace backlog quota map into state.
+//
+// backlog_quota is non-authoritative, like permission_grant: only the quota types already tracked in
+// state are refreshed, so a type configured out-of-band is left alone instead of being adopted and
+// then proposed for deletion on the next plan (the update path only sets quotas, so such a plan
+// could never converge). When prior state is empty — a fresh import — every type is adopted;
+// backlog_quota is Optional+Computed, so a config that omits the block will not drift because of it.
+func setBacklogQuotaFiltered(d *schema.ResourceData, quotas map[utils.BacklogQuotaType]utils.BacklogQuota) {
+	managedTypes := make(map[string]bool)
+	for _, quota := range d.Get("backlog_quota").(*schema.Set).List() {
+		managedTypes[quota.(map[string]interface{})["type"].(string)] = true
+	}
+	adoptAll := len(managedTypes) == 0
+
+	backlogQuotas := []interface{}{}
+	for backlogQuotaType, data := range quotas {
+		if !adoptAll && !managedTypes[string(backlogQuotaType)] {
+			continue
+		}
+		backlogQuotas = append(backlogQuotas, map[string]interface{}{
+			"limit_bytes":   strconv.FormatInt(data.LimitSize, 10),
+			"limit_seconds": strconv.FormatInt(data.LimitTime, 10),
+			"policy":        string(data.Policy),
+			"type":          string(backlogQuotaType),
+		})
+	}
+
+	_ = d.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), backlogQuotas))
 }
 
 func policyNullableIntToStateValue(value *int) int {
