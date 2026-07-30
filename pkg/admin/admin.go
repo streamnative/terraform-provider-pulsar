@@ -27,28 +27,36 @@ import (
 )
 
 func NewPulsarAdminClient(c *PulsarAdminConfig) (admin.Client, error) {
-	if c.AuthenticationType() == authentication.AuthenticationOauth2 {
-		oauth2Provider, err := auth.NewAuthenticationOAuth2WithDefaultFlow(oauth2.Issuer{
-			IssuerEndpoint: c.Config.IssuerEndpoint,
-			ClientID:       c.Config.ClientID,
-			Audience:       c.Config.Audience,
-		}, c.Config.KeyFile)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create pulsar oauth2 provider")
-		}
-
-		client, err := admin.NewPulsarClientWithAuthProvider(c.Config, oauth2Provider)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create pulsar oauth2 client")
-		}
-
-		return client, nil
+	authProvider, err := newPulsarAdminAuthProvider(c)
+	if err != nil {
+		return nil, err
 	}
 
-	client, err := admin.New(c.Config)
+	client, err := admin.NewPulsarClientWithAuthProvider(c.Config, authProvider)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pulsar client")
 	}
 
 	return client, nil
+}
+
+func newPulsarAdminAuthProvider(c *PulsarAdminConfig) (auth.Provider, error) {
+	if c.AuthenticationType() != authentication.AuthenticationOauth2 {
+		authProvider, err := auth.GetAuthProvider(c.Config)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create pulsar auth provider")
+		}
+		return authProvider, nil
+	}
+
+	oauth2Provider, err := auth.NewAuthenticationOAuth2WithDefaultFlow(oauth2.Issuer{
+		IssuerEndpoint: c.Config.IssuerEndpoint,
+		ClientID:       c.Config.ClientID,
+		Audience:       c.Config.Audience,
+	}, c.Config.KeyFile)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create pulsar oauth2 provider")
+	}
+
+	return oauth2Provider, nil
 }

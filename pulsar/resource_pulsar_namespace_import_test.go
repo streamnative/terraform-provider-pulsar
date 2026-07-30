@@ -36,34 +36,31 @@ import (
 // Before the fix, resourcePulsarNamespaceRead gated every block behind d.GetOk, so an import — which
 // starts from empty prior state — hydrated none of them and each one showed up as a pending change.
 func TestAccPulsarNamespace_importHydratesPolicyBlocks(t *testing.T) {
-	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
 	nsName := acctest.RandString(10)
 	resourceName := "pulsar_namespace.test"
+	fullNamespace := tName + "/" + nsName
 
-	cfg := testPulsarNamespacePolicyBlocks(testWebServiceURL, cName, tName, nsName)
+	cfg := testPulsarNamespacePolicyBlocksImportConfig(testWebServiceURL, tName, nsName)
+	t.Cleanup(func() { deleteNamespaceImportFixture(tName, fullNamespace) })
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			if err := createNamespacePolicyBlocksImportFixture(tName, fullNamespace); err != nil {
+				t.Fatalf("create namespace import fixture: %v", err)
+			}
+		},
 		CheckDestroy:      testPulsarNamespaceDestroy,
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: cfg,
-				Check: resource.ComposeTestCheckFunc(
-					testPulsarNamespaceExists(resourceName),
-					resource.TestCheckResourceAttr(resourceName, "dispatch_rate.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "subscription_dispatch_rate.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "persistence_policies.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "backlog_quota.#", "1"),
-				),
-			},
-			{
-				Config:           cfg,
-				ResourceName:     resourceName,
-				ImportState:      true,
-				ImportStateId:    tName + "/" + nsName,
-				ImportStateCheck: testNamespacePolicyBlocksImported(),
+				Config:             cfg,
+				ResourceName:       resourceName,
+				ImportState:        true,
+				ImportStatePersist: true,
+				ImportStateId:      fullNamespace,
+				ImportStateCheck:   testNamespacePolicyBlocksImported(),
 			},
 			{
 				// The reporter's actual complaint: the plan right after an import must be empty.
@@ -81,43 +78,35 @@ func TestAccPulsarNamespace_importHydratesPolicyBlocks(t *testing.T) {
 // A config that omits a policy block means "not managed here", not "delete it from the broker". If
 // the blocks were plain Optional, hydrating them on import would make the very first apply propose —
 // and for some blocks actually perform — a removal of policies Terraform never owned. This test
-// asserts the opposite: after the block disappears from the config, the plan stays empty and the
-// policy is still present on the broker.
+// asserts the opposite: with the blocks absent from the importing config, the plan stays empty and
+// the policies remain present on the broker.
 func TestAccPulsarNamespace_omittedPolicyBlocksAreNotRemoved(t *testing.T) {
-	cName := acctest.RandString(10)
 	tName := acctest.RandString(10)
 	nsName := acctest.RandString(10)
 	resourceName := "pulsar_namespace.test"
 	fullNamespace := tName + "/" + nsName
 
-	withBlocks := testPulsarNamespacePolicyBlocks(testWebServiceURL, cName, tName, nsName)
-	withoutBlocks := testPulsarNamespaceNoPolicyBlocks(testWebServiceURL, cName, tName, nsName)
+	withoutBlocks := testPulsarNamespaceNoPolicyBlocksImportConfig(testWebServiceURL, tName, nsName)
+	t.Cleanup(func() { deleteNamespaceImportFixture(tName, fullNamespace) })
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			if err := createNamespacePolicyBlocksImportFixture(tName, fullNamespace); err != nil {
+				t.Fatalf("create namespace import fixture: %v", err)
+			}
+		},
 		CheckDestroy:      testPulsarNamespaceDestroy,
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: withBlocks,
-				Check: resource.ComposeTestCheckFunc(
-					testPulsarNamespaceExists(resourceName),
-					testNamespaceDispatchRateExists(fullNamespace, true),
-				),
-			},
-			{
-				// Dropping the blocks from the config must not produce a diff at all.
-				Config:             withoutBlocks,
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: false,
-			},
-			{
 				// The dangerous shape of the reporter's workflow: import a namespace that carries
 				// policies the config never mentions. The blocks are still hydrated...
-				Config:        withoutBlocks,
-				ResourceName:  resourceName,
-				ImportState:   true,
-				ImportStateId: fullNamespace,
+				Config:             withoutBlocks,
+				ResourceName:       resourceName,
+				ImportState:        true,
+				ImportStatePersist: true,
+				ImportStateId:      fullNamespace,
 				ImportStateCheck: func(states []*terraform.InstanceState) error {
 					if len(states) != 1 {
 						return fmt.Errorf("expected 1 imported state, got %d", len(states))
@@ -145,6 +134,63 @@ func TestAccPulsarNamespace_omittedPolicyBlocksAreNotRemoved(t *testing.T) {
 			},
 		},
 	})
+}
+
+func createNamespacePolicyBlocksImportFixture(tenant, namespace string) error {
+	adminClient := getClientFromMeta(testAccProvider.Meta())
+	if err := adminClient.Tenants().Create(utils.TenantData{
+		Name:            tenant,
+		AllowedClusters: []string{"standalone"},
+	}); err != nil {
+		return fmt.Errorf("create tenant %q: %w", tenant, err)
+	}
+
+	client := adminClient.Namespaces()
+	if err := client.CreateNamespace(namespace); err != nil {
+		return fmt.Errorf("create namespace %q: %w", namespace, err)
+	}
+
+	nsName, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return fmt.Errorf("parse namespace %q: %w", namespace, err)
+	}
+	rate := utils.DispatchRate{
+		DispatchThrottlingRateInMsg:  50,
+		DispatchThrottlingRateInByte: 2048,
+		RatePeriodInSecond:           50,
+	}
+	if err := client.SetDispatchRate(*nsName, rate); err != nil {
+		return fmt.Errorf("set dispatch rate for %q: %w", namespace, err)
+	}
+	if err := client.SetSubscriptionDispatchRate(*nsName, rate); err != nil {
+		return fmt.Errorf("set subscription dispatch rate for %q: %w", namespace, err)
+	}
+	if err := client.SetPersistence(namespace, utils.PersistencePolicies{
+		BookkeeperEnsemble:             2,
+		BookkeeperWriteQuorum:          2,
+		BookkeeperAckQuorum:            2,
+		ManagedLedgerMaxMarkDeleteRate: 0,
+	}); err != nil {
+		return fmt.Errorf("set persistence for %q: %w", namespace, err)
+	}
+	if err := client.SetBacklogQuota(namespace, utils.BacklogQuota{
+		LimitSize: 10_000_000_000,
+		LimitTime: -1,
+		Policy:    utils.ProducerRequestHold,
+	}, utils.DestinationStorage); err != nil {
+		return fmt.Errorf("set backlog quota for %q: %w", namespace, err)
+	}
+	return nil
+}
+
+func deleteNamespaceImportFixture(tenant, namespace string) {
+	meta := testAccProvider.Meta()
+	if meta == nil {
+		return
+	}
+	client := getClientFromMeta(meta)
+	_ = client.Namespaces().DeleteNamespace(namespace)
+	_ = client.Tenants().Delete(tenant)
 }
 
 // testNamespacePolicyBlocksImported asserts that each Optional+Computed policy block was hydrated
@@ -215,6 +261,58 @@ func testNamespaceDispatchRateExists(namespace string, shouldExist bool) resourc
 		}
 		return nil
 	}
+}
+
+func testPulsarNamespacePolicyBlocksImportConfig(wsURL, tenant, namespace string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = %q
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = %q
+  namespace = %q
+
+  dispatch_rate {
+    dispatch_msg_throttling_rate  = 50
+    rate_period_seconds           = 50
+    dispatch_byte_throttling_rate = 2048
+  }
+
+  subscription_dispatch_rate {
+    dispatch_msg_throttling_rate  = 50
+    rate_period_seconds           = 50
+    dispatch_byte_throttling_rate = 2048
+  }
+
+  persistence_policies {
+    bookkeeper_ensemble                 = 2
+    bookkeeper_write_quorum             = 2
+    bookkeeper_ack_quorum               = 2
+    managed_ledger_max_mark_delete_rate = 0.0
+  }
+
+  backlog_quota {
+    limit_bytes   = "10000000000"
+    limit_seconds = "-1"
+    policy        = "producer_request_hold"
+    type          = "destination_storage"
+  }
+}
+`, wsURL, tenant, namespace)
+}
+
+func testPulsarNamespaceNoPolicyBlocksImportConfig(wsURL, tenant, namespace string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+  web_service_url = %q
+}
+
+resource "pulsar_namespace" "test" {
+  tenant    = %q
+  namespace = %q
+}
+`, wsURL, tenant, namespace)
 }
 
 // testPulsarNamespacePolicyBlocks configures a namespace with exactly the Optional+Computed policy

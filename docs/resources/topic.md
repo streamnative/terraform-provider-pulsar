@@ -26,7 +26,7 @@ description: |-
 ### Optional
 
 - `backlog_quota` (Block Set) (see [below for nested schema](#nestedblock--backlog_quota))
-- `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace (see [below for nested schema](#nestedblock--dispatch_rate))
+- `dispatch_rate` (Block Set, Max: 1) Topic-level data transfer rate for the given topic (see [below for nested schema](#nestedblock--dispatch_rate))
 - `enable_deduplication` (Boolean)
 - `permission_grant` (Block Set) Manages permissions within this topic. **Warning:** Do not use this for roles that are already managed by the standalone pulsar_permission_grant resource, as it will cause conflicts. (see [below for nested schema](#nestedblock--permission_grant))
 - `persistence_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--persistence_policies))

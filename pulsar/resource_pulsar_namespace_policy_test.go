@@ -1,0 +1,330 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package pulsar
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sort"
+	"sync"
+	"testing"
+
+	pulsaradmin "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	adminconfig "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/stretchr/testify/require"
+
+	provideradmin "github.com/streamnative/terraform-provider-pulsar/pkg/admin"
+)
+
+func TestResourcePulsarNamespaceRead_MinimalRefreshSkipsPolicyReads(t *testing.T) {
+	t.Parallel()
+
+	var policyReads int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/admin/v2/namespaces/tenant" {
+			writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
+			return
+		}
+		policyReads++
+		writeJSONResponse(t, w, http.StatusForbidden, map[string]string{"reason": "policy read forbidden"})
+	}))
+	defer server.Close()
+
+	d := namespacePolicyTestResourceData(t, nil)
+	diags := resourcePulsarNamespaceReadWithMode(
+		d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadRefresh,
+	)
+	require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
+	require.Zero(t, policyReads)
+}
+
+func TestResourcePulsarNamespaceRead_ImportRequiresPolicyReads(t *testing.T) {
+	t.Parallel()
+
+	var policyReads int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/admin/v2/namespaces/tenant" {
+			writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
+			return
+		}
+		policyReads++
+		writeJSONResponse(t, w, http.StatusForbidden, map[string]string{"reason": "policy read forbidden"})
+	}))
+	defer server.Close()
+
+	d := namespacePolicyTestResourceData(t, nil)
+	diags := resourcePulsarNamespaceReadWithMode(
+		d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadImport,
+	)
+	require.True(t, diags.HasError())
+	require.Equal(t, 1, policyReads)
+	require.Contains(t, diags[0].Summary, "GetPersistence")
+}
+
+func TestResourcePulsarNamespaceRead_UnsetPoliciesClearTrackedState(t *testing.T) {
+	t.Parallel()
+
+	for _, response := range []struct {
+		name   string
+		status int
+		body   interface{}
+	}{
+		{name: "no content", status: http.StatusNoContent},
+		{name: "json null", status: http.StatusOK, body: nil},
+	} {
+		response := response
+		t.Run(response.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/admin/v2/namespaces/tenant" {
+					writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
+					return
+				}
+				writeJSONResponse(t, w, response.status, response.body)
+			}))
+			defer server.Close()
+
+			d := namespacePolicyTestResourceData(t, namespacePolicyTestBlocks())
+			diags := resourcePulsarNamespaceReadWithMode(
+				d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadRefresh,
+			)
+			require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
+			require.Zero(t, d.Get("dispatch_rate").(*schema.Set).Len())
+			require.Zero(t, d.Get("subscription_dispatch_rate").(*schema.Set).Len())
+			require.Zero(t, d.Get("persistence_policies").(*schema.Set).Len())
+			require.Zero(t, d.Get("backlog_quota").(*schema.Set).Len())
+		})
+	}
+}
+
+func TestResourcePulsarNamespaceRead_PolicyNotFoundMarksResourceMissing(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/admin/v2/namespaces/tenant" {
+			writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
+			return
+		}
+		writeJSONResponse(t, w, http.StatusNotFound, map[string]string{"reason": "namespace missing"})
+	}))
+	defer server.Close()
+
+	d := namespacePolicyTestResourceData(t, map[string]interface{}{
+		"persistence_policies": namespacePolicyTestBlocks()["persistence_policies"],
+	})
+	diags := resourcePulsarNamespaceReadWithMode(
+		d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadRefresh,
+	)
+	require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
+	require.Empty(t, d.Id())
+}
+
+func TestResourcePulsarNamespaceUpdate_UnrelatedChangeDoesNotWriteHydratedPolicies(t *testing.T) {
+	t.Parallel()
+
+	recorder := &namespacePolicyRequestRecorder{}
+	server := httptest.NewServer(namespacePolicyConfiguredHandler(t, recorder))
+	defer server.Close()
+
+	d := schema.TestResourceDataRaw(t, resourcePulsarNamespace().Schema, map[string]interface{}{
+		"tenant":               "tenant",
+		"namespace":            "namespace",
+		"enable_deduplication": true,
+	})
+	for attr, value := range namespacePolicyTestBlocks() {
+		require.NoError(t, d.Set(attr, value))
+		require.False(t, d.HasChange(attr), "%s unexpectedly marked changed", attr)
+	}
+	d.SetId("tenant/namespace")
+
+	diags := resourcePulsarNamespaceUpdate(
+		context.Background(), d, namespacePolicyTestClientBundle(t, server.URL),
+	)
+	require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
+	require.Equal(t, []string{"/admin/v2/namespaces/tenant/namespace/deduplication"}, recorder.postPaths())
+}
+
+func TestResourcePulsarNamespaceUpdate_ExplicitPoliciesAreWritten(t *testing.T) {
+	t.Parallel()
+
+	recorder := &namespacePolicyRequestRecorder{}
+	server := httptest.NewServer(namespacePolicyConfiguredHandler(t, recorder))
+	defer server.Close()
+
+	config := map[string]interface{}{
+		"tenant":    "tenant",
+		"namespace": "namespace",
+	}
+	for attr, value := range namespacePolicyTestBlocks() {
+		config[attr] = value
+	}
+	d := schema.TestResourceDataRaw(t, resourcePulsarNamespace().Schema, config)
+	d.SetId("tenant/namespace")
+
+	diags := resourcePulsarNamespaceUpdate(
+		context.Background(), d, namespacePolicyTestClientBundle(t, server.URL),
+	)
+	require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
+	require.ElementsMatch(t, []string{
+		"/admin/v2/namespaces/tenant/namespace/backlogQuota",
+		"/admin/v2/namespaces/tenant/namespace/dispatchRate",
+		"/admin/v2/namespaces/tenant/namespace/persistence",
+		"/admin/v2/namespaces/tenant/namespace/subscriptionDispatchRate",
+	}, recorder.postPaths())
+}
+
+func namespacePolicyTestResourceData(t *testing.T, blocks map[string]interface{}) *schema.ResourceData {
+	t.Helper()
+	d := resourcePulsarNamespace().TestResourceData()
+	require.NoError(t, d.Set("tenant", "tenant"))
+	require.NoError(t, d.Set("namespace", "namespace"))
+	for attr, value := range blocks {
+		require.NoError(t, d.Set(attr, value))
+	}
+	d.SetId("tenant/namespace")
+	return d
+}
+
+func namespacePolicyTestBlocks() map[string]interface{} {
+	return map[string]interface{}{
+		"dispatch_rate": []interface{}{map[string]interface{}{
+			"dispatch_msg_throttling_rate":  50,
+			"rate_period_seconds":           50,
+			"dispatch_byte_throttling_rate": 2048,
+		}},
+		"subscription_dispatch_rate": []interface{}{map[string]interface{}{
+			"dispatch_msg_throttling_rate":  50,
+			"rate_period_seconds":           50,
+			"dispatch_byte_throttling_rate": 2048,
+		}},
+		"persistence_policies": []interface{}{map[string]interface{}{
+			"bookkeeper_ensemble":                 2,
+			"bookkeeper_write_quorum":             2,
+			"bookkeeper_ack_quorum":               2,
+			"managed_ledger_max_mark_delete_rate": 0.0,
+		}},
+		"backlog_quota": []interface{}{map[string]interface{}{
+			"limit_bytes":   "100",
+			"limit_seconds": "-1",
+			"policy":        string(utils.ProducerRequestHold),
+			"type":          string(utils.DestinationStorage),
+		}},
+	}
+}
+
+func namespacePolicyTestClientBundle(t *testing.T, serverURL string) PulsarClientBundle {
+	t.Helper()
+	config := &adminconfig.Config{WebServiceURL: serverURL}
+	client, err := pulsaradmin.New(config)
+	require.NoError(t, err)
+	policyClient, err := provideradmin.NewNamespacePolicyClient(&provideradmin.PulsarAdminConfig{Config: config})
+	require.NoError(t, err)
+	return PulsarClientBundle{
+		Client:                client,
+		V3Client:              client,
+		NamespacePolicyClient: policyClient,
+	}
+}
+
+func namespacePolicyConfiguredHandler(
+	t *testing.T,
+	recorder *namespacePolicyRequestRecorder,
+) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recorder.record(r.Method, r.URL.Path)
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		switch r.URL.Path {
+		case "/admin/v2/namespaces/tenant":
+			writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
+		case "/admin/v2/namespaces/tenant/namespace/persistence":
+			writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{
+				"bookkeeperEnsemble":             2,
+				"bookkeeperWriteQuorum":          2,
+				"bookkeeperAckQuorum":            2,
+				"managedLedgerMaxMarkDeleteRate": 0.0,
+			})
+		case "/admin/v2/namespaces/tenant/namespace/backlogQuotaMap":
+			writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{
+				"destination_storage": map[string]interface{}{
+					"limitSize": 100,
+					"limitTime": -1,
+					"policy":    string(utils.ProducerRequestHold),
+				},
+			})
+		case "/admin/v2/namespaces/tenant/namespace/dispatchRate",
+			"/admin/v2/namespaces/tenant/namespace/subscriptionDispatchRate":
+			writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{
+				"dispatchThrottlingRateInMsg":  50,
+				"dispatchThrottlingRateInByte": 2048,
+				"ratePeriodInSecond":           50,
+			})
+		default:
+			writeJSONResponse(t, w, http.StatusNotFound, map[string]string{"reason": "not found"})
+		}
+	})
+}
+
+func writeJSONResponse(t *testing.T, w http.ResponseWriter, status int, body interface{}) {
+	t.Helper()
+	w.WriteHeader(status)
+	if status == http.StatusNoContent {
+		return
+	}
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		t.Errorf("encode HTTP response: %v", err)
+	}
+}
+
+type namespacePolicyRequestRecorder struct {
+	mu       sync.Mutex
+	requests []namespacePolicyRequest
+}
+
+type namespacePolicyRequest struct {
+	method string
+	path   string
+}
+
+func (r *namespacePolicyRequestRecorder) record(method, path string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.requests = append(r.requests, namespacePolicyRequest{method: method, path: path})
+}
+
+func (r *namespacePolicyRequestRecorder) postPaths() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	paths := make([]string, 0)
+	for _, request := range r.requests {
+		if request.method == http.MethodPost {
+			paths = append(paths, request.path)
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
