@@ -46,13 +46,4 @@ resource "pulsar_source" "source-1" {
   cpu = 2
   disk_mb = 20480
   ram_mb = 2048
-
-  // Keep credentials out of `configs` (stored in plaintext). Reference them via
-  // the worker's secrets provider instead; only the reference is persisted.
-  secrets = jsonencode({
-    "gsaKey" = {
-      "path" = "my-k8s-secret"
-      "key" = "gsa-key.json"
-    }
-  })
 }

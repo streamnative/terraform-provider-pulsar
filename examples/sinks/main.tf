@@ -48,15 +48,21 @@ resource "pulsar_sink" "sink-1" {
   disk_mb = 102400
 
   archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-jdbc-postgres-2.10.4.nar"
-  configs = "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
+  configs = "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
 
-  // Reference the database password through the secrets provider rather than
-  // embedding it in `configs` (stored in plaintext). The sink reads it under
-  // the `password` secret name.
-  secrets = jsonencode({
-    "password" = {
-      "path" = "postgres-credentials"
-      "key" = "password"
-    }
-  })
+  // In production, keep the password out of `configs` (stored in plaintext) by
+  // referencing it through the worker's secrets provider instead. This requires
+  // a runtime with a secrets provider that resolves `{path, key}` references,
+  // such as the Kubernetes runtime's KubernetesSecretsProviderConfigurator.
+  // The default ClearTextSecretsProvider (used by the local standalone cluster
+  // started via hack/pulsar-docker.sh) does not resolve them: `terraform apply`
+  // still succeeds, but the sink receives no password at runtime. When running
+  // on Kubernetes, drop `password` from `configs` and use:
+  //
+  // secrets = jsonencode({
+  //   "password" = {
+  //     "path" = "postgres-credentials"
+  //     "key"  = "password"
+  //   }
+  // })
 }
