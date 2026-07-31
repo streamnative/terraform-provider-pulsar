@@ -47,6 +47,18 @@ func TestPulsarNamespacePolicyBlocksAreOptionalComputedSets(t *testing.T) {
 	}
 }
 
+func TestPulsarNamespaceBacklogQuotaOwnershipStateIsComputedOnly(t *testing.T) {
+	t.Parallel()
+
+	ownershipSchema := resourcePulsarNamespace().Schema[backlogQuotaManagedTypesStateAttr]
+	require.Equal(t, schema.TypeSet, ownershipSchema.Type)
+	require.True(t, ownershipSchema.Computed)
+	require.False(t, ownershipSchema.Optional)
+	require.False(t, ownershipSchema.Required)
+	require.False(t, ownershipSchema.ForceNew)
+	require.Equal(t, schema.TypeString, ownershipSchema.Elem.(*schema.Schema).Type)
+}
+
 func TestNamespaceAndTopicDispatchRateDescriptionsAreDistinct(t *testing.T) {
 	t.Parallel()
 

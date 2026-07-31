@@ -30,6 +30,7 @@ import (
 	adminconfig "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/stretchr/testify/require"
 
 	provideradmin "github.com/streamnative/terraform-provider-pulsar/pkg/admin"
@@ -193,6 +194,157 @@ func TestResourcePulsarNamespaceUpdate_ExplicitPoliciesAreWritten(t *testing.T) 
 	}, recorder.postPaths())
 }
 
+func TestResourcePulsarNamespaceUpdate_BacklogQuotaWriteFailureSkipsRemoval(t *testing.T) {
+	t.Parallel()
+
+	recorder := &namespacePolicyRequestRecorder{}
+	baseHandler := namespacePolicyConfiguredHandler(t, recorder)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/admin/v2/namespaces/tenant/namespace/backlogQuota" {
+			recorder.record(r.Method, r.URL.Path)
+			writeJSONResponse(t, w, http.StatusInternalServerError, map[string]string{"reason": "write failed"})
+			return
+		}
+		baseHandler.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	resourceSchema := resourcePulsarNamespace()
+	oldQuota := namespacePolicyTestBacklogQuota(utils.DestinationStorage)
+	newQuota := namespacePolicyTestBacklogQuota(utils.MessageAge)
+	oldData := schema.TestResourceDataRaw(t, resourceSchema.Schema, map[string]interface{}{
+		"tenant":        "tenant",
+		"namespace":     "namespace",
+		"backlog_quota": []interface{}{oldQuota},
+	})
+	oldData.SetId("tenant/namespace")
+	require.NoError(t, oldData.Set(
+		backlogQuotaManagedTypesStateAttr,
+		schema.NewSet(schema.HashString, []interface{}{utils.DestinationStorage.String()}),
+	))
+	state := oldData.State()
+	require.NotNil(t, state)
+	state.RawState = testBacklogQuotaOwnershipRawState(utils.DestinationStorage)
+	state.RawConfig = testBacklogQuotaRawConfig(newQuota)
+
+	diff, err := resourceSchema.Diff(
+		context.Background(),
+		state,
+		terraform.NewResourceConfigRaw(map[string]interface{}{
+			"tenant":        "tenant",
+			"namespace":     "namespace",
+			"backlog_quota": []interface{}{newQuota},
+		}),
+		namespacePolicyTestClientBundle(t, server.URL),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, diff)
+
+	failedState, diags := resourceSchema.Apply(
+		context.Background(),
+		state,
+		diff,
+		namespacePolicyTestClientBundle(t, server.URL),
+	)
+	require.True(t, diags.HasError())
+	require.Empty(t, recorder.deletePaths())
+	requireNamespaceBacklogQuotaStateTypes(t, failedState, utils.DestinationStorage)
+	require.Equal(t, "1", failedState.Attributes[backlogQuotaManagedTypesStateAttr+".#"])
+}
+
+func TestResourcePulsarNamespaceUpdate_UnrelatedFailureDoesNotClaimImportedBacklogQuota(t *testing.T) {
+	t.Parallel()
+
+	recorder := &namespacePolicyRequestRecorder{}
+	baseHandler := namespacePolicyConfiguredHandler(t, recorder)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/admin/v2/namespaces/tenant/namespace/deduplication" {
+			recorder.record(r.Method, r.URL.Path)
+			writeJSONResponse(t, w, http.StatusInternalServerError, map[string]string{"reason": "write failed"})
+			return
+		}
+		baseHandler.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	resourceSchema := resourcePulsarNamespace()
+	destination := namespacePolicyTestBacklogQuota(utils.DestinationStorage)
+	messageAge := namespacePolicyTestBacklogQuota(utils.MessageAge)
+	oldData := schema.TestResourceDataRaw(t, resourceSchema.Schema, map[string]interface{}{
+		"tenant":        "tenant",
+		"namespace":     "namespace",
+		"backlog_quota": []interface{}{destination, messageAge},
+	})
+	oldData.SetId("tenant/namespace")
+	require.NoError(t, oldData.Set(backlogQuotaManagedTypesStateAttr, []interface{}{}))
+	state := oldData.State()
+	require.NotNil(t, state)
+	state.RawState = testBacklogQuotaOwnershipRawState()
+	state.RawConfig = testBacklogQuotaRawConfig(destination)
+
+	diff, err := resourceSchema.Diff(
+		context.Background(),
+		state,
+		terraform.NewResourceConfigRaw(map[string]interface{}{
+			"tenant":               "tenant",
+			"namespace":            "namespace",
+			"enable_deduplication": true,
+			"backlog_quota":        []interface{}{destination},
+		}),
+		namespacePolicyTestClientBundle(t, server.URL),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, diff)
+
+	failedState, diags := resourceSchema.Apply(
+		context.Background(),
+		state,
+		diff,
+		namespacePolicyTestClientBundle(t, server.URL),
+	)
+	require.True(t, diags.HasError())
+	requireNamespaceBacklogQuotaStateTypes(
+		t,
+		failedState,
+		utils.DestinationStorage,
+		utils.MessageAge,
+	)
+	require.Equal(t, "0", failedState.Attributes[backlogQuotaManagedTypesStateAttr+".#"])
+}
+
+func requireNamespaceBacklogQuotaStateTypes(
+	t *testing.T,
+	state *terraform.InstanceState,
+	expected ...utils.BacklogQuotaType,
+) {
+	t.Helper()
+	require.NotNil(t, state)
+	data := resourcePulsarNamespace().Data(state)
+	types, err := backlogQuotaTypes(data.Get("backlog_quota").(*schema.Set))
+	require.NoError(t, err)
+	require.Len(t, types, len(expected))
+	for _, quotaType := range expected {
+		require.Contains(t, types, quotaType)
+	}
+}
+
+func namespacePolicyTestBacklogQuota(quotaType utils.BacklogQuotaType) map[string]interface{} {
+	if quotaType == utils.MessageAge {
+		return map[string]interface{}{
+			"limit_bytes":   "-1",
+			"limit_seconds": "3600",
+			"policy":        utils.ConsumerBacklogEviction.String(),
+			"type":          quotaType.String(),
+		}
+	}
+	return map[string]interface{}{
+		"limit_bytes":   "100",
+		"limit_seconds": "-1",
+		"policy":        utils.ProducerRequestHold.String(),
+		"type":          quotaType.String(),
+	}
+}
+
 func namespacePolicyTestResourceData(t *testing.T, blocks map[string]interface{}) *schema.ResourceData {
 	t.Helper()
 	d := resourcePulsarNamespace().TestResourceData()
@@ -322,6 +474,19 @@ func (r *namespacePolicyRequestRecorder) postPaths() []string {
 	paths := make([]string, 0)
 	for _, request := range r.requests {
 		if request.method == http.MethodPost {
+			paths = append(paths, request.path)
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+func (r *namespacePolicyRequestRecorder) deletePaths() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	paths := make([]string, 0)
+	for _, request := range r.requests {
+		if request.method == http.MethodDelete {
 			paths = append(paths, request.path)
 		}
 	}

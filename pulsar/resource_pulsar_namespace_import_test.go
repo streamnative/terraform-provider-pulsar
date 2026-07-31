@@ -41,13 +41,13 @@ func TestAccPulsarNamespace_importHydratesPolicyBlocks(t *testing.T) {
 	resourceName := "pulsar_namespace.test"
 	fullNamespace := tName + "/" + nsName
 
-	cfg := testPulsarNamespacePolicyBlocksImportConfig(testWebServiceURL, tName, nsName)
+	cfg := testPulsarNamespaceFullPolicyBlocksImportConfig(testWebServiceURL, tName, nsName)
 	t.Cleanup(func() { deleteNamespaceImportFixture(tName, fullNamespace) })
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
-			if err := createNamespacePolicyBlocksImportFixture(tName, fullNamespace); err != nil {
+			if err := createNamespacePartialBacklogQuotaImportFixture(tName, fullNamespace); err != nil {
 				t.Fatalf("create namespace import fixture: %v", err)
 			}
 		},
@@ -65,6 +65,93 @@ func TestAccPulsarNamespace_importHydratesPolicyBlocks(t *testing.T) {
 			{
 				// The reporter's actual complaint: the plan right after an import must be empty.
 				Config:             cfg,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAccPulsarNamespace_partialImportPreservesUnmanagedBacklogQuotaTypes(t *testing.T) {
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	resourceName := "pulsar_namespace.test"
+	fullNamespace := tName + "/" + nsName
+
+	cfg := testPulsarNamespacePolicyBlocksImportConfig(testWebServiceURL, tName, nsName)
+	cfgWithUnrelatedUpdate := testPulsarNamespacePolicyBlocksImportConfigWithDeduplication(
+		testWebServiceURL, tName, nsName, true,
+	)
+	t.Cleanup(func() { deleteNamespaceImportFixture(tName, fullNamespace) })
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			if err := createNamespacePartialBacklogQuotaImportFixture(tName, fullNamespace); err != nil {
+				t.Fatalf("create namespace partial backlog quota import fixture: %v", err)
+			}
+		},
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:             cfg,
+				ResourceName:       resourceName,
+				ImportState:        true,
+				ImportStatePersist: true,
+				ImportStateId:      fullNamespace,
+				ImportStateCheck: func(states []*terraform.InstanceState) error {
+					if len(states) != 1 {
+						return fmt.Errorf("expected 1 imported state, got %d", len(states))
+					}
+					if got := states[0].Attributes["backlog_quota.#"]; got != "2" {
+						return fmt.Errorf("import did not hydrate both backlog quota types: got %q, want %q", got, "2")
+					}
+					if got := states[0].Attributes[backlogQuotaManagedTypesStateAttr+".#"]; got != "0" {
+						return fmt.Errorf("imported backlog quota ownership must start empty: got %q, want %q", got, "0")
+					}
+					return nil
+				},
+			},
+			{
+				Config:             cfg,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: cfg,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarNamespaceExists(resourceName),
+					testNamespaceBacklogQuotaTypes(
+						fullNamespace,
+						utils.DestinationStorage,
+						utils.MessageAge,
+					),
+				),
+			},
+			{
+				Config:             cfg,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: cfgWithUnrelatedUpdate,
+				Check: resource.ComposeTestCheckFunc(
+					testNamespaceBacklogQuotaTypes(
+						fullNamespace,
+						utils.DestinationStorage,
+						utils.MessageAge,
+					),
+					resource.TestCheckResourceAttr(
+						resourceName, backlogQuotaManagedTypesStateAttr+".#", "1",
+					),
+					resource.TestCheckTypeSetElemAttr(
+						resourceName, backlogQuotaManagedTypesStateAttr+".*", utils.DestinationStorage.String(),
+					),
+				),
+			},
+			{
+				Config:             cfgWithUnrelatedUpdate,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -183,6 +270,26 @@ func createNamespacePolicyBlocksImportFixture(tenant, namespace string) error {
 	return nil
 }
 
+func createNamespacePartialBacklogQuotaImportFixture(tenant, namespace string) error {
+	if err := createNamespacePolicyBlocksImportFixture(tenant, namespace); err != nil {
+		return err
+	}
+
+	if err := getClientFromMeta(testAccProvider.Meta()).Namespaces().SetBacklogQuota(
+		namespace,
+		utils.BacklogQuota{
+			LimitSize: -1,
+			LimitTime: 3600,
+			Policy:    utils.ConsumerBacklogEviction,
+		},
+		utils.MessageAge,
+	); err != nil {
+		return fmt.Errorf("set message age backlog quota for %q: %w", namespace, err)
+	}
+
+	return nil
+}
+
 func deleteNamespaceImportFixture(tenant, namespace string) {
 	meta := testAccProvider.Meta()
 	if meta == nil {
@@ -203,10 +310,11 @@ func testNamespacePolicyBlocksImported() resource.ImportStateCheckFunc {
 		attrs := states[0].Attributes
 
 		expectedCounts := map[string]string{
-			"dispatch_rate.#":              "1",
-			"subscription_dispatch_rate.#": "1",
-			"persistence_policies.#":       "1",
-			"backlog_quota.#":              "1",
+			"dispatch_rate.#":                        "1",
+			"subscription_dispatch_rate.#":           "1",
+			"persistence_policies.#":                 "1",
+			"backlog_quota.#":                        "2",
+			backlogQuotaManagedTypesStateAttr + ".#": "0",
 		}
 		for key, want := range expectedCounts {
 			if got := attrs[key]; got != want {
@@ -264,6 +372,42 @@ func testNamespaceDispatchRateExists(namespace string, shouldExist bool) resourc
 }
 
 func testPulsarNamespacePolicyBlocksImportConfig(wsURL, tenant, namespace string) string {
+	return testPulsarNamespacePolicyBlocksImportConfigWithOptions(wsURL, tenant, namespace, false, false)
+}
+
+func testPulsarNamespaceFullPolicyBlocksImportConfig(wsURL, tenant, namespace string) string {
+	return testPulsarNamespacePolicyBlocksImportConfigWithOptions(wsURL, tenant, namespace, false, true)
+}
+
+func testPulsarNamespacePolicyBlocksImportConfigWithDeduplication(
+	wsURL, tenant, namespace string,
+	enableDeduplication bool,
+) string {
+	return testPulsarNamespacePolicyBlocksImportConfigWithOptions(
+		wsURL, tenant, namespace, enableDeduplication, false,
+	)
+}
+
+func testPulsarNamespacePolicyBlocksImportConfigWithOptions(
+	wsURL, tenant, namespace string,
+	enableDeduplication, includeMessageAge bool,
+) string {
+	deduplication := ""
+	if enableDeduplication {
+		deduplication = "  enable_deduplication = true\n"
+	}
+	messageAge := ""
+	if includeMessageAge {
+		messageAge = `
+  backlog_quota {
+    limit_bytes   = "-1"
+    limit_seconds = "3600"
+    policy        = "consumer_backlog_eviction"
+    type          = "message_age"
+  }
+`
+	}
+
 	return fmt.Sprintf(`
 provider "pulsar" {
   web_service_url = %q
@@ -272,6 +416,7 @@ provider "pulsar" {
 resource "pulsar_namespace" "test" {
   tenant    = %q
   namespace = %q
+%s
 
   dispatch_rate {
     dispatch_msg_throttling_rate  = 50
@@ -298,8 +443,9 @@ resource "pulsar_namespace" "test" {
     policy        = "producer_request_hold"
     type          = "destination_storage"
   }
+%s
 }
-`, wsURL, tenant, namespace)
+`, wsURL, tenant, namespace, deduplication, messageAge)
 }
 
 func testPulsarNamespaceNoPolicyBlocksImportConfig(wsURL, tenant, namespace string) string {

@@ -75,7 +75,9 @@ func init() {
 		"backlog_quota": "Backlog quotas for the topics under the given namespace. " +
 			namespacePolicyBlockNote +
 			" Only the quota types already tracked in state are refreshed, so a quota type configured " +
-			"outside Terraform is left untouched.",
+			"outside Terraform is left untouched. A quota type hydrated only by import or legacy state " +
+			"is preserved when configuration declares a subset; per-type removal applies only after " +
+			"Terraform has persisted explicit ownership during a prior resource change.",
 		"issuer_url":       "The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token",
 		"audience":         "The OAuth 2.0 resource server identifier for the Pulsar cluster",
 		"client_id":        "The OAuth 2.0 client identifier",

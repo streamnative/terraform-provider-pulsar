@@ -43,6 +43,16 @@ type namespaceReadMode uint8
 const (
 	namespaceReadRefresh namespaceReadMode = iota
 	namespaceReadImport
+
+	backlogQuotaManagedTypesStateAttr = "_backlog_quota_managed_types"
+)
+
+type backlogQuotaConfigPresence uint8
+
+const (
+	backlogQuotaConfigUnknown backlogQuotaConfigPresence = iota
+	backlogQuotaConfigOmitted
+	backlogQuotaConfigExplicit
 )
 
 func resourcePulsarNamespace() *schema.Resource {
@@ -51,6 +61,7 @@ func resourcePulsarNamespace() *schema.Resource {
 		ReadContext:   resourcePulsarNamespaceRead,
 		UpdateContext: resourcePulsarNamespaceUpdate,
 		DeleteContext: resourcePulsarNamespaceDelete,
+		CustomizeDiff: resourcePulsarNamespaceCustomizeDiff,
 		Importer: &schema.ResourceImporter{
 			StateContext: func(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				importID := d.Id()
@@ -71,6 +82,12 @@ func resourcePulsarNamespace() *schema.Resource {
 						"import %q: namespace not found in Pulsar; verify the namespace exists and the identifier is correct",
 						importID,
 					)
+				}
+				if err := d.Set(
+					backlogQuotaManagedTypesStateAttr,
+					[]interface{}{},
+				); err != nil {
+					return nil, fmt.Errorf("import %q: set backlog quota ownership state: %w", importID, err)
 				}
 				return []*schema.ResourceData{d}, nil
 			},
@@ -196,6 +213,15 @@ func resourcePulsarNamespace() *schema.Resource {
 				Description: descriptions["backlog_quota"],
 				Elem:        schemaBacklogQuotaSubset(),
 				Set:         hashBacklogQuotaSubset(),
+			},
+			backlogQuotaManagedTypesStateAttr: {
+				Type:     schema.TypeSet,
+				Computed: true,
+				Description: "Internal state tracking backlog quota types explicitly configured " +
+					"when Terraform last applied a resource change.",
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
 			},
 			"namespace_config": {
 				Type:        schema.TypeList,
@@ -369,6 +395,63 @@ func resourcePulsarNamespace() *schema.Resource {
 	}
 }
 
+func resourcePulsarNamespaceCustomizeDiff(
+	_ context.Context,
+	diff *schema.ResourceDiff,
+	_ interface{},
+) error {
+	oldValue, newValue := diff.GetChange("backlog_quota")
+	oldQuotas, err := backlogQuotaSet(oldValue)
+	if err != nil {
+		return err
+	}
+	plannedQuotas, err := backlogQuotaSet(newValue)
+	if err != nil {
+		return err
+	}
+
+	planned, changed, err := backlogQuotaPlannedSetForOwnership(
+		diff.GetRawConfig(),
+		diff.GetRawState(),
+		oldValue,
+		newValue,
+	)
+	if err != nil {
+		return err
+	}
+	if changed {
+		if err := diff.SetNew("backlog_quota", planned); err != nil {
+			return err
+		}
+		plannedQuotas = planned
+	}
+
+	_, configPresence, err := rawConfigBacklogQuotaTypes(diff.GetRawConfig())
+	if err != nil {
+		return err
+	}
+	if configPresence != backlogQuotaConfigExplicit {
+		return nil
+	}
+	if diff.Id() != "" && oldQuotas.Equal(plannedQuotas) && !namespaceDiffHasOtherChanges(diff) {
+		// Do not turn an otherwise-empty post-import plan into metadata-only
+		// churn. Ownership remains conservative until a real apply occurs.
+		return nil
+	}
+
+	return diff.SetNewComputed(backlogQuotaManagedTypesStateAttr)
+}
+
+func namespaceDiffHasOtherChanges(diff *schema.ResourceDiff) bool {
+	for _, key := range diff.GetChangedKeysPrefix("") {
+		root := strings.SplitN(key, ".", 2)[0]
+		if root != "backlog_quota" && root != backlogQuotaManagedTypesStateAttr && root != "id" {
+			return true
+		}
+	}
+	return false
+}
+
 func resourcePulsarNamespaceCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
@@ -425,6 +508,11 @@ func resourcePulsarNamespaceReadWithMode(
 
 	_ = d.Set("namespace", namespace)
 	_ = d.Set("tenant", tenant)
+	if d.GetRawConfig().IsNull() {
+		if err := initializeBacklogQuotaManagedTypesState(d); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: SetBacklogQuotaOwnershipState: %w", err))
+		}
+	}
 
 	if _, ok := d.GetOk("namespace_config"); ok {
 		var namespaceConfig = make(map[string]interface{})
@@ -685,6 +773,14 @@ func resourcePulsarNamespaceReadWithMode(
 }
 
 func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	preservePriorStateOnError := !d.IsNewResource()
+	if preservePriorStateOnError {
+		// The SDK otherwise builds error state from the proposed diff. Preserve
+		// prior state so failed quota writes/removals and ownership updates are
+		// retried instead of being hidden by an unapplied planned value.
+		d.Partial(true)
+	}
+
 	client := getClientFromMeta(meta).Namespaces()
 
 	namespace := d.Get("namespace").(string)
@@ -843,30 +939,53 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 	if d.HasChange("backlog_quota") && backlogQuotaConfig.Len() > 0 {
 		oldBacklogQuotaConfig, _ := d.GetChange("backlog_quota")
 		oldBacklogQuotaSet, _ := oldBacklogQuotaConfig.(*schema.Set)
-		removedQuotaTypes, err := removedBacklogQuotaTypes(
-			oldBacklogQuotaSet,
-			backlogQuotaConfig,
-		)
+		writesSucceeded := true
+		configuredTypes, configPresence, err := rawConfigBacklogQuotaTypes(d.GetRawConfig())
 		if err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("removedBacklogQuotaTypes: %w", err))
+			errs = multierror.Append(errs, fmt.Errorf("configuredBacklogQuotaTypes: %w", err))
+			writesSucceeded = false
 		} else {
-			policyClient := getNamespacePolicyClientFromMeta(meta)
-			for _, quotaType := range removedQuotaTypes {
-				if err = policyClient.RemoveBacklogQuotaByType(ctx, nsName.String(), quotaType); err != nil &&
-					!isIgnorableNotFoundError(err) {
-					errs = multierror.Append(errs, fmt.Errorf("RemoveBacklogQuota(%s): %w", quotaType, err))
+			backlogQuotas, err := unmarshalBacklogQuota(backlogQuotaConfig)
+			if err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("unmarshalBacklogQuota: %w", err))
+				writesSucceeded = false
+			} else {
+				for _, item := range backlogQuotas {
+					if configPresence == backlogQuotaConfigOmitted {
+						continue
+					}
+					if configPresence == backlogQuotaConfigExplicit {
+						if _, configured := configuredTypes[item.backlogQuotaType]; !configured {
+							continue
+						}
+					}
+
+					err = client.SetBacklogQuota(nsName.String(), item.BacklogQuota, item.backlogQuotaType)
+					if err != nil {
+						errs = multierror.Append(errs, fmt.Errorf("SetBacklogQuota: %w", err))
+						writesSucceeded = false
+					}
 				}
 			}
 		}
 
-		backlogQuotas, err := unmarshalBacklogQuota(backlogQuotaConfig)
-		if err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("unmarshalBacklogQuota: %w", err))
-		} else {
-			for _, item := range backlogQuotas {
-				err = client.SetBacklogQuota(nsName.String(), item.BacklogQuota, item.backlogQuotaType)
-				if err != nil {
-					errs = multierror.Append(errs, fmt.Errorf("SetBacklogQuota: %w", err))
+		// Apply additions/replacements before destructive removals. A failed
+		// write leaves old quotas intact so retry does not lose both policies.
+		if writesSucceeded && configPresence == backlogQuotaConfigExplicit {
+			removedQuotaTypes, err := removedManagedBacklogQuotaTypes(
+				oldBacklogQuotaSet,
+				backlogQuotaConfig,
+				d.GetRawState(),
+			)
+			if err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("removedManagedBacklogQuotaTypes: %w", err))
+			} else {
+				policyClient := getNamespacePolicyClientFromMeta(meta)
+				for _, quotaType := range removedQuotaTypes {
+					if err = policyClient.RemoveBacklogQuotaByType(ctx, nsName.String(), quotaType); err != nil &&
+						!isIgnorableNotFoundError(err) {
+						errs = multierror.Append(errs, fmt.Errorf("RemoveBacklogQuota(%s): %w", quotaType, err))
+					}
 				}
 			}
 		}
@@ -954,9 +1073,19 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 	if errs != nil {
 		return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: %w", errs))
 	}
+	if err := setBacklogQuotaManagedTypesState(d); err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: SetBacklogQuotaOwnershipState: %w", err))
+	}
 
 	d.SetId(nsName.String())
-	return resourcePulsarNamespaceRead(ctx, d, meta)
+	diags := resourcePulsarNamespaceRead(ctx, d, meta)
+	if diags.HasError() {
+		return diags
+	}
+	if preservePriorStateOnError {
+		d.Partial(false)
+	}
+	return diags
 }
 
 func hasInactiveTopicPoliciesConfigured(data interface{}) bool {
@@ -1033,6 +1162,288 @@ func setBacklogQuotaFiltered(
 	return d.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), backlogQuotas))
 }
 
+func backlogQuotaPlannedSetForOwnership(
+	rawConfig cty.Value,
+	rawState cty.Value,
+	oldValue interface{},
+	newValue interface{},
+) (*schema.Set, bool, error) {
+	oldQuotas, err := backlogQuotaSet(oldValue)
+	if err != nil {
+		return nil, false, err
+	}
+	newQuotas, err := backlogQuotaSet(newValue)
+	if err != nil {
+		return nil, false, err
+	}
+
+	configuredTypes, configPresence, err := rawConfigBacklogQuotaTypes(rawConfig)
+	if err != nil {
+		return nil, false, err
+	}
+	if configPresence != backlogQuotaConfigExplicit {
+		if oldQuotas.Equal(newQuotas) {
+			return nil, false, nil
+		}
+
+		// Unknown configuration and an omitted Optional+Computed block must never
+		// turn refreshed state into a destructive removal.
+		return schema.CopySet(oldQuotas), true, nil
+	}
+
+	managedTypes, ownershipKnown, err := rawStateBacklogQuotaManagedTypes(rawState)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ownershipKnown {
+		// v0.11 and v0.12.0-rc.2 states predate ownership metadata. State
+		// membership alone cannot prove ownership, so preserve every old type
+		// that current configuration does not explicitly replace.
+		managedTypes = make(map[utils.BacklogQuotaType]struct{})
+	}
+
+	planned := schema.CopySet(newQuotas)
+	plannedTypes, err := backlogQuotaTypes(planned)
+	if err != nil {
+		return nil, false, err
+	}
+
+	for _, quota := range oldQuotas.List() {
+		quotaType, err := backlogQuotaType(quota)
+		if err != nil {
+			return nil, false, err
+		}
+		if _, configured := configuredTypes[quotaType]; configured {
+			continue
+		}
+		if _, managed := managedTypes[quotaType]; managed {
+			continue
+		}
+		if _, exists := plannedTypes[quotaType]; exists {
+			continue
+		}
+
+		planned.Add(quota)
+		plannedTypes[quotaType] = struct{}{}
+	}
+
+	if planned.Equal(newQuotas) {
+		return nil, false, nil
+	}
+	return planned, true, nil
+}
+
+func backlogQuotaSet(value interface{}) (*schema.Set, error) {
+	if value == nil {
+		return emptySet(hashBacklogQuotaSubset()), nil
+	}
+
+	quotas, ok := value.(*schema.Set)
+	if !ok {
+		return nil, fmt.Errorf("unexpected backlog quota set value %T", value)
+	}
+	if quotas == nil {
+		return emptySet(hashBacklogQuotaSubset()), nil
+	}
+	return quotas, nil
+}
+
+func rawConfigBacklogQuotaTypes(
+	rawConfig cty.Value,
+) (map[utils.BacklogQuotaType]struct{}, backlogQuotaConfigPresence, error) {
+	types := make(map[utils.BacklogQuotaType]struct{})
+	if !rawConfig.IsKnown() || rawConfig.IsNull() {
+		return types, backlogQuotaConfigUnknown, nil
+	}
+	if !rawConfig.Type().IsObjectType() || !rawConfig.Type().HasAttribute("backlog_quota") {
+		return types, backlogQuotaConfigUnknown, nil
+	}
+
+	configured := rawConfig.GetAttr("backlog_quota")
+	if !configured.IsKnown() {
+		return types, backlogQuotaConfigUnknown, nil
+	}
+	if configured.IsNull() {
+		return types, backlogQuotaConfigOmitted, nil
+	}
+
+	parsed, known, err := ctyBacklogQuotaTypes(configured)
+	if err != nil {
+		return nil, backlogQuotaConfigUnknown, err
+	}
+	if !known {
+		return types, backlogQuotaConfigUnknown, nil
+	}
+	return parsed, backlogQuotaConfigExplicit, nil
+}
+
+func rawStateBacklogQuotaManagedTypes(
+	rawState cty.Value,
+) (map[utils.BacklogQuotaType]struct{}, bool, error) {
+	types := make(map[utils.BacklogQuotaType]struct{})
+	if !rawState.IsKnown() || rawState.IsNull() {
+		return types, false, nil
+	}
+	if !rawState.Type().IsObjectType() || !rawState.Type().HasAttribute(backlogQuotaManagedTypesStateAttr) {
+		return types, false, nil
+	}
+
+	managed := rawState.GetAttr(backlogQuotaManagedTypesStateAttr)
+	if !managed.IsKnown() || managed.IsNull() {
+		return types, false, nil
+	}
+	if !managed.Type().IsSetType() && !managed.Type().IsListType() && !managed.Type().IsTupleType() {
+		return nil, false, fmt.Errorf(
+			"unexpected %s state type %s",
+			backlogQuotaManagedTypesStateAttr,
+			managed.Type().FriendlyName(),
+		)
+	}
+
+	iterator := managed.ElementIterator()
+	for iterator.Next() {
+		_, value := iterator.Element()
+		if !value.IsKnown() || value.IsNull() {
+			return types, false, nil
+		}
+		if value.Type() != cty.String {
+			return nil, false, fmt.Errorf(
+				"unexpected %s element type %s",
+				backlogQuotaManagedTypesStateAttr,
+				value.Type().FriendlyName(),
+			)
+		}
+
+		quotaType, err := utils.ParseBacklogQuotaType(value.AsString())
+		if err != nil {
+			return nil, false, err
+		}
+		types[quotaType] = struct{}{}
+	}
+	return types, true, nil
+}
+
+func ctyBacklogQuotaTypes(
+	quotas cty.Value,
+) (map[utils.BacklogQuotaType]struct{}, bool, error) {
+	types := make(map[utils.BacklogQuotaType]struct{})
+	if !quotas.Type().IsSetType() && !quotas.Type().IsListType() && !quotas.Type().IsTupleType() {
+		return nil, false, fmt.Errorf("unexpected backlog_quota config type %s", quotas.Type().FriendlyName())
+	}
+
+	iterator := quotas.ElementIterator()
+	for iterator.Next() {
+		_, value := iterator.Element()
+		if !value.IsKnown() || value.IsNull() {
+			return types, false, nil
+		}
+		if !value.Type().IsObjectType() || !value.Type().HasAttribute("type") {
+			return nil, false, fmt.Errorf("unexpected backlog_quota element type %s", value.Type().FriendlyName())
+		}
+
+		quotaTypeValue := value.GetAttr("type")
+		if !quotaTypeValue.IsKnown() || quotaTypeValue.IsNull() {
+			return types, false, nil
+		}
+		if quotaTypeValue.Type() != cty.String {
+			return nil, false, fmt.Errorf("unexpected backlog_quota.type value type %s", quotaTypeValue.Type().FriendlyName())
+		}
+
+		quotaType, err := utils.ParseBacklogQuotaType(quotaTypeValue.AsString())
+		if err != nil {
+			return nil, false, err
+		}
+		types[quotaType] = struct{}{}
+	}
+	return types, true, nil
+}
+
+func setBacklogQuotaManagedTypesState(d *schema.ResourceData) error {
+	// A successful resource apply is the persistence point for explicit HCL
+	// ownership. The backlog quota itself need not change: configuration
+	// declaration is sufficient ownership evidence, while imported-only types
+	// never appear in raw config and remain unmanaged.
+	configuredTypes, configPresence, err := rawConfigBacklogQuotaTypes(d.GetRawConfig())
+	if err != nil {
+		return err
+	}
+
+	switch configPresence {
+	case backlogQuotaConfigExplicit:
+		return d.Set(backlogQuotaManagedTypesStateAttr, backlogQuotaTypeStateValues(configuredTypes))
+	case backlogQuotaConfigOmitted:
+		if d.IsNewResource() {
+			return d.Set(backlogQuotaManagedTypesStateAttr, []interface{}{})
+		}
+		return nil
+	case backlogQuotaConfigUnknown:
+		if !d.IsNewResource() {
+			return nil
+		}
+
+		// Creation cannot contain import-hydrated quota types. Falling back to
+		// the planned set therefore records only values this provider wrote.
+		configuredTypes, err := backlogQuotaTypes(d.Get("backlog_quota").(*schema.Set))
+		if err != nil {
+			return err
+		}
+		return d.Set(backlogQuotaManagedTypesStateAttr, backlogQuotaTypeStateValues(configuredTypes))
+	default:
+		return nil
+	}
+}
+
+func initializeBacklogQuotaManagedTypesState(d *schema.ResourceData) error {
+	_, ownershipKnown, err := rawStateBacklogQuotaManagedTypes(d.GetRawState())
+	if err != nil {
+		return err
+	}
+	if ownershipKnown {
+		return nil
+	}
+
+	// Legacy v0.11 and v0.12.0-rc.2 state has no provenance. Initialize it
+	// conservatively: no existing quota type is considered Terraform-managed.
+	return d.Set(backlogQuotaManagedTypesStateAttr, []interface{}{})
+}
+
+func backlogQuotaTypeStateValues(types map[utils.BacklogQuotaType]struct{}) []interface{} {
+	values := make([]interface{}, 0, len(types))
+	for quotaType := range types {
+		values = append(values, quotaType.String())
+	}
+	sort.Slice(values, func(i, j int) bool {
+		return values[i].(string) < values[j].(string)
+	})
+	return values
+}
+
+func removedManagedBacklogQuotaTypes(
+	oldQuotas *schema.Set,
+	newQuotas *schema.Set,
+	rawState cty.Value,
+) ([]utils.BacklogQuotaType, error) {
+	managedTypes, ownershipKnown, err := rawStateBacklogQuotaManagedTypes(rawState)
+	if err != nil {
+		return nil, err
+	}
+	if !ownershipKnown {
+		return []utils.BacklogQuotaType{}, nil
+	}
+
+	removed, err := removedBacklogQuotaTypes(oldQuotas, newQuotas)
+	if err != nil {
+		return nil, err
+	}
+	managedRemoved := make([]utils.BacklogQuotaType, 0, len(removed))
+	for _, quotaType := range removed {
+		if _, managed := managedTypes[quotaType]; managed {
+			managedRemoved = append(managedRemoved, quotaType)
+		}
+	}
+	return managedRemoved, nil
+}
+
 func removedBacklogQuotaTypes(oldQuotas, newQuotas *schema.Set) ([]utils.BacklogQuotaType, error) {
 	oldTypes, err := backlogQuotaTypes(oldQuotas)
 	if err != nil {
@@ -1055,6 +1466,18 @@ func removedBacklogQuotaTypes(oldQuotas, newQuotas *schema.Set) ([]utils.Backlog
 	return removed, nil
 }
 
+func backlogQuotaType(quota interface{}) (utils.BacklogQuotaType, error) {
+	data, ok := quota.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("unexpected backlog quota value %T", quota)
+	}
+	quotaTypeValue, ok := data["type"].(string)
+	if !ok {
+		return "", fmt.Errorf("unexpected backlog quota type value %T", data["type"])
+	}
+	return utils.ParseBacklogQuotaType(quotaTypeValue)
+}
+
 func backlogQuotaTypes(quotas *schema.Set) (map[utils.BacklogQuotaType]struct{}, error) {
 	types := make(map[utils.BacklogQuotaType]struct{})
 	if quotas == nil {
@@ -1062,15 +1485,7 @@ func backlogQuotaTypes(quotas *schema.Set) (map[utils.BacklogQuotaType]struct{},
 	}
 
 	for _, quota := range quotas.List() {
-		data, ok := quota.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("unexpected backlog quota value %T", quota)
-		}
-		quotaTypeValue, ok := data["type"].(string)
-		if !ok {
-			return nil, fmt.Errorf("unexpected backlog quota type value %T", data["type"])
-		}
-		quotaType, err := utils.ParseBacklogQuotaType(quotaTypeValue)
+		quotaType, err := backlogQuotaType(quota)
 		if err != nil {
 			return nil, err
 		}
@@ -1132,6 +1547,7 @@ func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, 
 	_ = d.Set("retention_policies", nil)
 	_ = d.Set("inactive_topic", nil)
 	_ = d.Set("backlog_quota", nil)
+	_ = d.Set(backlogQuotaManagedTypesStateAttr, nil)
 	_ = d.Set("dispatch_rate", nil)
 	_ = d.Set("subscription_dispatch_rate", nil)
 	_ = d.Set("persistence_policies", nil)

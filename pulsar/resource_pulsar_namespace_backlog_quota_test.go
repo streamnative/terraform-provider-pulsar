@@ -39,28 +39,73 @@ func TestAccPulsarNamespace_BacklogQuotaTypeRemoval(t *testing.T) {
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, true, true),
+				Config: testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, true, true, false),
 				Check:  testNamespaceBacklogQuotaTypes(fullNamespace, utils.DestinationStorage, utils.MessageAge),
 			},
 			{
-				Config: testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, true, false),
+				Config: testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, true, false, false),
 				Check:  testNamespaceBacklogQuotaTypes(fullNamespace, utils.DestinationStorage),
 			},
 			{
-				Config:             testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, true, false),
+				Config: testPulsarNamespaceBacklogQuotas(
+					testWebServiceURL, cluster, tenant, namespace, true, false, false,
+				),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
 			{
-				Config: testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, true, true),
+				Config: testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, true, true, false),
 				Check:  testNamespaceBacklogQuotaTypes(fullNamespace, utils.DestinationStorage, utils.MessageAge),
 			},
 			{
-				Config: testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, false, true),
+				Config: testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, false, true, false),
 				Check:  testNamespaceBacklogQuotaTypes(fullNamespace, utils.MessageAge),
 			},
 			{
-				Config:             testPulsarNamespaceBacklogQuotas(testWebServiceURL, cluster, tenant, namespace, false, true),
+				Config: testPulsarNamespaceBacklogQuotas(
+					testWebServiceURL, cluster, tenant, namespace, false, true, false,
+				),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAccPulsarNamespace_OutOfBandBacklogQuotaTypeIsNotAdopted(t *testing.T) {
+	cluster := acctest.RandString(10)
+	tenant := acctest.RandString(10)
+	namespace := acctest.RandString(10)
+	fullNamespace := tenant + "/" + namespace
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		CheckDestroy:      testPulsarNamespaceDestroy,
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testPulsarNamespaceBacklogQuotas(
+					testWebServiceURL, cluster, tenant, namespace, true, false, false,
+				),
+				Check: resource.ComposeTestCheckFunc(
+					testNamespaceBacklogQuotaTypes(fullNamespace, utils.DestinationStorage),
+					setNamespaceMessageAgeBacklogQuota(fullNamespace),
+				),
+			},
+			{
+				Config: testPulsarNamespaceBacklogQuotas(
+					testWebServiceURL, cluster, tenant, namespace, true, false, true,
+				),
+				Check: testNamespaceBacklogQuotaTypes(
+					fullNamespace,
+					utils.DestinationStorage,
+					utils.MessageAge,
+				),
+			},
+			{
+				Config: testPulsarNamespaceBacklogQuotas(
+					testWebServiceURL, cluster, tenant, namespace, true, false, true,
+				),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -90,9 +135,23 @@ func testNamespaceBacklogQuotaTypes(
 	}
 }
 
+func setNamespaceMessageAgeBacklogQuota(namespace string) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
+		return getClientFromMeta(testAccProvider.Meta()).Namespaces().SetBacklogQuota(
+			namespace,
+			utils.BacklogQuota{
+				LimitSize: -1,
+				LimitTime: 3600,
+				Policy:    utils.ConsumerBacklogEviction,
+			},
+			utils.MessageAge,
+		)
+	}
+}
+
 func testPulsarNamespaceBacklogQuotas(
 	wsURL, cluster, tenant, namespace string,
-	destinationStorage, messageAge bool,
+	destinationStorage, messageAge, enableDeduplication bool,
 ) string {
 	quotaBlocks := ""
 	if destinationStorage {
@@ -115,12 +174,17 @@ func testPulsarNamespaceBacklogQuotas(
   }
 `
 	}
+	deduplication := ""
+	if enableDeduplication {
+		deduplication = "  enable_deduplication = true\n"
+	}
 
 	return testPulsarNamespaceBase(wsURL, cluster, tenant) + fmt.Sprintf(`
 resource "pulsar_namespace" "test" {
   tenant    = pulsar_tenant.test_tenant.tenant
   namespace = %q
 %s
+%s
 }
-`, namespace, quotaBlocks)
+`, namespace, deduplication, quotaBlocks)
 }
