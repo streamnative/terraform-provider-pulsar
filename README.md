@@ -608,6 +608,22 @@ resource "pulsar_source" "source-1" {
 }
 ```
 
+> **Handling credentials:** values placed in `configs` are stored and returned
+> in plaintext (function metadata topic, `pulsar-admin sources get`, Terraform
+> state). For API keys, passwords, and service-account keys use the `secrets`
+> argument instead. Each entry maps a secret name (the key the connector reads)
+> to a `{ "path": ..., "key": ... }` reference that the worker's configured
+> `SecretsProvider` resolves at runtime, so only the reference — never the
+> value — lands in config, metadata, or state.
+>
+> **Note:** `{ "path": ..., "key": ... }` references are only resolved by a
+> runtime configured with a secrets provider that understands them, such as the
+> Kubernetes runtime's `KubernetesSecretsProviderConfigurator`. The default
+> `ClearTextSecretsProvider` (process/standalone runtimes, including the local
+> test cluster started by `hack/pulsar-docker.sh`) does not resolve them:
+> `terraform apply` still succeeds, but the connector silently receives no
+> value for the secret at runtime.
+
 #### Properties
 
 | Property                    | Description                                                                                                                                                                                        | Required |
@@ -626,6 +642,19 @@ resource "pulsar_source" "source-1" {
 | `ram_mb`                    | The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes)                                                                                         | False    |
 | `disk_mb`                   | The disk that need to be allocated per source instance (applicable only to Docker runtime)                                                                                                         | False    |
 | `runtime_flags`             | User defined configs key/values (JSON string)                                                                                                                                                      | False    |
+| `schema_type`               | The schema type (either a builtin schema like 'avro', 'json', etc.. or custom Schema class name to be used to encode messages emitted from the source                                              | False    |
+| `custom_runtime_options`    | A string that encodes options to customize the runtime, see docs for configured runtime for details (JSON string)                                                                                  | False    |
+| `secrets`                   | The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider                                                                                  | False    |
+| `max_pending_messages`      | The maximum size of a queue holding pending messages                                                                                                                                               | False    |
+| `max_pending_messages_across_partitions` | The maximum number of pending messages across partitions                                                                                                                              | False    |
+| `use_thread_local_producers` | Whether to use thread local producers                                                                                                                                                             | False    |
+| `batch_builder`             | BatchBuilder provides two types of batch construction methods, DEFAULT and KEY_BASED.                                                                                                              | False    |
+| `compression_type`          | Set the compression type for the producer. By default, message payloads are not compressed. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE                                      | False    |
+| `crypto_key_reader_classname` | The classname for the crypto key reader that can be used to access the keys in the keystore                                                                                                       | False    |
+| `crypto_key_reader_config`  | The config for the crypto key reader that can be used to access the keys in the keystore (JSON string)                                                                                             | False    |
+| `encryption_keys`           | One or more public keys to encrypt data key. It can be used to encrypt data key with multiple keys. (list of strings)                                                                              | False    |
+| `producer_crypto_failure_action` | The desired action if producer fail to encrypt data, one of FAIL, SEND                                                                                                                        | False    |
+| `consumer_crypto_failure_action` | The desired action if consumer fail to decrypt data, one of FAIL, DISCARD, CONSUME                                                                                                            | False    |
 
 ### `pulsar_sink`
 
@@ -654,6 +683,19 @@ resource "pulsar_sink" "sample-sink-1" {
 
   archive = "testdata/pulsar-io/pulsar-io-jdbc-postgres-2.10.4.nar"
   configs = "{\"jdbcUrl\":\"jdbc:clickhouse://localhost:8123/pulsar_clickhouse_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_clickhouse_jdbc_sink\",\"userName\":\"clickhouse\"}"
+
+  // In production, keep the password out of `configs` by referencing it through
+  // the worker's secrets provider instead — see the credential-handling note
+  // under `pulsar_source` (requires a runtime whose secrets provider resolves
+  // `{path, key}` references, e.g. the Kubernetes runtime). Drop `password`
+  // from `configs` and use:
+  //
+  // secrets = jsonencode({
+  //   "password" = {
+  //     "path" = "clickhouse-credentials"
+  //     "key"  = "password"
+  //   }
+  // })
 }
 ```
 
@@ -669,6 +711,7 @@ resource "pulsar_sink" "sample-sink-1" {
 | `input_specs`            | The map of input topics specs                                                                                                                                                                 | False    |
 | `configs`                | User defined configs key/values (JSON string)                                                                                                                                                 | False    |
 | `archive`                | Path to the archive file for the sink. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package | True     |
+| `classname`              | The sink's class name if archive is file-url-path (file://)                                                                                                                                   | False    |
 | `subscription_name`      | Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer                                                                                           | False    |
 | `subscription_position`  | Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest)                                                                          | False    |
 | `cleanup_subscription`   | Whether the subscriptions the functions created/used should be deleted when the functions was deleted                                                                                         | True     |
@@ -682,7 +725,13 @@ resource "pulsar_sink" "sample-sink-1" {
 | `disk_mb`                | The disk that need to be allocated per sink instance (applicable only to Docker runtime)                                                                                                      | False    |
 | `custom_schema_inputs`   | The map of input topics to Schema types or class names (as a JSON string)                                                                                                                     | False    |
 | `custom_serde_inputs`    | The map of input topics to SerDe class names (as a JSON string)                                                                                                                               | False    |
-| `custom_runtime_options` | A string that encodes options to customize the runtime                                                                                                                                        | False    |
+| `custom_runtime_options` | A string that encodes options to customize the runtime (JSON string)                                                                                                                          | False    |
+| `secrets`                | The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider                                                                              | False    |
+| `dead_letter_topic`      | Name of the dead topic where the failing messages will be sent                                                                                                                                | False    |
+| `max_redeliver_count`    | Maximum number of times that a message will be redelivered before being sent to the dead letter topic                                                                                          | False    |
+| `negative_ack_redelivery_delay_ms` | The negative ack message redelivery delay in milliseconds                                                                                                                           | False    |
+| `retain_key_ordering`    | Sink consumes and processes messages in key order                                                                                                                                             | False    |
+| `sink_type`              | The sinks's connector provider                                                                                                                                                                | False    |
 
 ### `pulsar_subscription`
 
