@@ -35,14 +35,11 @@ import (
 
 const DefaultPulsarAPIVersion string = "0" // 0 will automatically match the default api version
 
-// policyBlockOptionalComputedNote documents the Optional+Computed policy blocks on pulsar_namespace:
-// they are always refreshed from the broker, so `terraform import` captures them and out-of-band
-// edits show up as drift, and omitting the block means "not managed by Terraform" rather than
-// "delete it from the broker".
-const policyBlockOptionalComputedNote = "This block is read back from the broker on every refresh, " +
-	"so `terraform import` captures it and changes made outside Terraform are detected. Omitting the " +
-	"block leaves any existing policy in place instead of removing it; to reset the policy, use " +
-	"`pulsar-admin` or set explicit values."
+// namespacePolicyBlockNote documents the Optional+Computed policy blocks on pulsar_namespace.
+const namespacePolicyBlockNote = "During `terraform import`, the provider captures this policy " +
+	"from the broker. Once tracked in Terraform state, refresh detects changes made outside " +
+	"Terraform. Omitting the block leaves the broker policy in place instead of removing it. " +
+	"Use `pulsar-admin` to remove the policy, or configure explicit values to update it."
 
 var descriptions map[string]string
 
@@ -67,15 +64,16 @@ func init() {
 		"max_consumers_per_subscription": "Max number of consumers per subscription",
 		"max_consumers_per_topic":        "Max number of consumers per topic",
 		"message_ttl_seconds":            "Sets the message time to live",
-		"dispatch_rate": "Data transfer rate for all the topics under the given namespace. " +
-			policyBlockOptionalComputedNote,
+		"dispatch_rate":                  "Topic-level data transfer rate for the given topic",
+		"namespace_dispatch_rate": "Data transfer rate for all the topics under the given namespace. " +
+			namespacePolicyBlockNote,
 		"subscription_dispatch_rate": "Data transfer rate for all the subscriptions under the given namespace. " +
-			policyBlockOptionalComputedNote,
+			namespacePolicyBlockNote,
 		"persistence_policy": "Policy for the namespace for data persistence",
 		"persistence_policies": "BookKeeper persistence settings for the topics under the given namespace. " +
-			policyBlockOptionalComputedNote,
+			namespacePolicyBlockNote,
 		"backlog_quota": "Backlog quotas for the topics under the given namespace. " +
-			policyBlockOptionalComputedNote +
+			namespacePolicyBlockNote +
 			" Only the quota types already tracked in state are refreshed, so a quota type configured " +
 			"outside Terraform is left untouched.",
 		"issuer_url":       "The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token",
@@ -89,10 +87,11 @@ func init() {
 	}
 }
 
-// PulsarClientBundle is a struct that holds the pulsar admin client for both v2 and v3 api versions
+// PulsarClientBundle holds the Pulsar admin clients used by provider resources.
 type PulsarClientBundle struct {
-	Client   pulsaradmin.Client
-	V3Client pulsaradmin.Client
+	Client                pulsaradmin.Client
+	V3Client              pulsaradmin.Client
+	NamespacePolicyClient admin.NamespacePolicyClient
 }
 
 // Provider returns a schema.Provider
@@ -262,6 +261,12 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
+	namespacePolicyClient, err := admin.NewNamespacePolicyClient(&admin.PulsarAdminConfig{
+		Config: config,
+	})
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
 
 	configV3 := &adminconfig.Config{
 		WebServiceURL:              clusterURL,
@@ -286,8 +291,9 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 	}
 
 	clientBundle := PulsarClientBundle{
-		Client:   client,
-		V3Client: clientV3,
+		Client:                client,
+		V3Client:              clientV3,
+		NamespacePolicyClient: namespacePolicyClient,
 	}
 
 	return clientBundle, nil

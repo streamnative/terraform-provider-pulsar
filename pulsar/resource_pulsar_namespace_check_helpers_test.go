@@ -179,7 +179,7 @@ func TestSetBacklogQuotaFiltered(t *testing.T) {
 
 	// Import path: empty prior state -> adopt every type.
 	dImport := resourcePulsarNamespace().TestResourceData()
-	setBacklogQuotaFiltered(dImport, quotas)
+	require.NoError(t, setBacklogQuotaFiltered(dImport, quotas))
 	require.Equal(t, 2, dImport.Get("backlog_quota").(*schema.Set).Len())
 
 	// Refresh path: only the tracked type is kept, the out-of-band one is ignored.
@@ -192,10 +192,67 @@ func TestSetBacklogQuotaFiltered(t *testing.T) {
 			"type":          string(utils.DestinationStorage),
 		},
 	})))
-	setBacklogQuotaFiltered(dRefresh, quotas)
+	require.NoError(t, setBacklogQuotaFiltered(dRefresh, quotas))
 
 	kept := dRefresh.Get("backlog_quota").(*schema.Set).List()
 	require.Len(t, kept, 1)
 	require.Equal(t, string(utils.DestinationStorage), kept[0].(map[string]interface{})["type"])
 	require.Equal(t, "10000", kept[0].(map[string]interface{})["limit_bytes"])
+}
+
+func TestRemovedBacklogQuotaTypes(t *testing.T) {
+	t.Parallel()
+
+	quota := func(quotaType utils.BacklogQuotaType, limit string) map[string]interface{} {
+		return map[string]interface{}{
+			"limit_bytes":   limit,
+			"limit_seconds": "-1",
+			"policy":        string(utils.ProducerRequestHold),
+			"type":          quotaType.String(),
+		}
+	}
+
+	tests := []struct {
+		name string
+		old  []interface{}
+		new  []interface{}
+		want []utils.BacklogQuotaType
+	}{
+		{
+			name: "remove message age",
+			old: []interface{}{
+				quota(utils.DestinationStorage, "100"),
+				quota(utils.MessageAge, "-1"),
+			},
+			new:  []interface{}{quota(utils.DestinationStorage, "100")},
+			want: []utils.BacklogQuotaType{utils.MessageAge},
+		},
+		{
+			name: "remove destination storage",
+			old: []interface{}{
+				quota(utils.DestinationStorage, "100"),
+				quota(utils.MessageAge, "-1"),
+			},
+			new:  []interface{}{quota(utils.MessageAge, "-1")},
+			want: []utils.BacklogQuotaType{utils.DestinationStorage},
+		},
+		{
+			name: "value change keeps same type",
+			old:  []interface{}{quota(utils.DestinationStorage, "100")},
+			new:  []interface{}{quota(utils.DestinationStorage, "200")},
+			want: []utils.BacklogQuotaType{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := removedBacklogQuotaTypes(
+				schema.NewSet(hashBacklogQuotaSubset(), tt.old),
+				schema.NewSet(hashBacklogQuotaSubset(), tt.new),
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }

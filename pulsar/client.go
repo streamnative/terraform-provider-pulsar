@@ -19,6 +19,8 @@ package pulsar
 
 import (
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+
+	provideradmin "github.com/streamnative/terraform-provider-pulsar/pkg/admin"
 )
 
 func getClientFromMeta(meta interface{}) admin.Client {
@@ -27,4 +29,8 @@ func getClientFromMeta(meta interface{}) admin.Client {
 
 func getV3ClientFromMeta(meta interface{}) admin.Client {
 	return meta.(PulsarClientBundle).V3Client
+}
+
+func getNamespacePolicyClientFromMeta(meta interface{}) provideradmin.NamespacePolicyClient {
+	return meta.(PulsarClientBundle).NamespacePolicyClient
 }
