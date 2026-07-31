@@ -22,15 +22,15 @@ description: |-
 
 ### Optional
 
-- `backlog_quota` (Block Set) (see [below for nested schema](#nestedblock--backlog_quota))
-- `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace (see [below for nested schema](#nestedblock--dispatch_rate))
+- `backlog_quota` (Block Set) Backlog quotas for the topics under the given namespace. During `terraform import`, the provider captures this policy from the broker. Once tracked in Terraform state, refresh detects changes made outside Terraform. Omitting the block leaves the broker policy in place instead of removing it. Use `pulsar-admin` to remove the policy, or configure explicit values to update it. Only the quota types already tracked in state are refreshed, so a quota type configured outside Terraform is left untouched. (see [below for nested schema](#nestedblock--backlog_quota))
+- `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace. During `terraform import`, the provider captures this policy from the broker. Once tracked in Terraform state, refresh detects changes made outside Terraform. Omitting the block leaves the broker policy in place instead of removing it. Use `pulsar-admin` to remove the policy, or configure explicit values to update it. (see [below for nested schema](#nestedblock--dispatch_rate))
 - `enable_deduplication` (Boolean)
+- `inactive_topic` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--inactive_topic))
 - `namespace_config` (Block List) The namespace configuration (see [below for nested schema](#nestedblock--namespace_config))
 - `permission_grant` (Block Set) Manages permissions within this namespace. **Warning:** Do not use this for roles that are already managed by the standalone pulsar_permission_grant resource, as it will cause conflicts. (see [below for nested schema](#nestedblock--permission_grant))
-- `persistence_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--persistence_policies))
-- `inactive_topic` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--inactive_topic))
+- `persistence_policies` (Block Set, Max: 1) BookKeeper persistence settings for the topics under the given namespace. During `terraform import`, the provider captures this policy from the broker. Once tracked in Terraform state, refresh detects changes made outside Terraform. Omitting the block leaves the broker policy in place instead of removing it. Use `pulsar-admin` to remove the policy, or configure explicit values to update it. (see [below for nested schema](#nestedblock--persistence_policies))
 - `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
-- `subscription_dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the subscriptions under the given namespace (see [below for nested schema](#nestedblock--subscription_dispatch_rate))
+- `subscription_dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the subscriptions under the given namespace. During `terraform import`, the provider captures this policy from the broker. Once tracked in Terraform state, refresh detects changes made outside Terraform. Omitting the block leaves the broker policy in place instead of removing it. Use `pulsar-admin` to remove the policy, or configure explicit values to update it. (see [below for nested schema](#nestedblock--subscription_dispatch_rate))
 - `topic_auto_creation` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--topic_auto_creation))
 
 ### Read-Only
@@ -58,6 +58,16 @@ Required:
 - `rate_period_seconds` (Number)
 
 
+<a id="nestedblock--inactive_topic"></a>
+### Nested Schema for `inactive_topic`
+
+Required:
+
+- `delete_mode` (String) `delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`
+- `enable_delete_while_inactive` (Boolean)
+- `max_inactive_duration` (String)
+
+
 <a id="nestedblock--namespace_config"></a>
 ### Nested Schema for `namespace_config`
 
@@ -72,7 +82,7 @@ Optional:
 - `offload_threshold_size_in_mb` (Number)
 - `replication_clusters` (Set of String)
 - `schema_auto_update_compatibility_strategy` (String) Schema auto-update compatibility strategy. Managed only when explicitly set.
-- `schema_compatibility_strategy` (String) Schema compatibility strategy. Managed only when explicitly set. Use `Undefined` to remove it.
+- `schema_compatibility_strategy` (String) Schema compatibility strategy. Managed only when explicitly set. Use Undefined to remove it.
 - `schema_validation_enforce` (Boolean)
 - `subscription_expiration_time_minutes` (Number) Subscription expiration time in minutes. 0 = never expire, >0 = expire after N minutes. Omit to use broker defaults.
 
@@ -95,16 +105,6 @@ Required:
 - `bookkeeper_ensemble` (Number)
 - `bookkeeper_write_quorum` (Number)
 - `managed_ledger_max_mark_delete_rate` (Number)
-
-
-<a id="nestedblock--inactive_topic"></a>
-### Nested Schema for `inactive_topic`
-
-Required:
-
-- `delete_mode` (String) `delete_when_no_subscriptions` or `delete_when_subscriptions_caught_up`
-- `enable_delete_while_inactive` (Boolean)
-- `max_inactive_duration` (String)
 
 
 <a id="nestedblock--retention_policies"></a>
@@ -137,3 +137,5 @@ Optional:
 
 - `partitions` (Number)
 - `type` (String)
+
+

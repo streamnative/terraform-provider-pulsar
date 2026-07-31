@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -37,6 +38,13 @@ import (
 	"github.com/streamnative/terraform-provider-pulsar/types"
 )
 
+type namespaceReadMode uint8
+
+const (
+	namespaceReadRefresh namespaceReadMode = iota
+	namespaceReadImport
+)
+
 func resourcePulsarNamespace() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourcePulsarNamespaceCreate,
@@ -44,7 +52,7 @@ func resourcePulsarNamespace() *schema.Resource {
 		UpdateContext: resourcePulsarNamespaceUpdate,
 		DeleteContext: resourcePulsarNamespaceDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+			StateContext: func(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				importID := d.Id()
 				ns, err := utils.GetNamespaceName(importID)
 				if err != nil {
@@ -54,7 +62,7 @@ func resourcePulsarNamespace() *schema.Resource {
 				_ = d.Set("tenant", nsParts[0])
 				_ = d.Set("namespace", nsParts[1])
 
-				diags := resourcePulsarNamespaceRead(ctx, d, meta)
+				diags := resourcePulsarNamespaceReadWithMode(d, meta, namespaceReadImport)
 				if diags.HasError() {
 					return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
 				}
@@ -83,9 +91,14 @@ func resourcePulsarNamespace() *schema.Resource {
 				Optional: true,
 			},
 			"dispatch_rate": {
-				Type:        schema.TypeSet,
+				Type: schema.TypeSet,
+				// Optional+Computed: the namespace-level dispatch rate is read back unconditionally, so
+				// `terraform import` captures it and out-of-band changes are detected. Omitting the block
+				// means "not managed here" rather than "must not exist", so a rate configured outside
+				// Terraform is recorded in state without producing drift. See resourcePulsarNamespaceRead.
 				Optional:    true,
-				Description: descriptions["dispatch_rate"],
+				Computed:    true,
+				Description: descriptions["namespace_dispatch_rate"],
 				MaxItems:    1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -106,8 +119,10 @@ func resourcePulsarNamespace() *schema.Resource {
 				Set: dispatchRateToHash,
 			},
 			"subscription_dispatch_rate": {
-				Type:        schema.TypeSet,
+				Type: schema.TypeSet,
+				// Optional+Computed, see "dispatch_rate".
 				Optional:    true,
+				Computed:    true,
 				Description: descriptions["subscription_dispatch_rate"],
 				MaxItems:    1,
 				Elem: &schema.Resource{
@@ -172,10 +187,15 @@ func resourcePulsarNamespace() *schema.Resource {
 				Set: inactiveTopicPoliciesToHash,
 			},
 			"backlog_quota": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem:     schemaBacklogQuotaSubset(),
-				Set:      hashBacklogQuotaSubset(),
+				Type: schema.TypeSet,
+				// Optional+Computed, see "dispatch_rate". Only the quota types already tracked in state
+				// are refreshed, so a quota type set outside Terraform is never adopted mid-life; see
+				// setBacklogQuotaFiltered.
+				Optional:    true,
+				Computed:    true,
+				Description: descriptions["backlog_quota"],
+				Elem:        schemaBacklogQuotaSubset(),
+				Set:         hashBacklogQuotaSubset(),
 			},
 			"namespace_config": {
 				Type:        schema.TypeList,
@@ -269,9 +289,12 @@ func resourcePulsarNamespace() *schema.Resource {
 				},
 			},
 			"persistence_policies": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				MaxItems: 1,
+				Type: schema.TypeSet,
+				// Optional+Computed, see "dispatch_rate".
+				Optional:    true,
+				Computed:    true,
+				Description: descriptions["persistence_policies"],
+				MaxItems:    1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"bookkeeper_ensemble": {
@@ -368,7 +391,19 @@ func resourcePulsarNamespaceCreate(ctx context.Context, d *schema.ResourceData, 
 	return nil
 }
 
-func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourcePulsarNamespaceRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	return resourcePulsarNamespaceReadWithMode(d, meta, namespaceReadRefresh)
+}
+
+// resourcePulsarNamespaceReadWithMode refreshes a namespace into state. Import mode force-hydrates
+// the Optional+Computed policy blocks because an import starts without prior state. Normal refresh
+// only reads blocks already tracked in state/config, preserving the v0.11 least-privilege behavior
+// for namespaces that do not manage these policies.
+func resourcePulsarNamespaceReadWithMode(
+	d *schema.ResourceData,
+	meta interface{},
+	mode namespaceReadMode,
+) diag.Diagnostics {
 	client := getClientFromMeta(meta).Namespaces()
 
 	tenant := d.Get("tenant").(string)
@@ -486,20 +521,30 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		})
 	}
 
-	if persPoliciesCfg, ok := d.GetOk("persistence_policies"); ok && persPoliciesCfg.(*schema.Set).Len() > 0 {
+	if shouldReadNamespacePolicyBlock(d, "persistence_policies", mode) {
 		persistence, err := client.GetPersistence(ns.String())
 		if err != nil {
+			if isAdminNotFoundError(err) {
+				d.SetId("")
+				return nil
+			}
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetPersistence: %w", err))
 		}
 
-		_ = d.Set("persistence_policies", schema.NewSet(persistencePoliciesToHash, []interface{}{
-			map[string]interface{}{
-				"bookkeeper_ensemble":                 persistence.BookkeeperEnsemble,
-				"bookkeeper_write_quorum":             persistence.BookkeeperWriteQuorum,
-				"bookkeeper_ack_quorum":               persistence.BookkeeperAckQuorum,
-				"managed_ledger_max_mark_delete_rate": persistence.ManagedLedgerMaxMarkDeleteRate,
-			},
-		}))
+		persistenceState := emptySet(persistencePoliciesToHash)
+		if isPersistenceConfigured(persistence) {
+			persistenceState = schema.NewSet(persistencePoliciesToHash, []interface{}{
+				map[string]interface{}{
+					"bookkeeper_ensemble":                 persistence.BookkeeperEnsemble,
+					"bookkeeper_write_quorum":             persistence.BookkeeperWriteQuorum,
+					"bookkeeper_ack_quorum":               persistence.BookkeeperAckQuorum,
+					"managed_ledger_max_mark_delete_rate": persistence.ManagedLedgerMaxMarkDeleteRate,
+				},
+			})
+		}
+		if err := d.Set("persistence_policies", persistenceState); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: SetPersistenceState: %w", err))
+		}
 	}
 
 	if retPoliciesCfg, ok := d.GetOk("retention_policies"); ok && retPoliciesCfg.(*schema.Set).Len() > 0 {
@@ -540,54 +585,68 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 		}))
 	}
 
-	if backlogQuotaCfg, ok := d.GetOk("backlog_quota"); ok && backlogQuotaCfg.(*schema.Set).Len() > 0 {
+	if shouldReadNamespacePolicyBlock(d, "backlog_quota", mode) {
 		qt, err := client.GetBacklogQuotaMap(ns.String())
 		if err != nil {
+			if isAdminNotFoundError(err) {
+				d.SetId("")
+				return nil
+			}
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetBacklogQuotaMap: %w", err))
 		}
-
-		var backlogQuotas []interface{}
-		for backlogQuotaType, data := range qt {
-			backlogQuotas = append(backlogQuotas, map[string]interface{}{
-				"limit_bytes":   strconv.FormatInt(data.LimitSize, 10),
-				"limit_seconds": strconv.FormatInt(data.LimitTime, 10),
-				"policy":        string(data.Policy),
-				"type":          string(backlogQuotaType),
-			})
+		if err := setBacklogQuotaFiltered(d, qt); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: SetBacklogQuotaState: %w", err))
 		}
-
-		_ = d.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), backlogQuotas))
 	}
 
-	if dispatchRateCfg, ok := d.GetOk("dispatch_rate"); ok && dispatchRateCfg.(*schema.Set).Len() > 0 {
+	if shouldReadNamespacePolicyBlock(d, "dispatch_rate", mode) {
 		dr, err := client.GetDispatchRate(*ns)
 		if err != nil {
+			if isAdminNotFoundError(err) {
+				d.SetId("")
+				return nil
+			}
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetDispatchRate: %w", err))
 		}
 
-		_ = d.Set("dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
-			map[string]interface{}{
-				"dispatch_msg_throttling_rate":  dr.DispatchThrottlingRateInMsg,
-				"rate_period_seconds":           dr.RatePeriodInSecond,
-				"dispatch_byte_throttling_rate": int(dr.DispatchThrottlingRateInByte),
-			},
-		}))
+		dispatchRateState := emptySet(dispatchRateToHash)
+		if isDispatchRateConfigured(dr) {
+			dispatchRateState = schema.NewSet(dispatchRateToHash, []interface{}{
+				map[string]interface{}{
+					"dispatch_msg_throttling_rate":  dr.DispatchThrottlingRateInMsg,
+					"rate_period_seconds":           dr.RatePeriodInSecond,
+					"dispatch_byte_throttling_rate": int(dr.DispatchThrottlingRateInByte),
+				},
+			})
+		}
+		if err := d.Set("dispatch_rate", dispatchRateState); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: SetDispatchRateState: %w", err))
+		}
 	}
 
-	if subscriptionDispatchRateCfg, ok := d.GetOk("subscription_dispatch_rate"); ok &&
-		subscriptionDispatchRateCfg.(*schema.Set).Len() > 0 {
+	if shouldReadNamespacePolicyBlock(d, "subscription_dispatch_rate", mode) {
 		sdr, err := client.GetSubscriptionDispatchRate(*ns)
 		if err != nil {
+			if isAdminNotFoundError(err) {
+				d.SetId("")
+				return nil
+			}
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetSubscriptionDispatchRate: %w", err))
 		}
 
-		_ = d.Set("subscription_dispatch_rate", schema.NewSet(dispatchRateToHash, []interface{}{
-			map[string]interface{}{
-				"dispatch_msg_throttling_rate":  sdr.DispatchThrottlingRateInMsg,
-				"rate_period_seconds":           sdr.RatePeriodInSecond,
-				"dispatch_byte_throttling_rate": int(sdr.DispatchThrottlingRateInByte),
-			},
-		}))
+		subscriptionDispatchRateState := emptySet(dispatchRateToHash)
+		if isDispatchRateConfigured(sdr) {
+			subscriptionDispatchRateState = schema.NewSet(dispatchRateToHash, []interface{}{
+				map[string]interface{}{
+					"dispatch_msg_throttling_rate":  sdr.DispatchThrottlingRateInMsg,
+					"rate_period_seconds":           sdr.RatePeriodInSecond,
+					"dispatch_byte_throttling_rate": int(sdr.DispatchThrottlingRateInByte),
+				},
+			})
+		}
+		if err := d.Set("subscription_dispatch_rate", subscriptionDispatchRateState); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: SetSubscriptionDispatchRateState: %w", err))
+		}
 	}
 
 	if permissionGrantCfg, ok := d.GetOk("permission_grant"); ok && len(permissionGrantCfg.(*schema.Set).List()) > 0 {
@@ -605,15 +664,21 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetTopicAutoCreation: %w", err))
 		}
 
-		data := map[string]interface{}{
-			"enable": autoCreation.Allow,
-			"type":   autoCreation.Type.String(),
-		}
-		if autoCreation.Partitions != nil {
-			data["partitions"] = *autoCreation.Partitions
-		}
+		// A nil response means the namespace override was removed out-of-band; report it as drift
+		// rather than dereferencing a nil pointer.
+		if autoCreation == nil {
+			_ = d.Set("topic_auto_creation", emptySet(topicAutoCreationPoliciesToHash))
+		} else {
+			data := map[string]interface{}{
+				"enable": autoCreation.Allow,
+				"type":   autoCreation.Type.String(),
+			}
+			if autoCreation.Partitions != nil {
+				data["partitions"] = *autoCreation.Partitions
+			}
 
-		_ = d.Set("topic_auto_creation", schema.NewSet(topicAutoCreationPoliciesToHash, []interface{}{data}))
+			_ = d.Set("topic_auto_creation", schema.NewSet(topicAutoCreationPoliciesToHash, []interface{}{data}))
+		}
 	}
 
 	return nil
@@ -775,7 +840,25 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 	}
 
-	if backlogQuotaConfig.Len() > 0 {
+	if d.HasChange("backlog_quota") && backlogQuotaConfig.Len() > 0 {
+		oldBacklogQuotaConfig, _ := d.GetChange("backlog_quota")
+		oldBacklogQuotaSet, _ := oldBacklogQuotaConfig.(*schema.Set)
+		removedQuotaTypes, err := removedBacklogQuotaTypes(
+			oldBacklogQuotaSet,
+			backlogQuotaConfig,
+		)
+		if err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("removedBacklogQuotaTypes: %w", err))
+		} else {
+			policyClient := getNamespacePolicyClientFromMeta(meta)
+			for _, quotaType := range removedQuotaTypes {
+				if err = policyClient.RemoveBacklogQuotaByType(ctx, nsName.String(), quotaType); err != nil &&
+					!isIgnorableNotFoundError(err) {
+					errs = multierror.Append(errs, fmt.Errorf("RemoveBacklogQuota(%s): %w", quotaType, err))
+				}
+			}
+		}
+
 		backlogQuotas, err := unmarshalBacklogQuota(backlogQuotaConfig)
 		if err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("unmarshalBacklogQuota: %w", err))
@@ -789,21 +872,21 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 	}
 
-	if dispatchRateConfig.Len() > 0 {
+	if d.HasChange("dispatch_rate") && dispatchRateConfig.Len() > 0 {
 		dispatchRate := unmarshalDispatchRate(dispatchRateConfig)
 		if err = client.SetDispatchRate(*nsName, *dispatchRate); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("SetDispatchRate: %w", err))
 		}
 	}
 
-	if subscriptionDispatchRateConfig.Len() > 0 {
+	if d.HasChange("subscription_dispatch_rate") && subscriptionDispatchRateConfig.Len() > 0 {
 		subscriptionDispatchRate := unmarshalDispatchRate(subscriptionDispatchRateConfig)
 		if err = client.SetSubscriptionDispatchRate(*nsName, *subscriptionDispatchRate); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("SetSubscriptionDispatchRate: %w", err))
 		}
 	}
 
-	if persistencePoliciesConfig.Len() > 0 {
+	if d.HasChange("persistence_policies") && persistencePoliciesConfig.Len() > 0 {
 		persistencePolicies := unmarshalPersistencePolicies(persistencePoliciesConfig)
 		if err = client.SetPersistence(nsName.String(), *persistencePolicies); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("SetPersistence: %w", err))
@@ -856,9 +939,15 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 				errs = multierror.Append(errs, fmt.Errorf("SetTopicAutoCreation: %w", err))
 			}
 		}
-	} else { // remove the topicAutoCreation
-		if err = client.RemoveTopicAutoCreation(*nsName); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf("RemoveTopicAutoCreation: %w", err))
+	} else {
+		// Only remove the override when Terraform previously owned it. Removing unconditionally would
+		// wipe an override this resource never managed — e.g. one set by the console or pulsar-admin —
+		// on any unrelated namespace update.
+		oldTopicAutoCreation, _ := d.GetChange("topic_auto_creation")
+		if oldCfg, ok := oldTopicAutoCreation.(*schema.Set); ok && oldCfg.Len() > 0 {
+			if err = client.RemoveTopicAutoCreation(*nsName); err != nil && !isIgnorableNotFoundError(err) {
+				errs = multierror.Append(errs, fmt.Errorf("RemoveTopicAutoCreation: %w", err))
+			}
 		}
 	}
 
@@ -873,6 +962,121 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 func hasInactiveTopicPoliciesConfigured(data interface{}) bool {
 	cfg, ok := data.(*schema.Set)
 	return ok && cfg != nil && cfg.Len() > 0
+}
+
+func shouldReadNamespacePolicyBlock(d *schema.ResourceData, attr string, mode namespaceReadMode) bool {
+	if mode == namespaceReadImport {
+		return true
+	}
+
+	value, ok := d.GetOk(attr)
+	if !ok {
+		return false
+	}
+	configured, ok := value.(*schema.Set)
+	return ok && configured.Len() > 0
+}
+
+// emptySet returns an empty set for the given hash function, used to clear an Optional+Computed
+// block when the server reports the policy as unset.
+func emptySet(f schema.SchemaSetFunc) *schema.Set {
+	return schema.NewSet(f, []interface{}{})
+}
+
+// isDispatchRateConfigured reports whether a dispatch rate returned by the admin API represents an
+// explicitly configured policy rather than an unset/zero-value default.
+//
+// Pulsar answers 404 for an unconfigured namespace dispatch rate, which the caller handles; this
+// guards the other shape seen in the wild, where the endpoint answers 200 with an empty or null body
+// and the client decodes it into a zero value. A configured rate always carries a rate period of at
+// least one second, while -1 msg/byte is a legitimate "unlimited" value that must be preserved.
+func isDispatchRateConfigured(rate utils.DispatchRate) bool {
+	return rate.RatePeriodInSecond != 0
+}
+
+// isPersistenceConfigured reports whether a persistence policy is explicitly configured. The admin
+// API returns a nil pointer for an unset policy (empty body) and, on some brokers, a non-nil
+// zero-value struct for a literal JSON null; a real BookKeeper ensemble size is always >= 1, so an
+// all-zero struct can only be a default/unset sentinel.
+func isPersistenceConfigured(p *utils.PersistencePolicies) bool {
+	return p != nil && p.BookkeeperEnsemble != 0
+}
+
+// setBacklogQuotaFiltered writes the namespace backlog quota map into state.
+//
+// backlog_quota is non-authoritative, like permission_grant: only quota types already tracked in
+// state are refreshed, so a type configured out-of-band is not adopted or deleted. A fresh import
+// has no tracked types and adopts every type returned by the broker.
+func setBacklogQuotaFiltered(
+	d *schema.ResourceData,
+	quotas map[utils.BacklogQuotaType]utils.BacklogQuota,
+) error {
+	managedTypes := make(map[string]bool)
+	for _, quota := range d.Get("backlog_quota").(*schema.Set).List() {
+		managedTypes[quota.(map[string]interface{})["type"].(string)] = true
+	}
+	adoptAll := len(managedTypes) == 0
+
+	backlogQuotas := []interface{}{}
+	for backlogQuotaType, data := range quotas {
+		if !adoptAll && !managedTypes[string(backlogQuotaType)] {
+			continue
+		}
+		backlogQuotas = append(backlogQuotas, map[string]interface{}{
+			"limit_bytes":   strconv.FormatInt(data.LimitSize, 10),
+			"limit_seconds": strconv.FormatInt(data.LimitTime, 10),
+			"policy":        string(data.Policy),
+			"type":          string(backlogQuotaType),
+		})
+	}
+
+	return d.Set("backlog_quota", schema.NewSet(hashBacklogQuotaSubset(), backlogQuotas))
+}
+
+func removedBacklogQuotaTypes(oldQuotas, newQuotas *schema.Set) ([]utils.BacklogQuotaType, error) {
+	oldTypes, err := backlogQuotaTypes(oldQuotas)
+	if err != nil {
+		return nil, err
+	}
+	newTypes, err := backlogQuotaTypes(newQuotas)
+	if err != nil {
+		return nil, err
+	}
+
+	removed := make([]utils.BacklogQuotaType, 0)
+	for quotaType := range oldTypes {
+		if _, ok := newTypes[quotaType]; !ok {
+			removed = append(removed, quotaType)
+		}
+	}
+	sort.Slice(removed, func(i, j int) bool {
+		return removed[i].String() < removed[j].String()
+	})
+	return removed, nil
+}
+
+func backlogQuotaTypes(quotas *schema.Set) (map[utils.BacklogQuotaType]struct{}, error) {
+	types := make(map[utils.BacklogQuotaType]struct{})
+	if quotas == nil {
+		return types, nil
+	}
+
+	for _, quota := range quotas.List() {
+		data, ok := quota.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("unexpected backlog quota value %T", quota)
+		}
+		quotaTypeValue, ok := data["type"].(string)
+		if !ok {
+			return nil, fmt.Errorf("unexpected backlog quota type value %T", data["type"])
+		}
+		quotaType, err := utils.ParseBacklogQuotaType(quotaTypeValue)
+		if err != nil {
+			return nil, err
+		}
+		types[quotaType] = struct{}{}
+	}
+	return types, nil
 }
 
 func policyNullableIntToStateValue(value *int) int {
@@ -894,6 +1098,19 @@ func isIgnorableNotFoundError(err error) bool {
 	}
 
 	return strings.Contains(err.Error(), "404") || strings.Contains(strings.ToLower(err.Error()), "not found")
+}
+
+// Supported Pulsar versions report an unset namespace policy as success: 2.10 uses 204 for
+// persistence/dispatch and an empty backlog map, while 3.x/4.x use 200 with an empty or null body.
+// After GetNamespaces has confirmed the namespace exists, a typed 404 from a policy endpoint means
+// it disappeared during the refresh race, so the resource ID must be cleared.
+func isAdminNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var adminErr rest.Error
+	return errors.As(err, &adminErr) && adminErr.Code == 404
 }
 
 func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
