@@ -698,8 +698,13 @@ func testNamespaceImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 13 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 13, len(s[0].Attributes), s[0].Attributes)
+		attrs := s[0].Attributes
+		if len(attrs) != 14 {
+			return fmt.Errorf("expected %d attrs, got %d: %#v", 14, len(attrs), attrs)
+		}
+
+		if got := attrs[backlogQuotaManagedTypesStateAttr+".#"]; got != "0" {
+			return fmt.Errorf("expected imported backlog quota ownership to be empty, got %q", got)
 		}
 
 		return nil
