@@ -1,0 +1,43 @@
+{
+  "version": 4,
+  "terraform_version": "1.2.7",
+  "serial": 1,
+  "lineage": "11111111-1111-1111-1111-111111111111",
+  "outputs": {},
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "pulsar_namespace",
+      "name": "test",
+      "provider": "provider[\"registry.terraform.io/streamnative/pulsar\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "tenant/namespace",
+            "tenant": "tenant",
+            "namespace": "namespace",
+            "namespace_config": [
+              {
+                "anti_affinity": "group-a",
+                "is_allow_auto_update_schema": true,
+                "max_consumers_per_subscription": -1,
+                "max_consumers_per_topic": -1,
+                "max_producers_per_topic": -1,
+                "message_ttl_seconds": -1,
+                "offload_threshold_size_in_mb": -1,
+                "replication_clusters": [],
+                "schema_compatibility_strategy": null,
+                "schema_auto_update_compatibility_strategy": null,
+                "schema_validation_enforce": false,
+                "subscription_expiration_time_minutes": -1
+              }
+            ]
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}
