@@ -7,6 +7,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/stretchr/testify/require"
 )
@@ -255,4 +256,175 @@ func TestRemovedBacklogQuotaTypes(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestBacklogQuotaPlannedSetForOwnership(t *testing.T) {
+	t.Parallel()
+
+	destination := testBacklogQuotaValue(utils.DestinationStorage, "100")
+	destinationUpdated := testBacklogQuotaValue(utils.DestinationStorage, "200")
+	messageAge := testBacklogQuotaValue(utils.MessageAge, "-1")
+	oldQuotas := schema.NewSet(hashBacklogQuotaSubset(), []interface{}{destination, messageAge})
+
+	tests := []struct {
+		name           string
+		rawState       cty.Value
+		newQuotas      *schema.Set
+		wantOverride   bool
+		wantQuotaTypes []utils.BacklogQuotaType
+		wantDestLimit  string
+	}{
+		{
+			name:           "fresh import preserves unconfigured type",
+			rawState:       testBacklogQuotaOwnershipRawState(),
+			newQuotas:      schema.NewSet(hashBacklogQuotaSubset(), []interface{}{destination}),
+			wantOverride:   true,
+			wantQuotaTypes: []utils.BacklogQuotaType{utils.DestinationStorage, utils.MessageAge},
+			wantDestLimit:  "100",
+		},
+		{
+			name: "managed type removal remains authoritative",
+			rawState: testBacklogQuotaOwnershipRawState(
+				utils.DestinationStorage,
+				utils.MessageAge,
+			),
+			newQuotas:      schema.NewSet(hashBacklogQuotaSubset(), []interface{}{destination}),
+			wantOverride:   false,
+			wantQuotaTypes: []utils.BacklogQuotaType{utils.DestinationStorage},
+			wantDestLimit:  "100",
+		},
+		{
+			name:           "legacy state without metadata preserves all unproven types",
+			rawState:       cty.ObjectVal(map[string]cty.Value{}),
+			newQuotas:      schema.NewSet(hashBacklogQuotaSubset(), []interface{}{destination}),
+			wantOverride:   true,
+			wantQuotaTypes: []utils.BacklogQuotaType{utils.DestinationStorage, utils.MessageAge},
+			wantDestLimit:  "100",
+		},
+		{
+			name:           "configured value replaces imported value without adopting extra type",
+			rawState:       testBacklogQuotaOwnershipRawState(),
+			newQuotas:      schema.NewSet(hashBacklogQuotaSubset(), []interface{}{destinationUpdated}),
+			wantOverride:   true,
+			wantQuotaTypes: []utils.BacklogQuotaType{utils.DestinationStorage, utils.MessageAge},
+			wantDestLimit:  "200",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			configuredQuota := tt.newQuotas.List()[0].(map[string]interface{})
+
+			planned, changed, err := backlogQuotaPlannedSetForOwnership(
+				testBacklogQuotaRawConfig(configuredQuota),
+				tt.rawState,
+				oldQuotas,
+				tt.newQuotas,
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantOverride, changed)
+			if !changed {
+				planned = tt.newQuotas
+			}
+
+			types, err := backlogQuotaTypes(planned)
+			require.NoError(t, err)
+			require.Len(t, types, len(tt.wantQuotaTypes))
+			for _, quotaType := range tt.wantQuotaTypes {
+				require.Contains(t, types, quotaType)
+			}
+
+			for _, quota := range planned.List() {
+				data := quota.(map[string]interface{})
+				if data["type"] == utils.DestinationStorage.String() {
+					require.Equal(t, tt.wantDestLimit, data["limit_bytes"])
+				}
+			}
+		})
+	}
+}
+
+func TestRemovedManagedBacklogQuotaTypes(t *testing.T) {
+	t.Parallel()
+
+	oldQuotas := schema.NewSet(hashBacklogQuotaSubset(), []interface{}{
+		testBacklogQuotaValue(utils.DestinationStorage, "100"),
+		testBacklogQuotaValue(utils.MessageAge, "-1"),
+	})
+	newQuotas := schema.NewSet(hashBacklogQuotaSubset(), []interface{}{
+		testBacklogQuotaValue(utils.DestinationStorage, "100"),
+	})
+
+	removed, err := removedManagedBacklogQuotaTypes(
+		oldQuotas,
+		newQuotas,
+		testBacklogQuotaOwnershipRawState(utils.MessageAge),
+	)
+	require.NoError(t, err)
+	require.Equal(t, []utils.BacklogQuotaType{utils.MessageAge}, removed)
+
+	removed, err = removedManagedBacklogQuotaTypes(
+		oldQuotas,
+		newQuotas,
+		cty.ObjectVal(map[string]cty.Value{}),
+	)
+	require.NoError(t, err)
+	require.Empty(t, removed)
+}
+
+func TestInitializeBacklogQuotaManagedTypesStateDefaultsLegacyStateToEmpty(t *testing.T) {
+	t.Parallel()
+
+	d := resourcePulsarNamespace().TestResourceData()
+	d.SetId("tenant/namespace")
+	require.NoError(t, initializeBacklogQuotaManagedTypesState(d))
+
+	state := d.State()
+	require.NotNil(t, state)
+	require.Equal(t, "0", state.Attributes[backlogQuotaManagedTypesStateAttr+".#"])
+}
+
+func testBacklogQuotaValue(quotaType utils.BacklogQuotaType, limitBytes string) map[string]interface{} {
+	limitSeconds := "-1"
+	policy := utils.ProducerRequestHold
+	if quotaType == utils.MessageAge {
+		limitSeconds = "3600"
+		policy = utils.ConsumerBacklogEviction
+	}
+	return map[string]interface{}{
+		"limit_bytes":   limitBytes,
+		"limit_seconds": limitSeconds,
+		"policy":        policy.String(),
+		"type":          quotaType.String(),
+	}
+}
+
+func testBacklogQuotaRawConfig(quotas ...map[string]interface{}) cty.Value {
+	values := make([]cty.Value, 0, len(quotas))
+	for _, quota := range quotas {
+		values = append(values, cty.ObjectVal(map[string]cty.Value{
+			"limit_bytes":   cty.StringVal(quota["limit_bytes"].(string)),
+			"limit_seconds": cty.StringVal(quota["limit_seconds"].(string)),
+			"policy":        cty.StringVal(quota["policy"].(string)),
+			"type":          cty.StringVal(quota["type"].(string)),
+		}))
+	}
+	return cty.ObjectVal(map[string]cty.Value{
+		"backlog_quota": cty.SetVal(values),
+	})
+}
+
+func testBacklogQuotaOwnershipRawState(managed ...utils.BacklogQuotaType) cty.Value {
+	values := make([]cty.Value, 0, len(managed))
+	for _, quotaType := range managed {
+		values = append(values, cty.StringVal(quotaType.String()))
+	}
+	managedTypes := cty.SetValEmpty(cty.String)
+	if len(values) > 0 {
+		managedTypes = cty.SetVal(values)
+	}
+	return cty.ObjectVal(map[string]cty.Value{
+		backlogQuotaManagedTypesStateAttr: managedTypes,
+	})
 }

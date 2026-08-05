@@ -22,7 +22,7 @@ description: |-
 
 ### Optional
 
-- `backlog_quota` (Block Set) Backlog quotas for the topics under the given namespace. During `terraform import`, the provider captures this policy from the broker. Once tracked in Terraform state, refresh detects changes made outside Terraform. Omitting the block leaves the broker policy in place instead of removing it. Use `pulsar-admin` to remove the policy, or configure explicit values to update it. Only the quota types already tracked in state are refreshed, so a quota type configured outside Terraform is left untouched. (see [below for nested schema](#nestedblock--backlog_quota))
+- `backlog_quota` (Block Set) Backlog quotas for the topics under the given namespace. During `terraform import`, the provider captures this policy from the broker. Once tracked in Terraform state, refresh detects changes made outside Terraform. Omitting the block leaves the broker policy in place instead of removing it. Use `pulsar-admin` to remove the policy, or configure explicit values to update it. Only the quota types already tracked in state are refreshed, so a quota type configured outside Terraform is left untouched. A quota type hydrated only by import or legacy state is preserved when configuration declares a subset; per-type removal applies only after Terraform has persisted explicit ownership during a prior resource change. (see [below for nested schema](#nestedblock--backlog_quota))
 - `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace. During `terraform import`, the provider captures this policy from the broker. Once tracked in Terraform state, refresh detects changes made outside Terraform. Omitting the block leaves the broker policy in place instead of removing it. Use `pulsar-admin` to remove the policy, or configure explicit values to update it. (see [below for nested schema](#nestedblock--dispatch_rate))
 - `enable_deduplication` (Boolean)
 - `inactive_topic` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--inactive_topic))
@@ -35,6 +35,7 @@ description: |-
 
 ### Read-Only
 
+- `_backlog_quota_managed_types` (Set of String) Internal state tracking backlog quota types explicitly configured when Terraform last applied a resource change.
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--backlog_quota"></a>
