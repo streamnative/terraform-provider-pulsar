@@ -27,10 +27,129 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// fakeNamespaces is a minimal admin.Namespaces implementation for unit tests.
+// It embeds the interface so unimplemented methods compile (calling any of them
+// would panic, which these tests never do) and overrides only GetNamespaces.
+type fakeNamespaces struct {
+	admin.Namespaces
+	namespaces []string
+	err        error
+	gotTenant  string
+	called     bool
+}
+
+func (f *fakeNamespaces) GetNamespaces(tenant string) ([]string, error) {
+	f.called = true
+	f.gotTenant = tenant
+	return f.namespaces, f.err
+}
+
+// fakeAdminClient embeds admin.Client and returns a canned Namespaces impl.
+type fakeAdminClient struct {
+	admin.Client
+	ns *fakeNamespaces
+}
+
+func (f *fakeAdminClient) Namespaces() admin.Namespaces {
+	return f.ns
+}
+
+func TestVerifyGrantNamespaceExists(t *testing.T) {
+	tests := []struct {
+		name          string
+		namespace     string
+		topic         string
+		nsList        []string
+		nsErr         error
+		wantErr       bool
+		wantErrSubstr string
+		wantTenant    string // expected tenant passed to GetNamespaces ("" = not called)
+	}{
+		{
+			name:       "namespace exists",
+			namespace:  "my-tenant/my-ns",
+			nsList:     []string{"my-tenant/my-ns", "my-tenant/other"},
+			wantErr:    false,
+			wantTenant: "my-tenant",
+		},
+		{
+			name:          "namespace missing",
+			namespace:     "my-tenant/missing",
+			nsList:        []string{"my-tenant/other"},
+			wantErr:       true,
+			wantErrSubstr: `namespace "my-tenant/missing" does not exist`,
+			wantTenant:    "my-tenant",
+		},
+		{
+			name:       "topic namespace exists",
+			topic:      "persistent://my-tenant/my-ns/my-topic",
+			nsList:     []string{"my-tenant/my-ns"},
+			wantErr:    false,
+			wantTenant: "my-tenant",
+		},
+		{
+			name:          "topic namespace missing",
+			topic:         "persistent://my-tenant/missing/my-topic",
+			nsList:        []string{"my-tenant/my-ns"},
+			wantErr:       true,
+			wantErrSubstr: `namespace "my-tenant/missing" does not exist`,
+			wantTenant:    "my-tenant",
+		},
+		{
+			name:       "listing error is skipped (tenant missing / network)",
+			namespace:  "my-tenant/my-ns",
+			nsErr:      rest.Error{Code: http.StatusNotFound, Reason: "Tenant does not exist"},
+			wantErr:    false,
+			wantTenant: "my-tenant",
+		},
+		{
+			name:       "malformed namespace is skipped",
+			namespace:  "not-a-valid-namespace",
+			wantErr:    false,
+			wantTenant: "", // GetNamespaces never reached
+		},
+		{
+			name:       "malformed topic is skipped",
+			topic:      "a/b", // 2-segment short name is rejected by GetTopicName
+			wantErr:    false,
+			wantTenant: "",
+		},
+		{
+			name:       "neither namespace nor topic is skipped",
+			wantErr:    false,
+			wantTenant: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns := &fakeNamespaces{namespaces: tt.nsList, err: tt.nsErr}
+			client := &fakeAdminClient{ns: ns}
+
+			err := verifyGrantNamespaceExists(client, tt.namespace, tt.topic)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrSubstr)
+			} else {
+				require.NoError(t, err)
+			}
+
+			if tt.wantTenant == "" {
+				assert.False(t, ns.called, "GetNamespaces should not have been called")
+			} else {
+				assert.True(t, ns.called, "GetNamespaces should have been called")
+				assert.Equal(t, tt.wantTenant, ns.gotTenant)
+			}
+		})
+	}
+}
 
 // TestGetPermissionLock_SameKeyReturnsSamePointer verifies that repeated calls
 // with the same key return the identical *sync.Mutex.

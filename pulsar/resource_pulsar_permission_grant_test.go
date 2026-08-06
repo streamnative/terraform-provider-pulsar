@@ -712,3 +712,93 @@ resource "pulsar_permission_grant" "test" {
 }
 `, wsURL, role)
 }
+
+// TestPermissionGrantNamespaceDoesNotExist verifies that the plan fails when a
+// grant references a namespace that does not exist under an existing tenant —
+// exactly the misconfiguration that previously only surfaced as a 404 at apply
+// time.
+//
+// The test is intentionally two steps. The plan-time check deliberately skips
+// when the tenant's namespace listing fails (e.g. the tenant does not exist yet
+// during a fresh apply), so the tenant must be created first. Step 1 provisions
+// only the cluster and tenant; step 2 introduces the grant against a namespace
+// that is never declared, so the listing succeeds and provably lacks it.
+func TestPermissionGrantNamespaceDoesNotExist(t *testing.T) {
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// Create the tenant (and cluster) so the namespace listing succeeds later.
+				Config: testPulsarPermissionGrantTenantOnly(testWebServiceURL, cName, tName),
+			},
+			{
+				// Add a grant referencing a namespace that was never created.
+				Config: testPulsarPermissionGrantMissingNamespace(
+					testWebServiceURL, cName, tName, nsName, roleName),
+				ExpectError: regexp.MustCompile(`namespace .* does not exist`),
+			},
+		},
+	})
+}
+
+func testPulsarPermissionGrantTenantOnly(wsURL, cluster, tenant string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+    web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+    cluster = "%s"
+
+    cluster_data {
+        web_service_url    = "http://localhost:8080"
+        broker_service_url = "pulsar://localhost:6050"
+        peer_clusters      = ["standalone"]
+    }
+}
+
+resource "pulsar_tenant" "test_tenant" {
+    tenant           = "%s"
+    allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+`, wsURL, cluster, tenant)
+}
+
+// testPulsarPermissionGrantMissingNamespace keeps the cluster and tenant from the
+// previous step and adds a permission grant referencing a namespace under that
+// tenant that is never declared. The tenant's namespace listing succeeds and
+// does not contain the referenced namespace, so the plan-time check must fail.
+func testPulsarPermissionGrantMissingNamespace(wsURL, cluster, tenant, namespace, role string) string {
+	return fmt.Sprintf(`
+provider "pulsar" {
+    web_service_url = "%s"
+}
+
+resource "pulsar_cluster" "test_cluster" {
+    cluster = "%s"
+
+    cluster_data {
+        web_service_url    = "http://localhost:8080"
+        broker_service_url = "pulsar://localhost:6050"
+        peer_clusters      = ["standalone"]
+    }
+}
+
+resource "pulsar_tenant" "test_tenant" {
+    tenant           = "%s"
+    allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+}
+
+resource "pulsar_permission_grant" "test" {
+    namespace = "${pulsar_tenant.test_tenant.tenant}/%s"
+    role      = "%s"
+    actions   = ["produce", "consume"]
+}
+`, wsURL, cluster, tenant, namespace, role)
+}
