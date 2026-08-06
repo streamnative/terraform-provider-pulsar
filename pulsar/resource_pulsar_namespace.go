@@ -403,9 +403,10 @@ func resourcePulsarNamespace() *schema.Resource {
 	}
 }
 
-// pulsarNamespaceStateTypeV0 is the frozen state shape emitted through v0.11.
-// Keep it independent from the current schema so future schema changes cannot
-// break decoding of legacy flatmap states.
+// pulsarNamespaceStateTypeV0 is the frozen schema-version 0 state shape.
+// It covers v0.11 state, where ownership metadata is absent, and v0.12.0-rc.3
+// state, where it may be populated. Keep it independent from the current schema
+// so future changes cannot break decoding of legacy flatmap states.
 func pulsarNamespaceStateTypeV0() cty.Type {
 	dispatchRateType := cty.Set(cty.Object(map[string]cty.Type{
 		"dispatch_byte_throttling_rate": cty.Number,
@@ -414,6 +415,7 @@ func pulsarNamespaceStateTypeV0() cty.Type {
 	}))
 
 	return cty.Object(map[string]cty.Type{
+		backlogQuotaManagedTypesStateAttr: cty.Set(cty.String),
 		"backlog_quota": cty.Set(cty.Object(map[string]cty.Type{
 			"limit_bytes":   cty.String,
 			"limit_seconds": cty.String,
