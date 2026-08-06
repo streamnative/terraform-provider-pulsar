@@ -127,7 +127,7 @@ func init() {
 		resourceFunctionParallelismKey:          "The parallelism of the function.",
 		resourceFunctionProcessingGuaranteesKey: "The processing guarantees (aka delivery semantics) applied to the function. Possible values are `ATMOST_ONCE`, `ATLEAST_ONCE`, and `EFFECTIVELY_ONCE`.",
 		resourceFunctionSubscriptionNameKey:     "The subscription name of the function.",
-		resourceFunctionSubscriptionPositionKey: "The subscription position of the function. Possible values are `LATEST`, `EARLIEST`, and `CUSTOM`.",
+		resourceFunctionSubscriptionPositionKey: "The subscription position. Supported values: `Latest`, `Earliest`.",
 		resourceFunctionCleanupSubscriptionKey:  "Whether to clean up subscription when the function is deleted.",
 		resourceFunctionSkipToLatestKey:         "Whether to skip to the latest position when the function is restarted after failure.",
 		resourceFunctionForwardSourceMessageKey: "Whether to forward source message property to the function output message.",
@@ -162,6 +162,7 @@ func resourcePulsarFunction() *schema.Resource {
 		ReadContext:   resourcePulsarFunctionRead,
 		UpdateContext: resourcePulsarFunctionUpdate,
 		DeleteContext: resourcePulsarFunctionDelete,
+		Description:   "Manages Pulsar Functions through the Functions Worker API.",
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				id := d.Id()

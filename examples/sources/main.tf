@@ -18,8 +18,7 @@
 terraform {
   required_providers {
     pulsar = {
-      version = "0.1.3"
-      source = "registry.terraform.io/apache/pulsar"
+      source = "streamnative/pulsar"
     }
   }
 }
@@ -28,22 +27,16 @@ provider "pulsar" {
   web_service_url = "http://localhost:8080"
 }
 
-resource "pulsar_source" "source-1" {
-  provider = pulsar
-
-  name = "source-1"
-  tenant = "public"
+resource "pulsar_source" "example" {
+  tenant    = "public"
   namespace = "default"
+  name      = "file-source"
 
-  archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-file-2.10.4.nar"
+  # Replace with an existing local archive or supported HTTP(S)/package URL.
+  archive                = "/path/to/pulsar-io-file.nar"
+  destination_topic_name = "persistent://public/default/source-output"
 
-  destination_topic_name = "source-1-topic"
-
-  processing_guarantees = "EFFECTIVELY_ONCE"
-
-  configs = "{\"inputDirectory\":\"opt\"}"
-
-  cpu = 2
-  disk_mb = 20480
-  ram_mb = 2048
+  configs = jsonencode({
+    inputDirectory = "/data/input"
+  })
 }

@@ -18,8 +18,7 @@
 terraform {
   required_providers {
     pulsar = {
-      version = "0.1.3"
-      source = "registry.terraform.io/apache/pulsar"
+      source = "streamnative/pulsar"
     }
   }
 }
@@ -28,47 +27,17 @@ provider "pulsar" {
   web_service_url = "http://localhost:8080"
 }
 
-// Note: function resource requires v3 api.
-resource "pulsar_function" "function-1" {
-  provider = pulsar
-
-  name = "function1"
-  tenant = "public"
+resource "pulsar_function" "example" {
+  tenant    = "public"
   namespace = "default"
-  parallelism = 1
+  name      = "word-count"
 
+  # Replace with an existing local archive or supported HTTP(S)/package URL.
+  jar       = "/path/to/function.jar"
+  classname = "org.example.WordCountFunction"
+
+  inputs                = ["public/default/input"]
+  output                = "public/default/output"
   processing_guarantees = "ATLEAST_ONCE"
-
-  jar = "/Downloads/apache-pulsar-2.10.1/examples/api-examples.jar"
-  classname = "org.apache.pulsar.functions.api.examples.WordCountFunction"
-
-  inputs = ["public/default/input1", "public/default/input2"]
-
-  output = "public/default/test-out"
-
-  subscription_name = "test-sub"
-  subscription_position = "Latest"
-  cleanup_subscription = true
-  skip_to_latest = true
-  forward_source_message_property = true
-  retain_key_ordering = true
-  auto_ack = true
-  max_message_retries = 101
-  dead_letter_topic = "public/default/dlt"
-  log_topic = "public/default/lt"
-  timeout_ms = 6666
-
-  secrets = jsonencode(
-  {
-    "SECRET1": {
-       "path": "sectest"
-       "key": "hello"
-    }
-  })
-  custom_runtime_options = jsonencode(
-  {
-      "env": {
-          "HELLO": "WORLD"
-      }
-  })
+  parallelism           = 1
 }

@@ -36,27 +36,28 @@ import (
 const DefaultPulsarAPIVersion string = "0" // 0 will automatically match the default api version
 
 // namespacePolicyBlockNote documents the Optional+Computed policy blocks on pulsar_namespace.
-const namespacePolicyBlockNote = "During `terraform import`, the provider captures this policy " +
-	"from the broker. Once tracked in Terraform state, refresh detects changes made outside " +
-	"Terraform. Omitting the block leaves the broker policy in place instead of removing it. " +
-	"Use `pulsar-admin` to remove the policy, or configure explicit values to update it."
+const namespacePolicyBlockNote = "During `terraform import`, the provider records the broker policy. " +
+	"Omitting the block preserves that policy; configure the block to update it."
 
 var descriptions map[string]string
 
 func init() {
 	//nolint:lll
 	descriptions = map[string]string{
-		"web_service_url":                "Web service url is used to connect to your apache pulsar cluster",
-		"token":                          "Authentication Token used to grant terraform permissions to modify Apace Pulsar Entities",
-		"api_version":                    "Api Version to be used for the pulsar admin interaction",
+		"web_service_url":                "Pulsar admin REST endpoint. Defaults to `http://localhost:8080`.",
+		"token":                          "Bearer token for Pulsar authentication.",
+		"api_version":                    "Pulsar admin API version. `0` selects the provider default.",
 		"tls_trust_certs_file_path":      "Path to a custom trusted TLS certificate file",
 		"tls_key_file_path":              "Path to the key to use when using TLS client authentication",
 		"tls_cert_file_path":             "Path to the cert to use when using TLS client authentication",
-		"tls_allow_insecure_connection":  "Boolean flag to accept untrusted TLS certificates",
+		"tls_allow_insecure_connection":  "Disables TLS certificate verification; use only for testing.",
 		"admin_roles":                    "Admin roles to be attached to tenant",
 		"allowed_clusters":               "Tenant will be able to interact with these clusters",
 		"namespace":                      "Pulsar namespaces are logical groupings of topics",
 		"tenant":                         "An administrative unit for allocating capacity and enforcing an authentication/authorization scheme",
+		"topic_name":                     "Topic name.",
+		"topic_type":                     "Topic domain: `persistent` or `non-persistent`.",
+		"partitions":                     "Partition count. Use `0` for a non-partitioned topic.",
 		"namespace_list":                 "List of namespaces for a given tenant",
 		"enable_duplication":             "ensures that each message produced on Pulsar topics is persisted to disk only once, even if the message is produced more than once",
 		"encrypt_topics":                 "encrypt messages at the producer and decrypt at the consumer",
@@ -72,12 +73,9 @@ func init() {
 		"persistence_policy": "Policy for the namespace for data persistence",
 		"persistence_policies": "BookKeeper persistence settings for the topics under the given namespace. " +
 			namespacePolicyBlockNote,
-		"backlog_quota": "Backlog quotas for the topics under the given namespace. " +
-			namespacePolicyBlockNote +
-			" Only the quota types already tracked in state are refreshed, so a quota type configured " +
-			"outside Terraform is left untouched. A quota type hydrated only by import or legacy state " +
-			"is preserved when configuration declares a subset; per-type removal applies only after " +
-			"Terraform has persisted explicit ownership during a prior resource change.",
+		"backlog_quota": "Manages configured backlog quota types. During `terraform import`, broker values " +
+			"are recorded without claiming ownership. Terraform leaves unowned types unchanged and removes only " +
+			"types it previously applied.",
 		"issuer_url":       "The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token",
 		"audience":         "The OAuth 2.0 resource server identifier for the Pulsar cluster",
 		"client_id":        "The OAuth 2.0 client identifier",

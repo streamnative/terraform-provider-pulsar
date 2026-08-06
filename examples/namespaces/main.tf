@@ -18,60 +18,29 @@
 terraform {
   required_providers {
     pulsar = {
-      version = "0.1.3"
-      source  = "registry.terraform.io/streamnative/pulsar"
+      source = "streamnative/pulsar"
     }
   }
 }
 
-provider "pulsar" {}
-
-resource "pulsar_cluster" "test_cluster" {
-  cluster = "skrulls"
-
-  cluster_data {
-    web_service_url    = "http://localhost:8080"
-    broker_service_url = "pulsar://localhost:6050"
-    peer_clusters = [
-    "standalone"]
-  }
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
 }
 
-resource "pulsar_tenant" "test_tenant" {
-  tenant = "thanos"
-  allowed_clusters = [
-    pulsar_cluster.test_cluster.cluster,
-  "standalone"]
-}
-
-resource "pulsar_namespace" "test" {
-  tenant    = pulsar_tenant.test_tenant.tenant
-  namespace = "eternals"
+resource "pulsar_namespace" "example" {
+  tenant    = "public"
+  namespace = "terraform-example"
 
   namespace_config {
-    anti_affinity                        = "anti-aff"
-    max_consumers_per_subscription       = "50"
-    max_consumers_per_topic              = "50"
-    max_producers_per_topic              = "50"
-    message_ttl_seconds                  = "86400"
-    replication_clusters                 = ["standalone"]
-    subscription_expiration_time_minutes = 90
-  }
-
-  dispatch_rate {
-    dispatch_msg_throttling_rate  = 50
-    rate_period_seconds           = 50
-    dispatch_byte_throttling_rate = 2048
-  }
-
-  retention_policies {
-    retention_minutes    = "1600"
-    retention_size_in_mb = "10000"
+    max_producers_per_topic = 50
+    replication_clusters    = ["standalone"]
   }
 
   backlog_quota {
-    limit_bytes = "10000000000"
-    policy      = "producer_request_hold"
+    limit_bytes   = "10000000000"
+    limit_seconds = "-1"
+    policy        = "producer_request_hold"
+    type          = "destination_storage"
   }
 
   topic_auto_creation {

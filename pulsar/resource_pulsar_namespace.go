@@ -62,6 +62,15 @@ func resourcePulsarNamespace() *schema.Resource {
 		UpdateContext: resourcePulsarNamespaceUpdate,
 		DeleteContext: resourcePulsarNamespaceDelete,
 		CustomizeDiff: resourcePulsarNamespaceCustomizeDiff,
+		Description:   "Manages Pulsar namespaces and namespace-level policies.",
+		SchemaVersion: 1,
+		StateUpgraders: []schema.StateUpgrader{
+			{
+				Type:    pulsarNamespaceStateTypeV0(),
+				Upgrade: resourcePulsarNamespaceStateUpgradeV0,
+				Version: 0,
+			},
+		},
 		Importer: &schema.ResourceImporter{
 			StateContext: func(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				importID := d.Id()
@@ -192,6 +201,7 @@ func resourcePulsarNamespace() *schema.Resource {
 							Type:         schema.TypeString,
 							Required:     true,
 							ValidateFunc: validateInactiveTopicDuration,
+							Description:  "Inactive duration in seconds, for example `60s`.",
 						},
 						"delete_mode": {
 							Type:         schema.TypeString,
@@ -215,10 +225,9 @@ func resourcePulsarNamespace() *schema.Resource {
 				Set:         hashBacklogQuotaSubset(),
 			},
 			backlogQuotaManagedTypesStateAttr: {
-				Type:     schema.TypeSet,
-				Computed: true,
-				Description: "Internal state tracking backlog quota types explicitly configured " +
-					"when Terraform last applied a resource change.",
+				Type:        schema.TypeSet,
+				Computed:    true,
+				Description: "Internal backlog quota ownership metadata.",
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -278,10 +287,11 @@ func resourcePulsarNamespace() *schema.Resource {
 							ValidateFunc: validateGtEq0,
 						},
 						"replication_clusters": {
-							Type:     schema.TypeSet,
-							Optional: true,
-							Computed: true,
-							MinItems: 1,
+							Type:        schema.TypeSet,
+							Optional:    true,
+							Computed:    true,
+							MinItems:    1,
+							Description: "Replication clusters. When configured, at least one cluster is required.",
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
@@ -356,9 +366,10 @@ func resourcePulsarNamespace() *schema.Resource {
 							Required: true,
 						},
 						"actions": {
-							Type:     schema.TypeSet,
-							Required: true,
-							MinItems: 1,
+							Type:        schema.TypeSet,
+							Required:    true,
+							MinItems:    1,
+							Description: "One or more Pulsar authorization actions.",
 							Elem: &schema.Schema{
 								Type:         schema.TypeString,
 								ValidateFunc: validateAuthAction,
@@ -382,10 +393,12 @@ func resourcePulsarNamespace() *schema.Resource {
 							Optional:     true,
 							ValidateFunc: validatePartitionedTopicType,
 							Default:      "non-partitioned",
+							Description:  "Topic type. Defaults to `non-partitioned`.",
 						},
 						"partitions": {
-							Type:     schema.TypeInt,
-							Optional: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Description: "Partition count when type is `partitioned`.",
 						},
 					},
 				},
@@ -393,6 +406,88 @@ func resourcePulsarNamespace() *schema.Resource {
 			},
 		},
 	}
+}
+
+// pulsarNamespaceStateTypeV0 is the frozen schema-version 0 state shape.
+// It covers v0.11 state, where ownership metadata is absent, and v0.12.0-rc.3
+// state, where it may be populated. Keep it independent from the current schema
+// so future changes cannot break decoding of legacy flatmap states.
+func pulsarNamespaceStateTypeV0() cty.Type {
+	dispatchRateType := cty.Set(cty.Object(map[string]cty.Type{
+		"dispatch_byte_throttling_rate": cty.Number,
+		"dispatch_msg_throttling_rate":  cty.Number,
+		"rate_period_seconds":           cty.Number,
+	}))
+
+	return cty.Object(map[string]cty.Type{
+		backlogQuotaManagedTypesStateAttr: cty.Set(cty.String),
+		"backlog_quota": cty.Set(cty.Object(map[string]cty.Type{
+			"limit_bytes":   cty.String,
+			"limit_seconds": cty.String,
+			"policy":        cty.String,
+			"type":          cty.String,
+		})),
+		"dispatch_rate":        dispatchRateType,
+		"enable_deduplication": cty.Bool,
+		"id":                   cty.String,
+		"inactive_topic": cty.Set(cty.Object(map[string]cty.Type{
+			"delete_mode":                  cty.String,
+			"enable_delete_while_inactive": cty.Bool,
+			"max_inactive_duration":        cty.String,
+		})),
+		"namespace": cty.String,
+		"namespace_config": cty.List(cty.Object(map[string]cty.Type{
+			"anti_affinity":                             cty.String,
+			"is_allow_auto_update_schema":               cty.Bool,
+			"max_consumers_per_subscription":            cty.Number,
+			"max_consumers_per_topic":                   cty.Number,
+			"max_producers_per_topic":                   cty.Number,
+			"message_ttl_seconds":                       cty.Number,
+			"offload_threshold_size_in_mb":              cty.Number,
+			"replication_clusters":                      cty.Set(cty.String),
+			"schema_auto_update_compatibility_strategy": cty.String,
+			"schema_compatibility_strategy":             cty.String,
+			"schema_validation_enforce":                 cty.Bool,
+			"subscription_expiration_time_minutes":      cty.Number,
+		})),
+		"permission_grant": cty.Set(cty.Object(map[string]cty.Type{
+			"actions": cty.Set(cty.String),
+			"role":    cty.String,
+		})),
+		"persistence_policies": cty.Set(cty.Object(map[string]cty.Type{
+			"bookkeeper_ack_quorum":               cty.Number,
+			"bookkeeper_ensemble":                 cty.Number,
+			"bookkeeper_write_quorum":             cty.Number,
+			"managed_ledger_max_mark_delete_rate": cty.Number,
+		})),
+		"retention_policies": cty.Set(cty.Object(map[string]cty.Type{
+			"retention_minutes":    cty.String,
+			"retention_size_in_mb": cty.String,
+		})),
+		"subscription_dispatch_rate": dispatchRateType,
+		"tenant":                     cty.String,
+		"topic_auto_creation": cty.Set(cty.Object(map[string]cty.Type{
+			"enable":     cty.Bool,
+			"partitions": cty.Number,
+			"type":       cty.String,
+		})),
+	})
+}
+
+func resourcePulsarNamespaceStateUpgradeV0(
+	_ context.Context,
+	rawState map[string]interface{},
+	_ interface{},
+) (map[string]interface{}, error) {
+	if rawState == nil {
+		return nil, fmt.Errorf("pulsar_namespace state upgrade from version 0: state is nil")
+	}
+
+	if managedTypes, exists := rawState[backlogQuotaManagedTypesStateAttr]; !exists || managedTypes == nil {
+		rawState[backlogQuotaManagedTypesStateAttr] = []interface{}{}
+	}
+
+	return rawState, nil
 }
 
 func resourcePulsarNamespaceCustomizeDiff(

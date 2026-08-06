@@ -18,11 +18,204 @@
 package pulsar
 
 import (
+	"context"
+	"strconv"
 	"testing"
 
+	"github.com/hashicorp/go-cty/cty/msgpack"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov5"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPulsarNamespaceStateUpgradeV0(t *testing.T) {
+	t.Parallel()
+
+	resourceSchema := resourcePulsarNamespace()
+	require.Equal(t, 1, resourceSchema.SchemaVersion)
+	require.Len(t, resourceSchema.StateUpgraders, 1)
+	require.Equal(t, 0, resourceSchema.StateUpgraders[0].Version)
+	require.Equal(
+		t,
+		pulsarNamespaceStateTypeV0(),
+		resourceSchema.StateUpgraders[0].Type,
+	)
+	require.True(t, resourceSchema.StateUpgraders[0].Type.HasAttribute(backlogQuotaManagedTypesStateAttr))
+
+	t.Run("initializes v0.11 ownership state", func(t *testing.T) {
+		rawState := map[string]interface{}{
+			"tenant":    "tenant",
+			"namespace": "namespace",
+		}
+
+		upgraded, err := resourceSchema.StateUpgraders[0].Upgrade(context.Background(), rawState, nil)
+		require.NoError(t, err)
+		require.Contains(t, upgraded, backlogQuotaManagedTypesStateAttr)
+		require.Empty(t, upgraded[backlogQuotaManagedTypesStateAttr])
+	})
+
+	t.Run("normalizes null rc3 ownership state", func(t *testing.T) {
+		rawState := map[string]interface{}{
+			backlogQuotaManagedTypesStateAttr: nil,
+		}
+
+		upgraded, err := resourceSchema.StateUpgraders[0].Upgrade(context.Background(), rawState, nil)
+		require.NoError(t, err)
+		require.Empty(t, upgraded[backlogQuotaManagedTypesStateAttr])
+		require.NotNil(t, upgraded[backlogQuotaManagedTypesStateAttr])
+	})
+
+	t.Run("preserves rc3 ownership state", func(t *testing.T) {
+		existing := []interface{}{"destination_storage"}
+		rawState := map[string]interface{}{
+			backlogQuotaManagedTypesStateAttr: existing,
+		}
+
+		upgraded, err := resourceSchema.StateUpgraders[0].Upgrade(context.Background(), rawState, nil)
+		require.NoError(t, err)
+		require.Equal(t, existing, upgraded[backlogQuotaManagedTypesStateAttr])
+	})
+}
+
+func TestPulsarNamespaceStateUpgradeV0Flatmap(t *testing.T) {
+	t.Parallel()
+
+	resourceSchema := resourcePulsarNamespace()
+	server := schema.NewGRPCProviderServer(Provider())
+	response, err := server.UpgradeResourceState(context.Background(), &tfprotov5.UpgradeResourceStateRequest{
+		TypeName: "pulsar_namespace",
+		Version:  0,
+		RawState: &tfprotov5.RawState{Flatmap: map[string]string{
+			"id":                               "tenant/namespace",
+			"tenant":                           "tenant",
+			"namespace":                        "namespace",
+			"namespace_config.#":               "1",
+			"namespace_config.0.anti_affinity": "group-a",
+		}},
+	})
+	require.NoError(t, err)
+	for _, diagnostic := range response.Diagnostics {
+		require.NotEqual(t, tfprotov5.DiagnosticSeverityError, diagnostic.Severity, diagnostic.Summary)
+	}
+	require.NotNil(t, response.UpgradedState)
+
+	upgradedState, err := msgpack.Unmarshal(
+		response.UpgradedState.MsgPack,
+		resourceSchema.CoreConfigSchema().ImpliedType(),
+	)
+	require.NoError(t, err)
+	managedTypes := upgradedState.GetAttr(backlogQuotaManagedTypesStateAttr)
+	require.True(t, managedTypes.IsKnown())
+	require.True(t, managedTypes.Type().IsSetType())
+	require.Zero(t, managedTypes.LengthInt())
+}
+
+func TestPulsarNamespaceStateUpgradeV0FlatmapPreservesRC3Ownership(t *testing.T) {
+	t.Parallel()
+
+	resourceSchema := resourcePulsarNamespace()
+	server := schema.NewGRPCProviderServer(Provider())
+	managedType := "destination_storage"
+	response, err := server.UpgradeResourceState(context.Background(), &tfprotov5.UpgradeResourceStateRequest{
+		TypeName: "pulsar_namespace",
+		Version:  0,
+		RawState: &tfprotov5.RawState{Flatmap: map[string]string{
+			"id":                                     "tenant/namespace",
+			"tenant":                                 "tenant",
+			"namespace":                              "namespace",
+			backlogQuotaManagedTypesStateAttr + ".#": "1",
+			backlogQuotaManagedTypesStateAttr + "." +
+				strconv.Itoa(schema.HashString(managedType)): managedType,
+		}},
+	})
+	require.NoError(t, err)
+	for _, diagnostic := range response.Diagnostics {
+		require.NotEqual(t, tfprotov5.DiagnosticSeverityError, diagnostic.Severity, diagnostic.Summary)
+	}
+	require.NotNil(t, response.UpgradedState)
+
+	upgradedState, err := msgpack.Unmarshal(
+		response.UpgradedState.MsgPack,
+		resourceSchema.CoreConfigSchema().ImpliedType(),
+	)
+	require.NoError(t, err)
+	managedTypes := upgradedState.GetAttr(backlogQuotaManagedTypesStateAttr)
+	require.True(t, managedTypes.IsKnown())
+	require.True(t, managedTypes.Type().IsSetType())
+	require.Equal(t, 1, managedTypes.LengthInt())
+
+	iterator := managedTypes.ElementIterator()
+	require.True(t, iterator.Next())
+	_, value := iterator.Element()
+	require.Equal(t, managedType, value.AsString())
+}
+
+func TestPulsarNamespaceStateUpgradeV0JSONOwnership(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		rawState   string
+		wantValues []string
+	}{
+		{
+			name:     "v0.11 field absent",
+			rawState: `{"id":"tenant/namespace","tenant":"tenant","namespace":"namespace"}`,
+		},
+		{
+			name:     "rc3 null field",
+			rawState: `{"id":"tenant/namespace","tenant":"tenant","namespace":"namespace","_backlog_quota_managed_types":null}`,
+		},
+		{
+			name: "rc3 populated field",
+			rawState: `{
+				"id":"tenant/namespace",
+				"tenant":"tenant",
+				"namespace":"namespace",
+				"_backlog_quota_managed_types":["destination_storage"]
+			}`,
+			wantValues: []string{"destination_storage"},
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			resourceSchema := resourcePulsarNamespace()
+			server := schema.NewGRPCProviderServer(Provider())
+			response, err := server.UpgradeResourceState(context.Background(), &tfprotov5.UpgradeResourceStateRequest{
+				TypeName: "pulsar_namespace",
+				Version:  0,
+				RawState: &tfprotov5.RawState{JSON: []byte(test.rawState)},
+			})
+			require.NoError(t, err)
+			for _, diagnostic := range response.Diagnostics {
+				require.NotEqual(t, tfprotov5.DiagnosticSeverityError, diagnostic.Severity, diagnostic.Summary)
+			}
+			require.NotNil(t, response.UpgradedState)
+
+			upgradedState, err := msgpack.Unmarshal(
+				response.UpgradedState.MsgPack,
+				resourceSchema.CoreConfigSchema().ImpliedType(),
+			)
+			require.NoError(t, err)
+			managedTypes := upgradedState.GetAttr(backlogQuotaManagedTypesStateAttr)
+			require.True(t, managedTypes.IsKnown())
+			require.Equal(t, len(test.wantValues), managedTypes.LengthInt())
+			gotValues := make(map[string]struct{}, managedTypes.LengthInt())
+			iterator := managedTypes.ElementIterator()
+			for iterator.Next() {
+				_, value := iterator.Element()
+				gotValues[value.AsString()] = struct{}{}
+			}
+			for _, value := range test.wantValues {
+				require.Contains(t, gotValues, value)
+			}
+		})
+	}
+}
 
 func TestPulsarNamespacePolicyBlocksAreOptionalComputedSets(t *testing.T) {
 	t.Parallel()

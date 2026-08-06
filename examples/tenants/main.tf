@@ -18,20 +18,17 @@
 terraform {
   required_providers {
     pulsar = {
-      version = "0.1.3"
-      source = "registry.terraform.io/streamnative/pulsar"
+      source = "streamnative/pulsar"
     }
   }
 }
 
 provider "pulsar" {
   web_service_url = "http://localhost:8080"
-  token           = "your_auth_token"
 }
 
-resource "pulsar_tenant" "my_tenant" {
-  tenant = "thanos"
-  allowed_clusters = [
-    "titan"
-  ]
+resource "pulsar_tenant" "example" {
+  tenant           = "example"
+  allowed_clusters = ["standalone"]
+  admin_roles      = ["admin"]
 }

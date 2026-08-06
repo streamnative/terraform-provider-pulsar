@@ -18,8 +18,7 @@
 terraform {
   required_providers {
     pulsar = {
-      version = "0.1.3"
-      source = "registry.terraform.io/apache/pulsar"
+      source = "streamnative/pulsar"
     }
   }
 }
@@ -28,25 +27,22 @@ provider "pulsar" {
   web_service_url = "http://localhost:8080"
 }
 
-// Note: sink resource requires v3 api.
-resource "pulsar_sink" "sink-1" {
-  provider = pulsar
-
-  name = "sink-1"
-  tenant = "public"
+resource "pulsar_sink" "example" {
+  tenant    = "public"
   namespace = "default"
-  inputs = ["sink-1-topic"]
-  subscription_position = "Latest"
+  name      = "jdbc-sink"
+
+  # Replace with an existing local archive or supported HTTP(S)/package URL.
+  archive = "/path/to/pulsar-io-jdbc-postgres.nar"
+  inputs  = ["persistent://public/default/input"]
+
   cleanup_subscription = false
-  parallelism = 1
-  auto_ack = true
+  auto_ack             = true
 
-  processing_guarantees = "EFFECTIVELY_ONCE"
-
-  cpu = 1
-  ram_mb = 2048
-  disk_mb = 102400
-
-  archive = "https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=pulsar/pulsar-2.10.4/connectors/pulsar-io-jdbc-postgres-2.10.4.nar"
-  configs = "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
+  configs = jsonencode({
+    jdbcUrl   = "jdbc:postgresql://localhost:5432/pulsar"
+    tableName = "events"
+    userName  = "postgres"
+    password  = "password"
+  })
 }

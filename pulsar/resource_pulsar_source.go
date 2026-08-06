@@ -77,7 +77,7 @@ func init() {
 		resourceSourceProcessingGuaranteesKey:           "Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)",
 		resourceSourceDestinationTopicNamesKey:          "The Pulsar topic to which data is sent",
 		resourceSourceDeserializationClassnameKey:       "The SerDe classname for the source",
-		resourceSourceParallelismKey:                    "The source's parallelism factor",
+		resourceSourceParallelismKey:                    "The source's parallelism factor. Defaults to `1`.",
 		resourceSourceClassnameKey:                      "The source's class name if archive is file-url-path (file://)",
 		resourceSourceCPUKey:                            "The CPU that needs to be allocated per source instance (applicable only to Docker runtime)",
 		resourceSourceRAMKey:                            "The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes)",
@@ -106,6 +106,7 @@ func resourcePulsarSource() *schema.Resource {
 		ReadContext:   resourcePulsarSourceRead,
 		UpdateContext: resourcePulsarSourceUpdate,
 		DeleteContext: resourcePulsarSourceDelete,
+		Description:   "Manages Pulsar IO sources through the Functions Worker API.",
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				id := d.Id()

@@ -1,132 +1,51 @@
-## Simple String Schema
-resource "pulsar_schema" "user_events" {
-  tenant    = "my-tenant"
-  namespace = "my-namespace"
-  topic     = "user-events"
-  type      = "STRING"
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-  properties = {
-    "owner"       = "data-team"
-    "description" = "User activity events"
+terraform {
+  required_providers {
+    pulsar = {
+      source = "streamnative/pulsar"
+    }
   }
 }
 
-## AVRO Schema with Complex Structure
-resource "pulsar_schema" "user_profile" {
-  tenant    = "my-tenant"
-  namespace = "my-namespace"
-  topic     = "user-profile"
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
+}
+
+resource "pulsar_schema" "string" {
+  tenant    = "public"
+  namespace = "default"
+  topic     = "string-events"
+  type      = "STRING"
+}
+
+resource "pulsar_schema" "avro" {
+  tenant    = "public"
+  namespace = "default"
+  topic     = "user-events"
   type      = "AVRO"
 
   schema_data = jsonencode({
     type = "record"
-    name = "UserProfile"
+    name = "UserEvent"
     fields = [
-      {
-        name = "id"
-        type = "string"
-      },
-      {
-        name = "email"
-        type = "string"
-      },
-      {
-        name = "age"
-        type = ["null", "int"]
-        default = null
-      },
-      {
-        name = "preferences"
-        type = {
-          type = "record"
-          name = "Preferences"
-          fields = [
-            {
-              name = "theme"
-              type = "string"
-              default = "light"
-            },
-            {
-              name = "notifications"
-              type = "boolean"
-              default = true
-            }
-          ]
-        }
-      }
+      { name = "id", type = "string" },
+      { name = "email", type = "string" }
     ]
   })
-
-  properties = {
-    "owner"   = "user-service"
-    "version" = "1.0"
-  }
-}
-
-## JSON Schema
-resource "pulsar_schema" "order_events" {
-  tenant    = "ecommerce"
-  namespace = "orders"
-  topic     = "order-created"
-  type      = "JSON"
-
-  schema_data = jsonencode({
-    type = "object"
-    properties = {
-      orderId = {
-        type = "string"
-      }
-      customerId = {
-        type = "string"
-      }
-      amount = {
-        type = "number"
-        minimum = 0
-      }
-      items = {
-        type = "array"
-        items = {
-          type = "object"
-          properties = {
-            productId = { type = "string" }
-            quantity = { type = "integer", minimum = 1 }
-            price = { type = "number", minimum = 0 }
-          }
-          required = ["productId", "quantity", "price"]
-        }
-      }
-    }
-    required = ["orderId", "customerId", "amount", "items"]
-  })
-
-  properties = {
-    "service" = "order-service"
-    "env"     = "production"
-  }
-}
-
-## Protobuf Schema
-resource "pulsar_schema" "metrics" {
-  tenant    = "monitoring"
-  namespace = "metrics"
-  topic     = "system-metrics"
-  type      = "PROTOBUF"
-
-  schema_data = <<EOF
-syntax = "proto3";
-
-message SystemMetrics {
-  string host = 1;
-  int64 timestamp = 2;
-  double cpu_usage = 3;
-  double memory_usage = 4;
-  double disk_usage = 5;
-  map<string, string> labels = 6;
-}
-EOF
-
-  properties = {
-    "collector" = "prometheus"
-    "interval"  = "30s"
-  }
 }

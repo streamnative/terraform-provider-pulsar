@@ -36,6 +36,7 @@ func resourcePulsarCluster() *schema.Resource {
 		ReadContext:   resourcePulsarClusterRead,
 		UpdateContext: resourcePulsarClusterUpdate,
 		DeleteContext: resourcePulsarClusterDelete,
+		Description:   "Manages Pulsar cluster metadata.",
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				_ = d.Set("cluster", d.Id())
