@@ -90,9 +90,8 @@ func resourcePulsarPackage() *schema.Resource {
 		UpdateContext: resourcePulsarPackageUpdate,
 		DeleteContext: resourcePulsarPackageDelete,
 		CustomizeDiff: resourcePulsarPackageCustomizeDiff,
-		Description: "Manages Pulsar packages for functions, sources, and sinks. Packages bundle executable artifacts " +
-			"that can be referenced by other Pulsar resources. The provider uploads the package archive and keeps the " +
-			"metadata (description, contact, and custom properties) in sync with Terraform state.",
+		Description: "Manages Pulsar packages and metadata for functions, sources, and sinks. " +
+			"The local `path` must exist during plan and apply.",
 
 		Importer: &schema.ResourceImporter{
 			StateContext: resourcePulsarPackageImport,

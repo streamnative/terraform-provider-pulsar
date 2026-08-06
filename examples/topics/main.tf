@@ -18,8 +18,7 @@
 terraform {
   required_providers {
     pulsar = {
-      version = "0.1.3"
-      source = "registry.terraform.io/streamnative/pulsar"
+      source = "streamnative/pulsar"
     }
   }
 }
@@ -28,25 +27,17 @@ provider "pulsar" {
   web_service_url = "http://localhost:8080"
 }
 
-resource "pulsar_topic" "sample-topic-1" {
+resource "pulsar_topic" "example" {
   tenant     = "public"
   namespace  = "default"
   topic_type = "persistent"
-  topic_name = "partition-topic"
-  partitions =  0
-}
-
-resource "pulsar_topic" "my_topic" {
-  tenant     = "my-tenant"
-  namespace  = "my-namespace"
-  topic_name = "my-topic"
-  topic_type = "persistent"
-  partitions = 1
+  topic_name = "terraform-example"
+  partitions = 0
 
   replication_clusters = ["standalone"]
 
   topic_properties = {
-  "owner" = "data-engineering"
-  "env"   = "production"
+    owner = "data-engineering"
+    env   = "development"
   }
 }

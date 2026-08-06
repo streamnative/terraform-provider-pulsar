@@ -87,7 +87,7 @@ func init() {
 		resourceSinkInputSpecsKey:                   "The map of input topics specs",
 		resourceSinkProcessingGuaranteesKey:         "Define the message delivery semantics, default to ATLEAST_ONCE (ATLEAST_ONCE, ATMOST_ONCE, EFFECTIVELY_ONCE)",
 		resourceSinkRetainOrderingKey:               "Sink consumes and sinks messages in order",
-		resourceSinkParallelismKey:                  "The sink's parallelism factor",
+		resourceSinkParallelismKey:                  "The sink's parallelism factor. Defaults to `1`.",
 		resourceSinkArchiveKey:                      "Path to the archive file for the sink. It also supports url-path [http/https/file (file protocol assumes that file already exists on worker host)] from which worker can download the package",
 		resourceSinkClassnameKey:                    "The sink's class name if archive is file-url-path (file://)",
 		resourceSinkCPUKey:                          "The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)",
@@ -112,6 +112,7 @@ func resourcePulsarSink() *schema.Resource {
 		ReadContext:   resourcePulsarSinkRead,
 		UpdateContext: resourcePulsarSinkUpdate,
 		DeleteContext: resourcePulsarSinkDelete,
+		Description:   "Manages Pulsar IO sinks through the Functions Worker API.",
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				id := d.Id()

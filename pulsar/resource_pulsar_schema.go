@@ -34,9 +34,7 @@ func resourcePulsarSchema() *schema.Resource {
 		ReadContext:   resourcePulsarSchemaRead,
 		UpdateContext: resourcePulsarSchemaUpdate,
 		DeleteContext: resourcePulsarSchemaDelete,
-		Description: "Manages Pulsar schemas for topics. Schemas provide a way to enforce structure and compatibility" +
-			" for messages in Pulsar topics. Schema updates create new versions rather than modifying existing" +
-			" schemas, enabling schema evolution and compatibility validation.",
+		Description:   "Manages versioned schemas for persistent Pulsar topics.",
 
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
@@ -118,7 +116,7 @@ func resourcePulsarSchema() *schema.Resource {
 			"timestamp": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "Schema creation/update timestamp",
+				Description: "Reserved for broker timestamp support; currently not populated.",
 			},
 			"id": {
 				Type:        schema.TypeString,

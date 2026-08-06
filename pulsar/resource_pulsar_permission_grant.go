@@ -73,17 +73,8 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 		UpdateContext: resourcePulsarPermissionGrantUpdate,
 		DeleteContext: resourcePulsarPermissionGrantDelete,
 
-		Description: `Provides a resource for managing permissions on either Pulsar namespaces or topics.
-Permission can be granted to specific roles using this resource.
-
-**Important:** You must specify either ` + "`namespace`" + ` OR ` + "`topic`" + `, but not both. While both fields
-are marked as optional in the schema, exactly one must be provided for the resource to be valid.
-
-**Note:** It is not recommended to use this resource in conjunction with the ` + "`permission_grant`" + `
-attributes of the ` + "`pulsar_namespace`" + ` or ` + "`pulsar_topic`" + ` resources for the same role.
-Doing so will result in the resources continuously modifying the permission state.
-See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` and ` + "`pulsar_topic`" +
-			` resources for more information.`,
+		Description: "Manages role permissions on exactly one Pulsar namespace or topic. Do not manage the same " +
+			"role through this resource and a nested `permission_grant` block on `pulsar_namespace` or `pulsar_topic`.",
 
 		Schema: map[string]*schema.Schema{
 			"namespace": {
@@ -113,7 +104,7 @@ See the ` + "`permission_grant`" + ` attribute of ` + "`pulsar_namespace`" + ` a
 				Type:        schema.TypeSet,
 				Required:    true,
 				MinItems:    1,
-				Description: "A set of authorization actions granted to the role.",
+				Description: "One or more Pulsar authorization actions granted to the role.",
 				Elem: &schema.Schema{
 					Type:         schema.TypeString,
 					ValidateFunc: validateAuthAction,

@@ -121,6 +121,7 @@ func resourcePulsarTopic() *schema.Resource {
 		UpdateContext: resourcePulsarTopicUpdate,
 		DeleteContext: resourcePulsarTopicDelete,
 		CustomizeDiff: resourcePulsarTopicCustomizeDiff,
+		Description:   "Manages Pulsar topics and topic-level policies.",
 		Importer: &schema.ResourceImporter{
 			StateContext: resourcePulsarTopicImport,
 		},
@@ -165,9 +166,10 @@ func resourcePulsarTopic() *schema.Resource {
 							Required: true,
 						},
 						"actions": {
-							Type:     schema.TypeSet,
-							Required: true,
-							MinItems: 1,
+							Type:        schema.TypeSet,
+							Required:    true,
+							MinItems:    1,
+							Description: "One or more Pulsar authorization actions.",
 							Elem: &schema.Schema{
 								Type:         schema.TypeString,
 								ValidateFunc: validateAuthAction,
@@ -225,9 +227,10 @@ func resourcePulsarTopic() *schema.Resource {
 				},
 			},
 			"replication_clusters": {
-				Type:        schema.TypeSet,
-				Optional:    true,
-				Description: "Topic-level replication clusters override for this topic.",
+				Type:     schema.TypeSet,
+				Optional: true,
+				Description: "Topic-level replication clusters override. Removing it restores namespace inheritance. " +
+					"Supported only for persistent topics.",
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -284,6 +287,7 @@ func resourcePulsarTopic() *schema.Resource {
 										Type:         schema.TypeString,
 										Required:     true,
 										ValidateFunc: validateInactiveTopicDuration,
+										Description:  "Inactive duration in seconds, for example `60s`.",
 									},
 									"delete_mode": {
 										Type:         schema.TypeString,

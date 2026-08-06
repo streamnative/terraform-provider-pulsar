@@ -62,6 +62,7 @@ func resourcePulsarNamespace() *schema.Resource {
 		UpdateContext: resourcePulsarNamespaceUpdate,
 		DeleteContext: resourcePulsarNamespaceDelete,
 		CustomizeDiff: resourcePulsarNamespaceCustomizeDiff,
+		Description:   "Manages Pulsar namespaces and namespace-level policies.",
 		SchemaVersion: 1,
 		StateUpgraders: []schema.StateUpgrader{
 			{
@@ -200,6 +201,7 @@ func resourcePulsarNamespace() *schema.Resource {
 							Type:         schema.TypeString,
 							Required:     true,
 							ValidateFunc: validateInactiveTopicDuration,
+							Description:  "Inactive duration in seconds, for example `60s`.",
 						},
 						"delete_mode": {
 							Type:         schema.TypeString,
@@ -223,10 +225,9 @@ func resourcePulsarNamespace() *schema.Resource {
 				Set:         hashBacklogQuotaSubset(),
 			},
 			backlogQuotaManagedTypesStateAttr: {
-				Type:     schema.TypeSet,
-				Computed: true,
-				Description: "Internal state tracking backlog quota types explicitly configured " +
-					"when Terraform last applied a resource change.",
+				Type:        schema.TypeSet,
+				Computed:    true,
+				Description: "Internal backlog quota ownership metadata.",
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -286,10 +287,11 @@ func resourcePulsarNamespace() *schema.Resource {
 							ValidateFunc: validateGtEq0,
 						},
 						"replication_clusters": {
-							Type:     schema.TypeSet,
-							Optional: true,
-							Computed: true,
-							MinItems: 1,
+							Type:        schema.TypeSet,
+							Optional:    true,
+							Computed:    true,
+							MinItems:    1,
+							Description: "Replication clusters. When configured, at least one cluster is required.",
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
@@ -364,9 +366,10 @@ func resourcePulsarNamespace() *schema.Resource {
 							Required: true,
 						},
 						"actions": {
-							Type:     schema.TypeSet,
-							Required: true,
-							MinItems: 1,
+							Type:        schema.TypeSet,
+							Required:    true,
+							MinItems:    1,
+							Description: "One or more Pulsar authorization actions.",
 							Elem: &schema.Schema{
 								Type:         schema.TypeString,
 								ValidateFunc: validateAuthAction,
@@ -390,10 +393,12 @@ func resourcePulsarNamespace() *schema.Resource {
 							Optional:     true,
 							ValidateFunc: validatePartitionedTopicType,
 							Default:      "non-partitioned",
+							Description:  "Topic type. Defaults to `non-partitioned`.",
 						},
 						"partitions": {
-							Type:     schema.TypeInt,
-							Optional: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Description: "Partition count when type is `partitioned`.",
 						},
 					},
 				},

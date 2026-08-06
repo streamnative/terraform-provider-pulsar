@@ -18,78 +18,32 @@
 terraform {
   required_providers {
     pulsar = {
-      version = "0.1.3"
-      source  = "registry.terraform.io/streamnative/pulsar"
+      source = "streamnative/pulsar"
     }
   }
 }
 
-provider "pulsar" {}
-
-resource "pulsar_cluster" "test_cluster" {
-  cluster = "marvel"
-
-  cluster_data {
-    web_service_url    = "http://localhost:8080"
-    broker_service_url = "pulsar://localhost:6050"
-    peer_clusters      = ["standalone"]
-  }
+provider "pulsar" {
+  web_service_url = "http://localhost:8080"
 }
 
-resource "pulsar_tenant" "test_tenant" {
-  tenant           = "avengers"
-  allowed_clusters = [pulsar_cluster.test_cluster.cluster, "standalone"]
+resource "pulsar_topic" "example" {
+  tenant     = "public"
+  namespace  = "default"
+  topic_type = "persistent"
+  topic_name = "permission-example"
+  partitions = 0
 }
 
-resource "pulsar_namespace" "test_namespace" {
-  tenant    = pulsar_tenant.test_tenant.tenant
-  namespace = "heroes"
-}
-
-# Grant produce permissions to application producer role
-resource "pulsar_permission_grant" "app_producer" {
-  namespace = "${pulsar_tenant.test_tenant.tenant}/${pulsar_namespace.test_namespace.namespace}"
+resource "pulsar_permission_grant" "namespace" {
+  namespace = "public/default"
   role      = "app-producer"
   actions   = ["produce"]
 }
 
-# Grant consume permissions to application consumer role  
-resource "pulsar_permission_grant" "app_consumer" {
-  namespace = "${pulsar_tenant.test_tenant.tenant}/${pulsar_namespace.test_namespace.namespace}"
-  role      = "app-consumer" 
-  actions   = ["consume"]
-}
+resource "pulsar_permission_grant" "topic" {
+  topic = "${pulsar_topic.example.topic_type}://${pulsar_topic.example.tenant}/${pulsar_topic.example.namespace}/${pulsar_topic.example.topic_name}"
+  role  = "app-consumer"
 
-# Grant full permissions to admin role
-resource "pulsar_permission_grant" "admin_access" {
-  namespace = "${pulsar_tenant.test_tenant.tenant}/${pulsar_namespace.test_namespace.namespace}"
-  role      = "admin-user"
-  actions   = ["produce", "consume", "functions"]
-}
-
-# Create topic for topic-level permissions
-resource "pulsar_topic" "test_topic" {
-  tenant     = pulsar_tenant.test_tenant.tenant
-  namespace  = pulsar_namespace.test_namespace.namespace
-  topic_type = "persistent"
-  topic_name = "important-topic"
-}
-
-# Topic permission grant example
-resource "pulsar_permission_grant" "topic_producer" {
-  topic   = "persistent://avengers/heroes/important-topic"
-  role    = "topic-producer"
-  actions = ["produce"]
-}
-
-resource "pulsar_permission_grant" "topic_consumer" {
-  topic   = "persistent://avengers/heroes/important-topic"
-  role    = "topic-consumer"
   actions = ["consume"]
-}
-
-resource "pulsar_permission_grant" "topic_admin" {
-  topic   = "persistent://avengers/heroes/important-topic"
-  role    = "topic-admin"
-  actions = ["produce", "consume", "functions", "sources", "sinks", "packages"]
 }

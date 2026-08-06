@@ -37,6 +37,7 @@ func resourcePulsarSubscription() *schema.Resource {
 		ReadContext:   resourcePulsarSubscriptionRead,
 		UpdateContext: resourcePulsarSubscriptionUpdate,
 		DeleteContext: resourcePulsarSubscriptionDelete,
+		Description:   "Manages subscriptions for existing Pulsar topics.",
 		Importer: &schema.ResourceImporter{
 			StateContext: resourcePulsarSubscriptionImport,
 		},
@@ -63,7 +64,7 @@ func resourcePulsarSubscription() *schema.Resource {
 					[]string{"earliest", "latest"},
 					false,
 				),
-				Description: "The initial position (earliest or latest)",
+				Description: "Initial position: `earliest` or `latest`. Defaults to `latest`.",
 			},
 		},
 	}

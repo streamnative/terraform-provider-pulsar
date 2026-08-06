@@ -34,6 +34,7 @@ func resourcePulsarTenant() *schema.Resource {
 		ReadContext:   resourcePulsarTenantRead,
 		UpdateContext: resourcePulsarTenantUpdate,
 		DeleteContext: resourcePulsarTenantDelete,
+		Description:   "Manages Pulsar tenants, admin roles, and allowed clusters.",
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				importID := d.Id()
