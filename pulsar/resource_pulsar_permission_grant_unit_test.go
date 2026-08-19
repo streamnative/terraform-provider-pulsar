@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -183,4 +184,85 @@ func TestRetryOnConflict_ContextCanceledStopsRetry(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.Less(t, calls, 10, "retry loop must stop soon after context cancellation")
+}
+
+func TestParsePermissionGrantImportID(t *testing.T) {
+	tests := []struct {
+		name      string
+		id        string
+		namespace string
+		topic     string
+		role      string
+		wantErr   bool
+	}{
+		{
+			name:      "namespace id",
+			id:        "tenant/ns/role1",
+			namespace: "tenant/ns",
+			role:      "role1",
+		},
+		{
+			name:  "persistent topic id",
+			id:    "persistent://tenant/ns/topic1/role1",
+			topic: "persistent://tenant/ns/topic1",
+			role:  "role1",
+		},
+		{
+			name:  "non-persistent topic id",
+			id:    "non-persistent://tenant/ns/topic1/role1",
+			topic: "non-persistent://tenant/ns/topic1",
+			role:  "role1",
+		},
+		{
+			name:    "empty id",
+			id:      "",
+			wantErr: true,
+		},
+		{
+			name: "namespace only id",
+			id:   "tenant/ns",
+			// parses as namespace "tenant" with role "ns"; the importer
+			// rejects it later in GetNamespaceName
+			namespace: "tenant",
+			role:      "ns",
+		},
+		{
+			name:    "trailing slash",
+			id:      "tenant/ns/",
+			wantErr: true,
+		},
+		{
+			name: "topic missing role",
+			id:   "persistent://tenant/ns/topic1",
+			// parses as topic "persistent://tenant/ns" with role "topic1";
+			// GetTopicName rejects it later in the importer
+			topic: "persistent://tenant/ns",
+			role:  "topic1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns, topic, role, err := parsePermissionGrantImportID(tt.id)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.namespace, ns)
+			assert.Equal(t, tt.topic, topic)
+			assert.Equal(t, tt.role, role)
+		})
+	}
+}
+
+// TestResourcePulsarPermissionGrantImport_InvalidId verifies the importer
+// rejects malformed IDs before any API call.
+func TestResourcePulsarPermissionGrantImport_InvalidId(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourcePulsarPermissionGrant().Schema, map[string]interface{}{})
+	d.SetId("no-slash-here")
+
+	_, err := resourcePulsarPermissionGrantImport(context.Background(), d, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ERROR_PARSE_PERMISSION_GRANT_IMPORT_ID")
 }

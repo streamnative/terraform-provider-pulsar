@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,6 +77,10 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 		Description: "Manages role permissions on exactly one Pulsar namespace or topic. Do not manage the same " +
 			"role through this resource and a nested `permission_grant` block on `pulsar_namespace` or `pulsar_topic`.",
 
+		Importer: &schema.ResourceImporter{
+			StateContext: resourcePulsarPermissionGrantImport,
+		},
+
 		Schema: map[string]*schema.Schema{
 			"namespace": {
 				Type:     schema.TypeString,
@@ -112,6 +117,74 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 			},
 		},
 	}
+}
+
+// parsePermissionGrantImportID splits a permission grant import ID into its
+// namespace or topic part and role. The ID mirrors the resource ID assigned on
+// create: {namespace}/{role} (tenant/namespace/role) or {topic}/{role}
+// ({domain}://tenant/namespace/topic/role). Topic IDs are recognized by the
+// required domain scheme; everything else is treated as tenant/namespace.
+// The role is the segment after the final slash, so roles containing "/" are
+// not importable.
+func parsePermissionGrantImportID(id string) (namespace string, topic string, role string, err error) {
+	if id == "" {
+		return "", "", "", fmt.Errorf("empty import ID, expected {namespace}/{role} or {topic}/{role}")
+	}
+	idx := strings.LastIndex(id, "/")
+	if idx < 0 || idx == len(id)-1 {
+		return "", "", "", fmt.Errorf("invalid import ID %q, expected {namespace}/{role} or {topic}/{role}", id)
+	}
+	role = id[idx+1:]
+	target := id[:idx]
+	if strings.Contains(target, "://") {
+		topic = target
+	} else {
+		namespace = target
+	}
+	return namespace, topic, role, nil
+}
+
+func resourcePulsarPermissionGrantImport(ctx context.Context, d *schema.ResourceData,
+	meta interface{}) ([]*schema.ResourceData, error) {
+	importID := d.Id()
+
+	namespace, topic, role, err := parsePermissionGrantImportID(importID)
+	if err != nil {
+		return nil, fmt.Errorf("ERROR_PARSE_PERMISSION_GRANT_IMPORT_ID: %w", err)
+	}
+
+	// Set the fields Read consumes and normalize the ID to the canonical
+	// {namespace}/{role} or {topic}/{role} form assigned on create.
+	canonicalID := ""
+	if topic != "" {
+		topicName, parseErr := utils.GetTopicName(topic)
+		if parseErr != nil {
+			return nil, fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", parseErr)
+		}
+		_ = d.Set("topic", topicName.String())
+		canonicalID = fmt.Sprintf("%s/%s", topicName.String(), role)
+	} else {
+		nsName, parseErr := utils.GetNamespaceName(namespace)
+		if parseErr != nil {
+			return nil, fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", parseErr)
+		}
+		_ = d.Set("namespace", nsName.String())
+		canonicalID = fmt.Sprintf("%s/%s", nsName.String(), role)
+	}
+	_ = d.Set("role", role)
+	d.SetId(canonicalID)
+
+	diags := resourcePulsarPermissionGrantRead(ctx, d, meta)
+	if diags.HasError() {
+		if diags[0].Detail != "" {
+			return nil, fmt.Errorf("import %q: %s: %s", importID, diags[0].Summary, diags[0].Detail)
+		}
+		return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
+	}
+	if d.Id() == "" {
+		return nil, fmt.Errorf("ERROR_PERMISSION_GRANT_NOT_FOUND: %s", importID)
+	}
+	return []*schema.ResourceData{d}, nil
 }
 
 func resourcePulsarPermissionGrantCreate(ctx context.Context, d *schema.ResourceData,
