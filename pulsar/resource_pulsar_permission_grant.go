@@ -123,9 +123,10 @@ func resourcePulsarPermissionGrant() *schema.Resource {
 // namespace or topic part and role. The ID mirrors the resource ID assigned on
 // create: {namespace}/{role} (tenant/namespace/role) or {topic}/{role}
 // ({domain}://tenant/namespace/topic/role). Topic IDs are recognized by the
-// required domain scheme; everything else is treated as tenant/namespace.
-// The role is the segment after the final slash, so roles containing "/" are
-// not importable.
+// required domain scheme; anything else must be a tenant/namespace pair,
+// so an ID without a domain scheme and without a tenant/namespace slash is
+// rejected here. The role is the segment after the final slash, so roles
+// containing "/" are not importable.
 func parsePermissionGrantImportID(id string) (namespace string, topic string, role string, err error) {
 	if id == "" {
 		return "", "", "", fmt.Errorf("empty import ID, expected {namespace}/{role} or {topic}/{role}")
@@ -136,10 +137,13 @@ func parsePermissionGrantImportID(id string) (namespace string, topic string, ro
 	}
 	role = id[idx+1:]
 	target := id[:idx]
-	if strings.Contains(target, "://") {
+	switch {
+	case strings.Contains(target, "://"):
 		topic = target
-	} else {
+	case strings.Contains(target, "/"):
 		namespace = target
+	default:
+		return "", "", "", fmt.Errorf("invalid import ID %q, expected {namespace}/{role} or {topic}/{role}", id)
 	}
 	return namespace, topic, role, nil
 }
@@ -174,14 +178,16 @@ func resourcePulsarPermissionGrantImport(ctx context.Context, d *schema.Resource
 	_ = d.Set("role", role)
 	d.SetId(canonicalID)
 
-	diags := resourcePulsarPermissionGrantRead(ctx, d, meta)
-	if diags.HasError() {
-		if diags[0].Detail != "" {
-			return nil, fmt.Errorf("import %q: %s: %s", importID, diags[0].Summary, diags[0].Detail)
+	client := getClientFromMeta(meta)
+
+	grants, err := fetchPermissionGrants(client, namespace, topic)
+	if err != nil {
+		if isIgnorableNotFoundError(err) {
+			return nil, fmt.Errorf("ERROR_PERMISSION_GRANT_NOT_FOUND: %s", importID)
 		}
-		return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
+		return nil, fmt.Errorf("import %q: %w", importID, err)
 	}
-	if d.Id() == "" {
+	if !applyPermissionGrantsToState(d, grants, role) {
 		return nil, fmt.Errorf("ERROR_PERMISSION_GRANT_NOT_FOUND: %s", importID)
 	}
 	return []*schema.ResourceData{d}, nil
@@ -263,45 +269,60 @@ func getTopicSpecificPermissions(client admin.Client, topicName *utils.TopicName
 	return map[string][]utils.AuthAction{}, nil
 }
 
-func resourcePulsarPermissionGrantRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := getClientFromMeta(meta)
-	role := d.Get("role").(string)
-
-	var grants map[string][]utils.AuthAction
-	var err error
-
-	if namespace := d.Get("namespace").(string); namespace != "" {
-		nsName, parseErr := utils.GetNamespaceName(namespace)
-		if parseErr != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", parseErr))
-		}
-
-		grants, err = client.Namespaces().GetNamespacePermissions(*nsName)
+// fetchPermissionGrants reads the raw role-to-actions grants map for a
+// namespace or topic. Errors are wrapped with the same prefixes the Read
+// path has always reported.
+func fetchPermissionGrants(client admin.Client, namespace string, topic string) (
+	map[string][]utils.AuthAction, error) {
+	if namespace != "" {
+		nsName, err := utils.GetNamespaceName(namespace)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE_PERMISSION_GRANT: %w", err))
+			return nil, fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err)
 		}
-
-	} else if topic := d.Get("topic").(string); topic != "" {
-		topicName, parseErr := utils.GetTopicName(topic)
-		if parseErr != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", parseErr))
-		}
-
-		grants, err = getTopicSpecificPermissions(client, topicName)
+		grants, err := client.Namespaces().GetNamespacePermissions(*nsName)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("ERROR_READ_TOPIC_PERMISSION_GRANT: %w", err))
+			return nil, fmt.Errorf("ERROR_READ_NAMESPACE_PERMISSION_GRANT: %w", err)
 		}
+		return grants, nil
 	}
 
+	topicName, err := utils.GetTopicName(topic)
+	if err != nil {
+		return nil, fmt.Errorf("ERROR_PARSE_TOPIC_NAME: %w", err)
+	}
+	grants, err := getTopicSpecificPermissions(client, topicName)
+	if err != nil {
+		return nil, fmt.Errorf("ERROR_READ_TOPIC_PERMISSION_GRANT: %w", err)
+	}
+	return grants, nil
+}
+
+// applyPermissionGrantsToState stores the role's actions in state. It reports
+// whether the grant exists; a missing or empty grant clears the resource ID so
+// Terraform treats the resource as gone.
+func applyPermissionGrantsToState(d *schema.ResourceData, grants map[string][]utils.AuthAction, role string) bool {
 	if actions, exists := grants[role]; exists && len(actions) > 0 {
 		actionsSet := schema.NewSet(schema.HashString, []interface{}{})
 		for _, action := range actions {
 			actionsSet.Add(action.String())
 		}
 		_ = d.Set("actions", actionsSet)
-	} else {
-		d.SetId("")
+		return true
 	}
+	d.SetId("")
+	return false
+}
+
+func resourcePulsarPermissionGrantRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := getClientFromMeta(meta)
+	role := d.Get("role").(string)
+
+	grants, err := fetchPermissionGrants(client, d.Get("namespace").(string), d.Get("topic").(string))
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	applyPermissionGrantsToState(d, grants, role)
 
 	return nil
 }

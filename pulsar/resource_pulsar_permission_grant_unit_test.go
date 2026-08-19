@@ -219,12 +219,14 @@ func TestParsePermissionGrantImportID(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "namespace only id",
-			id:   "tenant/ns",
-			// parses as namespace "tenant" with role "ns"; the importer
-			// rejects it later in GetNamespaceName
-			namespace: "tenant",
-			role:      "ns",
+			name:    "namespace only id (missing role)",
+			id:      "tenant/ns",
+			wantErr: true,
+		},
+		{
+			name:    "tenant only id",
+			id:      "tenant",
+			wantErr: true,
 		},
 		{
 			name:    "trailing slash",

@@ -794,9 +794,38 @@ func TestImportNonExistingPermissionGrant(t *testing.T) {
 		CheckDestroy:      testPulsarPermissionGrantDestroy,
 		Steps: []resource.TestStep{
 			{
+				// Create the namespace first: import steps never apply Config,
+				// the SDK only sets it as the import working directory.
+				Config: testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName, `["produce"]`),
+			},
+			{
 				ResourceName:  "pulsar_permission_grant.test",
 				ImportState:   true,
-				Config:        testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName, `["produce"]`),
+				ImportStateId: importID,
+				ExpectError:   regexp.MustCompile("ERROR_PERMISSION_GRANT_NOT_FOUND"),
+			},
+		},
+	})
+}
+
+// TestImportNonExistingNamespacePermissionGrant imports a grant whose
+// namespace does not exist. The 404 from the permissions read must be
+// classified as ERROR_PERMISSION_GRANT_NOT_FOUND instead of a raw read error.
+func TestImportNonExistingNamespacePermissionGrant(t *testing.T) {
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+	importID := fmt.Sprintf("%s/%s/%s", tName, nsName, roleName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  "pulsar_permission_grant.test",
+				ImportState:   true,
+				Config:        testPulsarPermissionGrantNamespace(testWebServiceURL, acctest.RandString(10), tName, nsName, roleName, `["produce"]`),
 				ImportStateId: importID,
 				ExpectError:   regexp.MustCompile("ERROR_PERMISSION_GRANT_NOT_FOUND"),
 			},
