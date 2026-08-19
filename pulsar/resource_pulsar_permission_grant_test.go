@@ -823,9 +823,10 @@ func TestImportNonExistingNamespacePermissionGrant(t *testing.T) {
 		CheckDestroy:      testPulsarPermissionGrantDestroy,
 		Steps: []resource.TestStep{
 			{
-				ResourceName:  "pulsar_permission_grant.test",
-				ImportState:   true,
-				Config:        testPulsarPermissionGrantNamespace(testWebServiceURL, acctest.RandString(10), tName, nsName, roleName, `["produce"]`),
+				ResourceName: "pulsar_permission_grant.test",
+				ImportState:  true,
+				Config: testPulsarPermissionGrantNamespace(
+					testWebServiceURL, acctest.RandString(10), tName, nsName, roleName, `["produce"]`),
 				ImportStateId: importID,
 				ExpectError:   regexp.MustCompile("ERROR_PERMISSION_GRANT_NOT_FOUND"),
 			},
