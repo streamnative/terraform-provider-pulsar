@@ -26,7 +26,7 @@ Manages Pulsar IO sources through the Functions Worker API.
 - `batch_builder` (String) BatchBuilder provides two types of batch construction methods, DEFAULT and KEY_BASED.
 - `classname` (String) The source's class name if archive is file-url-path (file://)
 - `compression_type` (String) Set the compression type for the producer. By default, message payloads are not compressed. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE
-- `configs` (String) User defined configs key/values (JSON string)
+- `configs` (String) User defined configs key/values (JSON string). Values here are stored and returned in plaintext, including in the function metadata topic, `pulsar-admin sources get` output and Terraform state, so use `secrets` for API keys, passwords and service-account keys rather than putting them here.
 - `consumer_crypto_failure_action` (String) The desired action if consumer fail to decrypt data, one of FAIL, DISCARD, CONSUME
 - `cpu` (Number) The CPU that needs to be allocated per source instance (applicable only to Docker runtime)
 - `crypto_key_reader_classname` (String) The classname for the crypto key reader that can be used to access the keys in the keystore
@@ -43,7 +43,7 @@ Manages Pulsar IO sources through the Functions Worker API.
 - `ram_mb` (Number) The RAM that need to be allocated per source instance (applicable only to the process and Docker runtimes)
 - `runtime_flags` (String) User defined configs key/values (JSON string)
 - `schema_type` (String) The schema type (either a builtin schema like 'avro', 'json', etc.. or custom Schema class name to be used to encode messages emitted from the source
-- `secrets` (String) The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider
+- `secrets` (String) The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider. Each entry maps the name the connector reads to a `{"path": ..., "key": ...}` reference, so only the reference is stored in connector config, function metadata and Terraform state - never the value. Note that these references are resolved only by a runtime whose secrets provider understands them, such as the Kubernetes runtime's KubernetesSecretsProviderConfigurator. Under the default ClearTextSecretsProvider used by the process and standalone runtimes, apply succeeds but the connector receives no value for the secret at runtime.
 - `use_thread_local_producers` (Boolean) Whether to use thread local producers
 
 ### Read-Only

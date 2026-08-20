@@ -93,7 +93,7 @@ func init() {
 		resourceSinkCPUKey:                          "The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)",
 		resourceSinkRAMKey:                          "The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes)",
 		resourceSinkDiskKey:                         "The disk that need to be allocated per sink instance (applicable only to Docker runtime)",
-		resourceSinkConfigsKey:                      "User defined configs key/values (JSON string)",
+		resourceSinkConfigsKey:                      "User defined configs key/values (JSON string). Values here are stored and returned in plaintext, including in the function metadata topic, `pulsar-admin sinks get` output and Terraform state, so use `secrets` for API keys, passwords and service-account keys rather than putting them here.",
 		resourceSinkAutoACKKey:                      "Whether or not the framework will automatically acknowledge messages",
 		resourceSinkTimeoutKey:                      "The message timeout in milliseconds",
 		resourceSinkCustomRuntimeOptionsKey:         "A string that encodes options to customize the runtime",
@@ -102,7 +102,7 @@ func init() {
 		resourceSinkNegativeCountRedeliveryDelayKey: "The negative ack message redelivery delay in milliseconds",
 		resourceSinkRetainKeyOrderingKey:            "Sink consumes and processes messages in key order",
 		resourceSinkSinkTypeKey:                     "The sinks's connector provider",
-		resourceSinkSecretsKey:                      "The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider",
+		resourceSinkSecretsKey:                      "The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider. Each entry maps the name the connector reads to a `{\"path\": ..., \"key\": ...}` reference, so only the reference is stored in connector config, function metadata and Terraform state - never the value. Note that these references are resolved only by a runtime whose secrets provider understands them, such as the Kubernetes runtime's KubernetesSecretsProviderConfigurator. Under the default ClearTextSecretsProvider used by the process and standalone runtimes, apply succeeds but the connector receives no value for the secret at runtime.",
 	}
 }
 

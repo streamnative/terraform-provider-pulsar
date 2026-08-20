@@ -39,6 +39,30 @@ resource "pulsar_sink" "example" {
   cleanup_subscription = false
   auto_ack             = true
 
+  # Values in `configs` are stored and returned in plaintext, including in the
+  # function metadata topic, `pulsar-admin sinks get` output and Terraform
+  # state. Keep credentials out of it and reference them through the worker's
+  # secrets provider instead:
+  #
+  #   configs = jsonencode({
+  #     jdbcUrl   = "jdbc:postgresql://localhost:5432/pulsar"
+  #     tableName = "events"
+  #     userName  = "postgres"
+  #   })
+  #
+  #   secrets = jsonencode({
+  #     password = {
+  #       path = "postgres-credentials"
+  #       key  = "password"
+  #     }
+  #   })
+  #
+  # Note that `{path, key}` references are resolved only by a runtime whose
+  # secrets provider understands them, such as the Kubernetes runtime's
+  # KubernetesSecretsProviderConfigurator. Under the default
+  # ClearTextSecretsProvider - which includes the standalone cluster started by
+  # `make run-pulsar-in-docker` - apply succeeds but the sink receives no value
+  # for the secret at runtime.
   configs = jsonencode({
     jdbcUrl   = "jdbc:postgresql://localhost:5432/pulsar"
     tableName = "events"
