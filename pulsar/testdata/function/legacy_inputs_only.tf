@@ -18,14 +18,6 @@ resource "pulsar_function" "function-1" {
 
     inputs = ["public/default/input1", "public/default/input2"]
 
-    # input1 is deliberately listed in both inputs and input_specs: the provider must strip it from
-    # inputs on the wire, or Pulsar's validateUpdate() folds it back in with a default
-    # ConsumerConfig and discards the receiver queue size on every apply.
-    input_specs {
-      key                 = "public/default/input1"
-      receiver_queue_size = 100
-      schema_type         = "avro"
-    }
 
     output = "public/default/test-out"
 

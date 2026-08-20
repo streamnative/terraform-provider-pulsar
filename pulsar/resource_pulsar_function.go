@@ -43,6 +43,7 @@ const (
 	resourceFunctionGoKey                   = "go"
 	resourceFunctionClassNameKey            = "classname"
 	resourceFunctionInputsKey               = "inputs"
+	resourceFunctionInputSpecsKey           = "input_specs"
 	resourceFunctionTopicsPatternKey        = "topics_pattern"
 	resourceFunctionOutputKey               = "output"
 	resourceFunctionParallelismKey          = "parallelism"
@@ -77,6 +78,18 @@ const (
 	resourceFunctionSinkConfigTypeKey       = "sink_type"
 	resourceFunctionSourceConfigTypeKey     = "source_type"
 	resourceFunctionRuntimeConfigConfigsKey = "configs"
+)
+
+// Attributes of a single `input_specs` block, mapping onto utils.ConsumerConfig.
+const (
+	resourceFunctionInputSpecTopicKey              = "key"
+	resourceFunctionInputSpecReceiverQueueSizeKey  = "receiver_queue_size"
+	resourceFunctionInputSpecSchemaTypeKey         = "schema_type"
+	resourceFunctionInputSpecSerdeClassNameKey     = "serde_class_name"
+	resourceFunctionInputSpecRegexPatternKey       = "is_regex_pattern"
+	resourceFunctionInputSpecPoolMessagesKey       = "pool_messages"
+	resourceFunctionInputSpecSchemaPropertiesKey   = "schema_properties"
+	resourceFunctionInputSpecConsumerPropertiesKey = "consumer_properties"
 )
 
 const (
@@ -122,6 +135,7 @@ func init() {
 		resourceFunctionGoKey:                   "The path to the go file.",
 		resourceFunctionClassNameKey:            "The class name of the function.",
 		resourceFunctionInputsKey:               "The input topics of the function.",
+		resourceFunctionInputSpecsKey:           "Per-topic consumer configuration for the function's input topics, such as the receiver queue size. A topic configured here does not need to be repeated in `inputs`; if it is, this block takes precedence.",
 		resourceFunctionTopicsPatternKey:        "The input topics pattern of the function. The pattern is a regex expression. The function consumes from all topics matching the pattern.",
 		resourceFunctionOutputKey:               "The output topic of the function.",
 		resourceFunctionParallelismKey:          "The parallelism of the function.",
@@ -162,6 +176,7 @@ func resourcePulsarFunction() *schema.Resource {
 		ReadContext:   resourcePulsarFunctionRead,
 		UpdateContext: resourcePulsarFunctionUpdate,
 		DeleteContext: resourcePulsarFunctionDelete,
+		CustomizeDiff: resourcePulsarFunctionCustomizeDiff,
 		Description:   "Manages Pulsar Functions through the Functions Worker API.",
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
@@ -225,6 +240,73 @@ func resourcePulsarFunction() *schema.Resource {
 				ForceNew:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionInputsKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			resourceFunctionInputSpecsKey: {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionInputSpecsKey],
+				// Note the deliberate absence of ForceNew on the nested attributes. Changing any
+				// of them rehashes the set element, which the SDK reads as a removal plus an
+				// addition, so a nested ForceNew would replace the function on the very edits
+				// Pulsar accepts in place. resourcePulsarFunctionCustomizeDiff decides
+				// replacement instead, using the same rule the broker enforces.
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						resourceFunctionInputSpecTopicKey: {
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "The input topic that this consumer configuration applies to.",
+						},
+						resourceFunctionInputSpecReceiverQueueSizeKey: {
+							Type:     schema.TypeInt,
+							Optional: true,
+							//nolint:lll
+							Description: "The consumer receiver queue size for this topic. Pulsar defaults to 1000 when unset, which buffers up to that many messages per function instance.",
+							ValidateFunc: func(val interface{}, key string) ([]string, []error) {
+								if v := val.(int); v <= 0 {
+									return nil, []error{
+										fmt.Errorf("%s must be greater than 0, got %d", key, v),
+									}
+								}
+								return nil, nil
+							},
+						},
+						resourceFunctionInputSpecSchemaTypeKey: {
+							Type:     schema.TypeString,
+							Optional: true,
+							//nolint:lll
+							Description: "The schema type of this topic, either a builtin schema type such as `avro` or a Schema implementation class name.",
+						},
+						resourceFunctionInputSpecSerdeClassNameKey: {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Description: "The serde class name of this topic. Ignored by Pulsar when `schema_type` is also set.",
+						},
+						resourceFunctionInputSpecRegexPatternKey: {
+							Type:     schema.TypeBool,
+							Optional: true,
+							//nolint:lll
+							Description: "Whether the topic is a regex pattern matching multiple topics. Cannot be changed in place; changing it replaces the function.",
+						},
+						resourceFunctionInputSpecPoolMessagesKey: {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Description: "Whether the consumer pools messages for this topic.",
+						},
+						resourceFunctionInputSpecSchemaPropertiesKey: {
+							Type:        schema.TypeMap,
+							Optional:    true,
+							Description: "Schema properties key/values for this topic.",
+							Elem:        &schema.Schema{Type: schema.TypeString},
+						},
+						resourceFunctionInputSpecConsumerPropertiesKey: {
+							Type:        schema.TypeMap,
+							Optional:    true,
+							Description: "Consumer properties key/values for this topic.",
+							Elem:        &schema.Schema{Type: schema.TypeString},
+						},
+					},
+				},
 			},
 			resourceFunctionTopicsPatternKey: {
 				Type:        schema.TypeString,
@@ -470,6 +552,171 @@ func resourcePulsarFunction() *schema.Resource {
 	}
 }
 
+// resourcePulsarFunctionCustomizeDiff decides when a change to input_specs requires replacing the
+// function.
+//
+// Pulsar's FunctionConfigUtils.validateUpdate() rejects any input topic the existing function does
+// not already consume ("Input Topics cannot be altered") and any change to a topic's isRegexPattern
+// flag, but accepts every other consumer setting - receiverQueueSize included. So replacement is
+// keyed on the set of input topics rather than on input_specs changing at all.
+//
+// The comparison is over the *effective* topic set, which is the union of inputs, topics_pattern and
+// input_specs. Moving a topic that inputs already declares into an input_specs block leaves that set
+// untouched, and must stay an in-place update - it is the migration path for anyone adopting this
+// attribute on an existing function.
+func resourcePulsarFunctionCustomizeDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
+	if diff.Id() == "" || !diff.HasChange(resourceFunctionInputSpecsKey) {
+		// On create there is nothing to replace, and ResourceDiff.ForceNew errors on a key that
+		// has no change recorded against it.
+		return nil
+	}
+
+	oldInputs, newInputs := diff.GetChange(resourceFunctionInputsKey)
+	oldPattern, newPattern := diff.GetChange(resourceFunctionTopicsPatternKey)
+	oldSpecs, newSpecs := diff.GetChange(resourceFunctionInputSpecsKey)
+
+	oldTopics := effectiveFunctionInputTopics(oldInputs, oldPattern, oldSpecs)
+	newTopics := effectiveFunctionInputTopics(newInputs, newPattern, newSpecs)
+
+	if len(oldTopics) != len(newTopics) {
+		return forceNewFunctionInputSpecs(diff, oldSpecs, newSpecs)
+	}
+	for topic, regexPattern := range newTopics {
+		oldRegexPattern, ok := oldTopics[topic]
+		if !ok || oldRegexPattern != regexPattern {
+			return forceNewFunctionInputSpecs(diff, oldSpecs, newSpecs)
+		}
+	}
+
+	return nil
+}
+
+// forceNewFunctionInputSpecs flags an input_specs change as requiring replacement.
+//
+// A set-level ForceNew is not enough on its own. schemaMap.diffSet only carries it into the diff
+// through the "input_specs.#" count attribute, and it emits that attribute solely when the number of
+// elements changes. Renaming a topic or flipping regex_pattern leaves the count identical, so the
+// replacement would be silently dropped. Flag the nested attribute that actually changed as well,
+// which does reach the diff.
+func forceNewFunctionInputSpecs(diff *schema.ResourceDiff, oldSpecs, newSpecs interface{}) error {
+	if err := diff.ForceNew(resourceFunctionInputSpecsKey); err != nil {
+		return err
+	}
+
+	for _, attribute := range []string{
+		resourceFunctionInputSpecTopicKey,
+		resourceFunctionInputSpecRegexPatternKey,
+	} {
+		for _, specs := range []interface{}{oldSpecs, newSpecs} {
+			set, ok := specs.(*schema.Set)
+			if !ok {
+				continue
+			}
+
+			for _, item := range set.List() {
+				key := fmt.Sprintf("%s.%d.%s", resourceFunctionInputSpecsKey, set.F(item), attribute)
+				if !diff.HasChange(key) {
+					continue
+				}
+				if err := diff.ForceNew(key); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// effectiveFunctionInputTopics maps every input topic the function consumes to its regex-pattern
+// flag, mirroring how Pulsar folds inputs, topicsPattern and inputSpecs into a single inputSpecs map.
+func effectiveFunctionInputTopics(inputs, topicsPattern, inputSpecs interface{}) map[string]bool {
+	topics := map[string]bool{}
+
+	if set, ok := inputs.(*schema.Set); ok {
+		for _, item := range set.List() {
+			if topic, ok := item.(string); ok && topic != "" {
+				topics[topic] = false
+			}
+		}
+	}
+
+	if pattern, ok := topicsPattern.(string); ok && pattern != "" {
+		topics[pattern] = true
+	}
+
+	// Applied last: an input_specs block wins over the same topic listed in inputs.
+	for topic, consumerConfig := range functionInputSpecsFromSchema(inputSpecs) {
+		topics[topic] = consumerConfig.RegexPattern
+	}
+
+	return topics
+}
+
+// functionInputSpecsFromSchema converts an input_specs set into the map shape the admin API expects.
+func functionInputSpecsFromSchema(inputSpecs interface{}) map[string]utils.ConsumerConfig {
+	set, ok := inputSpecs.(*schema.Set)
+	if !ok || set.Len() == 0 {
+		return nil
+	}
+
+	specs := make(map[string]utils.ConsumerConfig, set.Len())
+	for _, item := range set.List() {
+		spec, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		topic, _ := spec[resourceFunctionInputSpecTopicKey].(string)
+		if topic == "" {
+			continue
+		}
+
+		consumerConfig := utils.ConsumerConfig{}
+		if v, ok := spec[resourceFunctionInputSpecSchemaTypeKey].(string); ok {
+			consumerConfig.SchemaType = v
+		}
+		if v, ok := spec[resourceFunctionInputSpecSerdeClassNameKey].(string); ok {
+			consumerConfig.SerdeClassName = v
+		}
+		if v, ok := spec[resourceFunctionInputSpecRegexPatternKey].(bool); ok {
+			consumerConfig.RegexPattern = v
+		}
+		if v, ok := spec[resourceFunctionInputSpecReceiverQueueSizeKey].(int); ok {
+			consumerConfig.ReceiverQueueSize = v
+		}
+		if v, ok := spec[resourceFunctionInputSpecPoolMessagesKey].(bool); ok {
+			consumerConfig.PoolMessages = v
+		}
+		consumerConfig.SchemaProperties = functionStringMap(spec[resourceFunctionInputSpecSchemaPropertiesKey])
+		consumerConfig.ConsumerProperties = functionStringMap(spec[resourceFunctionInputSpecConsumerPropertiesKey])
+
+		specs[topic] = consumerConfig
+	}
+
+	if len(specs) == 0 {
+		return nil
+	}
+
+	return specs
+}
+
+// functionStringMap narrows a schema.TypeMap value to map[string]string, returning nil when empty so
+// the field is omitted from the request payload.
+func functionStringMap(value interface{}) map[string]string {
+	interMap, ok := value.(map[string]interface{})
+	if !ok || len(interMap) == 0 {
+		return nil
+	}
+
+	stringMap := make(map[string]string, len(interMap))
+	for key, item := range interMap {
+		stringMap[key], _ = item.(string)
+	}
+
+	return stringMap
+}
+
 func resourcePulsarFunctionRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getV3ClientFromMeta(meta).Functions()
 
@@ -587,12 +834,28 @@ func marshalFunctionConfig(d *schema.ResourceData) (*utils.FunctionConfig, error
 		functionConfig.Name = inter.(string)
 	}
 
+	inputSpecs := functionInputSpecsFromSchema(d.Get(resourceFunctionInputSpecsKey))
+	if len(inputSpecs) != 0 {
+		functionConfig.InputSpecs = inputSpecs
+	}
+
 	if inter, ok := d.GetOk(resourceFunctionInputsKey); ok {
 		inputsSet := inter.(*schema.Set)
 		var inputs []string
 
 		for _, item := range inputsSet.List() {
-			inputs = append(inputs, item.(string))
+			topic := item.(string)
+
+			// A topic carried by an input_specs block is fully described there, and listing it in
+			// both places is actively harmful on update: FunctionConfigUtils.validateUpdate() folds
+			// inputs into the inputSpecs map with a default ConsumerConfig *before* reading that map
+			// back, so the topic's consumer settings would be discarded on every apply. (The create
+			// path applies inputSpecs last and does not have this problem, hence the asymmetry.)
+			if _, ok := inputSpecs[topic]; ok {
+				continue
+			}
+
+			inputs = append(inputs, topic)
 		}
 
 		functionConfig.Inputs = inputs
@@ -776,6 +1039,75 @@ func marshalFunctionConfig(d *schema.ResourceData) (*utils.FunctionConfig, error
 	return functionConfig, nil
 }
 
+// unmarshalFunctionInputSpecs writes the server's inputSpecs into state.
+//
+// It cannot mirror the response verbatim. FunctionConfigUtils.convertFromDetails() returns an entry
+// for *every* input topic the function consumes - including topics declared through inputs and the
+// topics_pattern entry - and never returns inputs at all. Copying all of it into state would invent
+// input_specs blocks for configurations that never wrote one, and those would show as a diff on
+// every plan forever.
+//
+// So a returned spec is skipped when the configuration already represents that topic through inputs
+// or topics_pattern, unless it also declares the topic in input_specs (in which case the block is
+// genuinely the user's and must be refreshed rather than dropped). On import both are empty, so
+// every spec lands in input_specs - the complete representation of the function.
+func unmarshalFunctionInputSpecs(functionConfig utils.FunctionConfig, d *schema.ResourceData) error {
+	covered := map[string]bool{}
+	if inter, ok := d.GetOk(resourceFunctionInputsKey); ok {
+		for _, item := range inter.(*schema.Set).List() {
+			covered[item.(string)] = true
+		}
+	}
+	if inter, ok := d.GetOk(resourceFunctionTopicsPatternKey); ok {
+		covered[inter.(string)] = true
+	}
+
+	declared := functionInputSpecsFromSchema(d.Get(resourceFunctionInputSpecsKey))
+
+	specs := make([]interface{}, 0, len(functionConfig.InputSpecs))
+	for topic, consumerConfig := range functionConfig.InputSpecs {
+		if _, isDeclared := declared[topic]; covered[topic] && !isDeclared {
+			continue
+		}
+
+		specs = append(specs, flattenFunctionInputSpec(topic, consumerConfig))
+	}
+
+	return d.Set(resourceFunctionInputSpecsKey, specs)
+}
+
+func flattenFunctionInputSpec(topic string, consumerConfig utils.ConsumerConfig) map[string]interface{} {
+	spec := map[string]interface{}{
+		resourceFunctionInputSpecTopicKey:        topic,
+		resourceFunctionInputSpecRegexPatternKey: consumerConfig.RegexPattern,
+		resourceFunctionInputSpecPoolMessagesKey: consumerConfig.PoolMessages,
+	}
+
+	if consumerConfig.ReceiverQueueSize != 0 {
+		spec[resourceFunctionInputSpecReceiverQueueSizeKey] = consumerConfig.ReceiverQueueSize
+	}
+
+	if consumerConfig.SchemaType != "" {
+		spec[resourceFunctionInputSpecSchemaTypeKey] = consumerConfig.SchemaType
+	}
+
+	if consumerConfig.SerdeClassName != "" {
+		spec[resourceFunctionInputSpecSerdeClassNameKey] = consumerConfig.SerdeClassName
+	}
+
+	// convertFromDetails always returns these maps non-nil, usually empty. Only surface them when
+	// they hold something, so an empty map does not read as configuration the user never wrote.
+	if len(consumerConfig.SchemaProperties) != 0 {
+		spec[resourceFunctionInputSpecSchemaPropertiesKey] = convertToInterfaceMap(consumerConfig.SchemaProperties)
+	}
+
+	if len(consumerConfig.ConsumerProperties) != 0 {
+		spec[resourceFunctionInputSpecConsumerPropertiesKey] = convertToInterfaceMap(consumerConfig.ConsumerProperties)
+	}
+
+	return spec
+}
+
 func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.ResourceData) error {
 	if functionConfig.Jar != nil {
 		err := d.Set(resourceFunctionJarKey, *functionConfig.Jar)
@@ -820,6 +1152,10 @@ func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.Reso
 		if err != nil {
 			return err
 		}
+	}
+
+	if err := unmarshalFunctionInputSpecs(functionConfig, d); err != nil {
+		return err
 	}
 
 	if functionConfig.Parallelism != 0 {

@@ -33,6 +33,7 @@ Manages Pulsar Functions through the Functions Worker API.
 - `disk_mb` (Number) The disk that need to be allocated per function instance
 - `forward_source_message_property` (Boolean) Whether to forward source message property to the function output message.
 - `go` (String) The path to the go file.
+- `input_specs` (Block Set) Per-topic consumer configuration for the function's input topics, such as the receiver queue size. A topic configured here does not need to be repeated in `inputs`; if it is, this block takes precedence. (see [below for nested schema](#nestedblock--input_specs))
 - `input_type_classname` (String) The input type class name of the function.
 - `inputs` (Set of String) The input topics of the function.
 - `jar` (String) The path to the jar file.
@@ -61,6 +62,24 @@ Manages Pulsar Functions through the Functions Worker API.
 ### Read-Only
 
 - `id` (String) The ID of this resource.
+
+<a id="nestedblock--input_specs"></a>
+### Nested Schema for `input_specs`
+
+Required:
+
+- `key` (String) The input topic that this consumer configuration applies to.
+
+Optional:
+
+- `consumer_properties` (Map of String) Consumer properties key/values for this topic.
+- `is_regex_pattern` (Boolean) Whether the topic is a regex pattern matching multiple topics. Cannot be changed in place; changing it replaces the function.
+- `pool_messages` (Boolean) Whether the consumer pools messages for this topic.
+- `receiver_queue_size` (Number) The consumer receiver queue size for this topic. Pulsar defaults to 1000 when unset, which buffers up to that many messages per function instance.
+- `schema_properties` (Map of String) Schema properties key/values for this topic.
+- `schema_type` (String) The schema type of this topic, either a builtin schema type such as `avro` or a Schema implementation class name.
+- `serde_class_name` (String) The serde class name of this topic. Ignored by Pulsar when `schema_type` is also set.
+
 
 <a id="nestedblock--sink_config"></a>
 ### Nested Schema for `sink_config`

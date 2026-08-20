@@ -41,6 +41,15 @@ func TestFunction(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	updatedConfigBytes, err := os.ReadFile("testdata/function/main_updated.tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Captured after create so the update step can prove the function was updated in place rather
+	// than destroyed and recreated.
+	var createdID string
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
 		ProviderFactories:         testAccProviderFactories,
@@ -66,6 +75,8 @@ func TestFunction(t *testing.T) {
 					}
 					fmt.Printf("config: %v\n", config)
 
+					createdID = rs.Primary.ID
+
 					assert.Equal(t, "function-1", config.Name)
 					assert.Equal(t, "public", config.Tenant)
 					assert.Equal(t, "default", config.Namespace)
@@ -74,9 +85,70 @@ func TestFunction(t *testing.T) {
 					assert.Equal(t, int64(6666), *config.TimeoutMs)
 					assert.NotNil(t, config.Resources)
 
+					// input1 carries an input_specs block; input2 is a plain input. Pulsar returns a
+					// spec for both regardless.
+					assert.Equal(t, 100, config.InputSpecs["public/default/input1"].ReceiverQueueSize)
+					assert.Equal(t, "avro", config.InputSpecs["public/default/input1"].SchemaType)
+					assert.Contains(t, config.InputSpecs, "public/default/input2")
+
 					return nil
 				}),
 			},
+			{
+				// Pulsar accepts a receiver queue size change on an existing topic, so this must be
+				// an in-place update.
+				Config: string(updatedConfigBytes),
+				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
+					name := "pulsar_function.function-1"
+					rs, ok := s.RootModule().Resources[name]
+					if !ok {
+						return fmt.Errorf("%s not be found", name)
+					}
+
+					if rs.Primary.ID != createdID {
+						return fmt.Errorf("function was replaced: id changed from %s to %s",
+							createdID, rs.Primary.ID)
+					}
+
+					config, err := getPulsarFunctionByResourceID(rs.Primary.ID)
+					if err != nil {
+						return err
+					}
+
+					if config == nil {
+						return fmt.Errorf("failed to update %s function", rs.Primary.ID)
+					}
+
+					assert.Equal(t, 250, config.InputSpecs["public/default/input1"].ReceiverQueueSize)
+
+					// The topic listed in both inputs and input_specs must keep its consumer config
+					// across the update: if the provider left it in inputs, validateUpdate() would
+					// have reset it to a default ConsumerConfig here.
+					assert.Equal(t, "avro", config.InputSpecs["public/default/input1"].SchemaType)
+
+					return nil
+				}),
+			},
+		},
+	})
+}
+
+// Regression guard: a function configured only with `inputs` must not drift. The broker returns an
+// inputSpecs entry for every one of those topics, so a read that mirrored them into state would
+// plan a change on every run. resource.Test fails the step if the post-apply plan is non-empty.
+func TestFunctionLegacyInputsOnly(t *testing.T) {
+	configBytes, err := os.ReadFile("testdata/function/legacy_inputs_only.tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { testAccPreCheck(t) },
+		ProviderFactories:         testAccProviderFactories,
+		PreventPostDestroyRefresh: false,
+		CheckDestroy:              testPulsarFunctionDestroy,
+		Steps: []resource.TestStep{
+			{Config: string(configBytes)},
 		},
 	})
 }

@@ -23,7 +23,7 @@ resource "pulsar_function" "function-1" {
     # ConsumerConfig and discards the receiver queue size on every apply.
     input_specs {
       key                 = "public/default/input1"
-      receiver_queue_size = 100
+      receiver_queue_size = 250
       schema_type         = "avro"
     }
 
