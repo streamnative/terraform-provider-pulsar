@@ -73,7 +73,7 @@ func TestSplitFunctionCustomRuntimeOptionsWithoutSinkConfig(t *testing.T) {
 func functionInputSpec(topic string, overrides map[string]interface{}) map[string]interface{} {
 	spec := map[string]interface{}{
 		resourceFunctionInputSpecTopicKey:              topic,
-		resourceFunctionInputSpecReceiverQueueSizeKey:  0,
+		resourceFunctionInputSpecReceiverQueueSizeKey:  defaultFunctionReceiverQueueSize,
 		resourceFunctionInputSpecSchemaTypeKey:         "",
 		resourceFunctionInputSpecSerdeClassNameKey:     "",
 		resourceFunctionInputSpecRegexPatternKey:       false,
@@ -168,6 +168,70 @@ func TestMarshalFunctionInputSpecsAbsent(t *testing.T) {
 	assert.Equal(t, []string{"public/default/in-1"}, functionConfig.Inputs)
 }
 
+func TestMarshalFunctionInputSpecsExplicitZeroQueueSize(t *testing.T) {
+	d := functionResourceData(t, map[string]interface{}{
+		resourceFunctionInputSpecsKey: []interface{}{
+			functionInputSpec("public/default/in-1", map[string]interface{}{
+				resourceFunctionInputSpecReceiverQueueSizeKey: 0,
+			}),
+		},
+	})
+
+	functionConfig, err := marshalFunctionConfig(d)
+	require.NoError(t, err)
+	consumerConfig := functionConfig.InputSpecs["public/default/in-1"]
+	assert.True(t, consumerConfig.HasReceiverQueueSize())
+	assert.Zero(t, consumerConfig.ReceiverQueueSize)
+
+	payload, err := json.Marshal(functionConfig)
+	require.NoError(t, err)
+	assert.Contains(t, string(payload), `"receiverQueueSize":0`)
+}
+
+func TestMarshalFunctionInputSpecsRemoveEveryLegacyOverlap(t *testing.T) {
+	const defaultSerde = "org.apache.pulsar.functions.api.utils.DefaultSerDe"
+
+	d := functionResourceData(t, map[string]interface{}{
+		resourceFunctionInputsKey: []interface{}{
+			"public/default/plain",
+			"public/default/keep-input",
+		},
+		resourceFunctionTopicsPatternKey: "public/default/pattern-.*",
+		resourceFunctionCustomSerdeInputsKey: map[string]interface{}{
+			"public/default/serde":      defaultSerde,
+			"public/default/keep-serde": defaultSerde,
+		},
+		resourceFunctionCustomSchemaInputsKey: map[string]interface{}{
+			"public/default/schema":      `{"schemaType":"STRING"}`,
+			"public/default/keep-schema": `{"schemaType":"STRING"}`,
+		},
+		resourceFunctionInputSpecsKey: []interface{}{
+			functionInputSpec("public/default/plain", nil),
+			functionInputSpec("public/default/pattern-.*", map[string]interface{}{
+				resourceFunctionInputSpecRegexPatternKey: true,
+			}),
+			functionInputSpec("public/default/serde", map[string]interface{}{
+				resourceFunctionInputSpecSerdeClassNameKey: defaultSerde,
+			}),
+			functionInputSpec("public/default/schema", map[string]interface{}{
+				resourceFunctionInputSpecSchemaTypeKey: "STRING",
+			}),
+		},
+	})
+
+	functionConfig, err := marshalFunctionConfig(d)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"public/default/keep-input"}, functionConfig.Inputs)
+	assert.Nil(t, functionConfig.TopicsPattern)
+	assert.Equal(t, map[string]string{
+		"public/default/keep-serde": defaultSerde,
+	}, functionConfig.CustomSerdeInputs)
+	assert.Equal(t, map[string]string{
+		"public/default/keep-schema": `{"schemaType":"STRING"}`,
+	}, functionConfig.CustomSchemaInputs)
+}
+
 func TestUnmarshalFunctionInputSpecs(t *testing.T) {
 	// The broker returns a spec for every input topic, including ones the configuration declares
 	// through inputs or topics_pattern, and never returns inputs at all.
@@ -188,12 +252,22 @@ func TestUnmarshalFunctionInputSpecs(t *testing.T) {
 				SchemaProperties:   map[string]string{},
 				ConsumerProperties: map[string]string{},
 			},
+			"public/default/serde": {},
+			"public/default/schema": {
+				SchemaType: "STRING",
+			},
 		},
 	}
 
 	d := functionResourceData(t, map[string]interface{}{
 		resourceFunctionInputsKey:        []interface{}{"public/default/in-1", "public/default/in-2"},
 		resourceFunctionTopicsPatternKey: "public/default/pattern-.*",
+		resourceFunctionCustomSerdeInputsKey: map[string]interface{}{
+			"public/default/serde": "org.apache.pulsar.functions.api.utils.DefaultSerDe",
+		},
+		resourceFunctionCustomSchemaInputsKey: map[string]interface{}{
+			"public/default/schema": `{"schemaType":"STRING"}`,
+		},
 		resourceFunctionInputSpecsKey: []interface{}{
 			functionInputSpec("public/default/in-1", map[string]interface{}{
 				resourceFunctionInputSpecReceiverQueueSizeKey: 100,
@@ -216,6 +290,36 @@ func TestUnmarshalFunctionInputSpecs(t *testing.T) {
 	// block the configuration never wrote, and therefore a permanent diff.
 	assert.NotContains(t, specs, "public/default/in-2")
 	assert.NotContains(t, specs, "public/default/pattern-.*")
+	assert.NotContains(t, specs, "public/default/serde")
+	assert.NotContains(t, specs, "public/default/schema")
+}
+
+func TestUnmarshalFunctionInputSpecsPreservesConsumerProperties(t *testing.T) {
+	topic := "public/default/in-1"
+	d := functionResourceData(t, map[string]interface{}{
+		resourceFunctionInputSpecsKey: []interface{}{
+			functionInputSpec(topic, map[string]interface{}{
+				resourceFunctionInputSpecConsumerPropertiesKey: map[string]interface{}{
+					"application": "billing",
+				},
+			}),
+		},
+	})
+
+	functionConfig := utils.FunctionConfig{
+		InputSpecs: map[string]utils.ConsumerConfig{
+			topic: {
+				ReceiverQueueSize:  defaultFunctionReceiverQueueSize,
+				ConsumerProperties: map[string]string{},
+			},
+		},
+	}
+
+	require.NoError(t, unmarshalFunctionInputSpecs(functionConfig, d))
+
+	specs := functionInputSpecsInState(t, d)
+	assert.Equal(t, map[string]interface{}{"application": "billing"},
+		specs[topic][resourceFunctionInputSpecConsumerPropertiesKey])
 }
 
 func TestUnmarshalFunctionInputSpecsOnImport(t *testing.T) {
@@ -234,12 +338,35 @@ func TestUnmarshalFunctionInputSpecsOnImport(t *testing.T) {
 	specs := functionInputSpecsInState(t, d)
 	assert.Len(t, specs, 2)
 	assert.Equal(t, 100, specs["public/default/in-1"][resourceFunctionInputSpecReceiverQueueSizeKey])
+	assert.Equal(t, defaultFunctionReceiverQueueSize,
+		specs["public/default/in-2"][resourceFunctionInputSpecReceiverQueueSizeKey])
+}
+
+func TestUnmarshalFunctionInputSpecsExplicitZeroQueueSize(t *testing.T) {
+	consumerConfig := utils.ConsumerConfig{}
+	consumerConfig.SetReceiverQueueSize(0)
+
+	d := functionResourceData(t, map[string]interface{}{})
+	require.NoError(t, unmarshalFunctionInputSpecs(utils.FunctionConfig{
+		InputSpecs: map[string]utils.ConsumerConfig{
+			"public/default/in-1": consumerConfig,
+		},
+	}, d))
+
+	specs := functionInputSpecsInState(t, d)
+	assert.Zero(t, specs["public/default/in-1"][resourceFunctionInputSpecReceiverQueueSizeKey])
 }
 
 func TestEffectiveFunctionInputTopics(t *testing.T) {
 	d := functionResourceData(t, map[string]interface{}{
 		resourceFunctionInputsKey:        []interface{}{"public/default/in-1", "public/default/in-2"},
 		resourceFunctionTopicsPatternKey: "public/default/pattern-.*",
+		resourceFunctionCustomSerdeInputsKey: map[string]interface{}{
+			"public/default/serde": "org.apache.pulsar.functions.api.utils.DefaultSerDe",
+		},
+		resourceFunctionCustomSchemaInputsKey: map[string]interface{}{
+			"public/default/schema": `{"schemaType":"STRING"}`,
+		},
 		resourceFunctionInputSpecsKey: []interface{}{
 			functionInputSpec("public/default/in-1", map[string]interface{}{
 				resourceFunctionInputSpecReceiverQueueSizeKey: 100,
@@ -251,6 +378,8 @@ func TestEffectiveFunctionInputTopics(t *testing.T) {
 	topics := effectiveFunctionInputTopics(
 		d.Get(resourceFunctionInputsKey),
 		d.Get(resourceFunctionTopicsPatternKey),
+		d.Get(resourceFunctionCustomSerdeInputsKey),
+		d.Get(resourceFunctionCustomSchemaInputsKey),
 		d.Get(resourceFunctionInputSpecsKey),
 	)
 
@@ -259,7 +388,69 @@ func TestEffectiveFunctionInputTopics(t *testing.T) {
 		"public/default/in-2":       false,
 		"public/default/in-3":       false,
 		"public/default/pattern-.*": true,
+		"public/default/serde":      false,
+		"public/default/schema":     false,
 	}, topics)
+}
+
+func TestFunctionInputSpecsValidation(t *testing.T) {
+	base := map[string]interface{}{
+		resourceFunctionTenantKey:    "public",
+		resourceFunctionNamespaceKey: "default",
+		resourceFunctionNameKey:      "function-1",
+	}
+
+	tests := []struct {
+		name  string
+		specs []interface{}
+		want  string
+	}{
+		{
+			name: "duplicate topic keys",
+			specs: []interface{}{
+				map[string]interface{}{
+					resourceFunctionInputSpecTopicKey:             "public/default/in-1",
+					resourceFunctionInputSpecReceiverQueueSizeKey: 100,
+				},
+				map[string]interface{}{
+					resourceFunctionInputSpecTopicKey:             "public/default/in-1",
+					resourceFunctionInputSpecReceiverQueueSizeKey: 200,
+				},
+			},
+			want: `input_specs contains duplicate key "public/default/in-1"`,
+		},
+		{
+			name: "schema and serde are mutually exclusive",
+			specs: []interface{}{
+				map[string]interface{}{
+					resourceFunctionInputSpecTopicKey:          "public/default/in-1",
+					resourceFunctionInputSpecSchemaTypeKey:     "STRING",
+					resourceFunctionInputSpecSerdeClassNameKey: "example.StringSerde",
+				},
+			},
+			want: "cannot set both schema_type and serde_class_name",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config := map[string]interface{}{}
+			for key, value := range base {
+				config[key] = value
+			}
+			config[resourceFunctionInputSpecsKey] = test.specs
+
+			res := resourcePulsarFunction()
+			d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{})
+			_, err := res.Diff(
+				context.Background(),
+				d.State(),
+				terraform.NewResourceConfigRaw(config),
+				nil,
+			)
+			require.ErrorContains(t, err, test.want)
+		})
+	}
 }
 
 func functionInputSpecsDiff(t *testing.T, state, config map[string]interface{}) *terraform.InstanceDiff {
@@ -337,6 +528,69 @@ func TestFunctionInputSpecsForceNew(t *testing.T) {
 			}),
 			requiresNew: false,
 			plans:       "100",
+		},
+		{
+			name: "moving a topic from inputs to input_specs updates in place",
+			state: withBase(map[string]interface{}{
+				resourceFunctionInputsKey: []interface{}{"public/default/in-1"},
+			}),
+			config: withBase(map[string]interface{}{
+				resourceFunctionInputSpecsKey: []interface{}{
+					map[string]interface{}{
+						resourceFunctionInputSpecTopicKey:             "public/default/in-1",
+						resourceFunctionInputSpecReceiverQueueSizeKey: 100,
+					},
+				},
+			}),
+			requiresNew: false,
+			plans:       "100",
+		},
+		{
+			name: "moving a pattern to input_specs updates in place",
+			state: withBase(map[string]interface{}{
+				resourceFunctionTopicsPatternKey: "public/default/in-.*",
+			}),
+			config: withBase(map[string]interface{}{
+				resourceFunctionInputSpecsKey: []interface{}{
+					map[string]interface{}{
+						resourceFunctionInputSpecTopicKey:        "public/default/in-.*",
+						resourceFunctionInputSpecRegexPatternKey: true,
+					},
+				},
+			}),
+			requiresNew: false,
+		},
+		{
+			name: "moving custom serde input to input_specs updates in place",
+			state: withBase(map[string]interface{}{
+				resourceFunctionCustomSerdeInputsKey: map[string]interface{}{
+					"public/default/in-1": "org.apache.pulsar.functions.api.utils.DefaultSerDe",
+				},
+			}),
+			config: withBase(map[string]interface{}{
+				resourceFunctionInputSpecsKey: []interface{}{
+					map[string]interface{}{
+						resourceFunctionInputSpecTopicKey: "public/default/in-1",
+						resourceFunctionInputSpecSerdeClassNameKey: "org.apache.pulsar.functions.api.utils." +
+							"DefaultSerDe",
+					},
+				},
+			}),
+			requiresNew: false,
+		},
+		{
+			name: "changing a custom serde for the same topic updates in place",
+			state: withBase(map[string]interface{}{
+				resourceFunctionCustomSerdeInputsKey: map[string]interface{}{
+					"public/default/in-1": "example.OldSerde",
+				},
+			}),
+			config: withBase(map[string]interface{}{
+				resourceFunctionCustomSerdeInputsKey: map[string]interface{}{
+					"public/default/in-1": "example.NewSerde",
+				},
+			}),
+			requiresNew: false,
 		},
 		{
 			name: "tuning receiver_queue_size updates in place",
@@ -426,6 +680,30 @@ func TestFunctionInputSpecsForceNew(t *testing.T) {
 					map[string]interface{}{
 						resourceFunctionInputSpecTopicKey: "public/default/in-1",
 					},
+				},
+			}),
+			requiresNew: true,
+		},
+		{
+			name: "renaming a plain input replaces the function",
+			state: withBase(map[string]interface{}{
+				resourceFunctionInputsKey: []interface{}{"public/default/in-1"},
+			}),
+			config: withBase(map[string]interface{}{
+				resourceFunctionInputsKey: []interface{}{"public/default/in-2"},
+			}),
+			requiresNew: true,
+		},
+		{
+			name: "renaming a custom schema input replaces the function",
+			state: withBase(map[string]interface{}{
+				resourceFunctionCustomSchemaInputsKey: map[string]interface{}{
+					"public/default/in-1": `{"schemaType":"STRING"}`,
+				},
+			}),
+			config: withBase(map[string]interface{}{
+				resourceFunctionCustomSchemaInputsKey: map[string]interface{}{
+					"public/default/in-2": `{"schemaType":"STRING"}`,
 				},
 			}),
 			requiresNew: true,
