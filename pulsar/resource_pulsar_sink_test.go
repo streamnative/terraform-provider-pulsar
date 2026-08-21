@@ -153,8 +153,14 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 30 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 30, len(s[0].Attributes), s[0].Attributes)
+		// Counts every flattened state attribute, so it changes whenever the sink schema gains or
+		// loses one - including nested attributes of input_specs, which contribute one entry each
+		// plus a "%" count per map.
+		const expectedAttrs = 33
+
+		if len(s[0].Attributes) != expectedAttrs {
+			return fmt.Errorf("expected %d attrs, got %d: %#v",
+				expectedAttrs, len(s[0].Attributes), s[0].Attributes)
 		}
 
 		return nil
