@@ -73,6 +73,13 @@ resource "pulsar_function" "function-1" {
   log_topic                       = "public/default/lt"
   timeout_ms                      = 6666
 
+  # Output producer configuration (#220 part A).
+  compression_type                       = "ZSTD"
+  batch_builder                          = "KEY_BASED"
+  max_pending_messages                   = 1000
+  max_pending_messages_across_partitions = 50000
+  use_thread_local_producers             = true
+
   custom_runtime_options = jsonencode(
     {
       "env" : {

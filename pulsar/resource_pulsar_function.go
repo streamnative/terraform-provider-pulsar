@@ -102,6 +102,16 @@ var functionInputSourceKeys = []string{
 	resourceFunctionInputSpecsKey,
 }
 
+// Producer configuration for the function's output topic. The attribute names mirror the ones
+// pulsar_source already exposes, so the two resources read the same way.
+const (
+	resourceFunctionPCMaxPendingMsgKey                = "max_pending_messages"
+	resourceFunctionPCMaxPendingMsgAcrossPartitionKey = "max_pending_messages_across_partitions"
+	resourceFunctionPCUseThreadLocalProducersKey      = "use_thread_local_producers"
+	resourceFunctionPCBatchBuilderKey                 = "batch_builder"
+	resourceFunctionPCCompressionTypeKey              = "compression_type"
+)
+
 const (
 	runtimeOptionSinkConfigKey         = "sinkConfig"
 	runtimeOptionSourceConfigKey       = "sourceConfig"
@@ -177,6 +187,15 @@ func init() {
 		resourceFunctionUserConfig:              "User-defined config key/values",
 		resourceFunctionSinkConfigKey:           "Sink configuration key/values serialized into custom_runtime_options.",
 		resourceFunctionSourceConfigKey:         "Source configuration key/values serialized into custom_runtime_options.",
+		//nolint:lll
+		resourceFunctionPCMaxPendingMsgKey: "The maximum size of a queue holding pending messages",
+		//nolint:lll
+		resourceFunctionPCMaxPendingMsgAcrossPartitionKey: "The maximum number of pending messages across partitions",
+		resourceFunctionPCUseThreadLocalProducersKey:      "Whether to use thread local producers",
+		//nolint:lll
+		resourceFunctionPCBatchBuilderKey: "BatchBuilder provides two types of batch construction methods, DEFAULT and KEY_BASED.",
+		//nolint:lll
+		resourceFunctionPCCompressionTypeKey: "Set the compression type for the producer. By default, message payloads are not compressed. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE",
 	}
 }
 
@@ -503,6 +522,32 @@ func resourcePulsarFunction() *schema.Resource {
 				Optional:    true,
 				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionDiskKey],
+			},
+			resourceFunctionPCMaxPendingMsgKey: {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCMaxPendingMsgKey],
+			},
+			resourceFunctionPCMaxPendingMsgAcrossPartitionKey: {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCMaxPendingMsgAcrossPartitionKey],
+			},
+			resourceFunctionPCUseThreadLocalProducersKey: {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCUseThreadLocalProducersKey],
+			},
+			resourceFunctionPCBatchBuilderKey: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCBatchBuilderKey],
+			},
+			resourceFunctionPCCompressionTypeKey: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCCompressionTypeKey],
 			},
 			resourceFunctionUserConfig: {
 				Type:        schema.TypeMap,
@@ -1204,6 +1249,8 @@ func marshalFunctionConfig(d *schema.ResourceData) (*utils.FunctionConfig, error
 		functionConfig.UserConfig = interMap
 	}
 
+	functionConfig.ProducerConfig = marshalFunctionProducerConfig(d)
+
 	return functionConfig, nil
 }
 
@@ -1297,7 +1344,93 @@ func flattenFunctionInputSpec(topic string, consumerConfig utils.ConsumerConfig)
 	return spec
 }
 
+// marshalFunctionProducerConfig builds the output producer's configuration, mirroring how
+// pulsar_source populates the same struct. It returns nil when nothing is configured so the
+// request is unchanged for functions that do not set any of these.
+func marshalFunctionProducerConfig(d *schema.ResourceData) *utils.ProducerConfig {
+	producerConfig := &utils.ProducerConfig{}
+	configured := false
+
+	if inter, ok := d.GetOk(resourceFunctionPCMaxPendingMsgKey); ok {
+		producerConfig.MaxPendingMessages = inter.(int)
+		configured = true
+	}
+
+	if inter, ok := d.GetOk(resourceFunctionPCMaxPendingMsgAcrossPartitionKey); ok {
+		producerConfig.MaxPendingMessagesAcrossPartitions = inter.(int)
+		configured = true
+	}
+
+	if inter, ok := d.GetOk(resourceFunctionPCUseThreadLocalProducersKey); ok {
+		producerConfig.UseThreadLocalProducers = inter.(bool)
+		configured = true
+	}
+
+	if inter, ok := d.GetOk(resourceFunctionPCBatchBuilderKey); ok {
+		producerConfig.BatchBuilder = inter.(string)
+		configured = true
+	}
+
+	if inter, ok := d.GetOk(resourceFunctionPCCompressionTypeKey); ok {
+		producerConfig.CompressionType = inter.(string)
+		configured = true
+	}
+
+	if !configured {
+		return nil
+	}
+
+	return producerConfig
+}
+
+// unmarshalFunctionProducerConfig writes the output producer's configuration into state. Each field
+// is only surfaced when the server returned something for it, so a function that configures none of
+// them does not gain a diff.
+func unmarshalFunctionProducerConfig(functionConfig utils.FunctionConfig, d *schema.ResourceData) error {
+	if functionConfig.ProducerConfig == nil {
+		return nil
+	}
+
+	producerConfig := functionConfig.ProducerConfig
+
+	if producerConfig.MaxPendingMessages != 0 {
+		if err := d.Set(resourceFunctionPCMaxPendingMsgKey, producerConfig.MaxPendingMessages); err != nil {
+			return err
+		}
+	}
+
+	if producerConfig.MaxPendingMessagesAcrossPartitions != 0 {
+		if err := d.Set(resourceFunctionPCMaxPendingMsgAcrossPartitionKey,
+			producerConfig.MaxPendingMessagesAcrossPartitions); err != nil {
+			return err
+		}
+	}
+
+	if err := d.Set(resourceFunctionPCUseThreadLocalProducersKey,
+		producerConfig.UseThreadLocalProducers); err != nil {
+		return err
+	}
+
+	if producerConfig.BatchBuilder != "" {
+		if err := d.Set(resourceFunctionPCBatchBuilderKey, producerConfig.BatchBuilder); err != nil {
+			return err
+		}
+	}
+
+	if producerConfig.CompressionType != "" {
+		if err := d.Set(resourceFunctionPCCompressionTypeKey, producerConfig.CompressionType); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.ResourceData) error {
+	if err := unmarshalFunctionProducerConfig(functionConfig, d); err != nil {
+		return err
+	}
+
 	if functionConfig.Jar != nil {
 		err := d.Set(resourceFunctionJarKey, *functionConfig.Jar)
 		if err != nil {

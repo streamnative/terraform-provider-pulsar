@@ -29,6 +29,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -105,6 +106,14 @@ func TestFunction(t *testing.T) {
 					assert.Equal(t, 103,
 						config.InputSpecs["public/default/schema-input"].ReceiverQueueSize)
 					assert.Equal(t, "STRING", config.InputSpecs["public/default/schema-input"].SchemaType)
+
+					// #220 part A: the output producer configuration must round-trip.
+					require.NotNil(t, config.ProducerConfig)
+					assert.Equal(t, "ZSTD", config.ProducerConfig.CompressionType)
+					assert.Equal(t, "KEY_BASED", config.ProducerConfig.BatchBuilder)
+					assert.Equal(t, 1000, config.ProducerConfig.MaxPendingMessages)
+					assert.Equal(t, 50000, config.ProducerConfig.MaxPendingMessagesAcrossPartitions)
+					assert.True(t, config.ProducerConfig.UseThreadLocalProducers)
 
 					return nil
 				}),
