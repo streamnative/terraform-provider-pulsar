@@ -415,6 +415,7 @@ func resourcePulsarFunction() *schema.Resource {
 			resourceFunctionUserConfig: {
 				Type:        schema.TypeMap,
 				Optional:    true,
+				Sensitive:   true,
 				Description: resourceFunctionDescriptions[resourceFunctionUserConfig],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},

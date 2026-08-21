@@ -56,7 +56,7 @@ Manages Pulsar Functions through the Functions Worker API.
 - `subscription_position` (String) The subscription position. Supported values: `Latest`, `Earliest`.
 - `timeout_ms` (Number) The timeout of the function in milliseconds.
 - `topics_pattern` (String) The input topics pattern of the function. The pattern is a regex expression. The function consumes from all topics matching the pattern.
-- `user_config` (Map of String) User-defined config key/values
+- `user_config` (Map of String, Sensitive) User-defined config key/values
 
 ### Read-Only
 
