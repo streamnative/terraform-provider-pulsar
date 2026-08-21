@@ -49,24 +49,28 @@ const (
 	resourceSinkInputSpecsSubsetSerdeClassNameKey    = "serde_class_name"
 	resourceSinkInputSpecsSubsetIsRegexPatternKey    = "is_regex_pattern"
 	resourceSinkInputSpecsSubsetReceiverQueueSizeKey = "receiver_queue_size"
-	resourceSinkProcessingGuaranteesKey              = "processing_guarantees"
-	resourceSinkRetainOrderingKey                    = "retain_ordering"
-	resourceSinkParallelismKey                       = "parallelism"
-	resourceSinkArchiveKey                           = "archive"
-	resourceSinkClassnameKey                         = "classname"
-	resourceSinkCPUKey                               = "cpu"
-	resourceSinkRAMKey                               = "ram_mb"
-	resourceSinkDiskKey                              = "disk_mb"
-	resourceSinkConfigsKey                           = "configs"
-	resourceSinkAutoACKKey                           = "auto_ack"
-	resourceSinkTimeoutKey                           = "timeout_ms"
-	resourceSinkCustomRuntimeOptionsKey              = "custom_runtime_options"
-	resourceSinkDeadLetterTopicKey                   = "dead_letter_topic"
-	resourceSinkMaxRedeliverCountKey                 = "max_redeliver_count"
-	resourceSinkNegativeCountRedeliveryDelayKey      = "negative_ack_redelivery_delay_ms"
-	resourceSinkRetainKeyOrderingKey                 = "retain_key_ordering"
-	resourceSinkSinkTypeKey                          = "sink_type"
-	resourceSinkSecretsKey                           = "secrets"
+	resourceSinkInputSpecsSubsetPoolMessagesKey      = "pool_messages"
+	resourceSinkInputSpecsSubsetSchemaPropertiesKey  = "schema_properties"
+	//nolint:lll
+	resourceSinkInputSpecsSubsetConsumerPropertiesKey = "consumer_properties"
+	resourceSinkProcessingGuaranteesKey               = "processing_guarantees"
+	resourceSinkRetainOrderingKey                     = "retain_ordering"
+	resourceSinkParallelismKey                        = "parallelism"
+	resourceSinkArchiveKey                            = "archive"
+	resourceSinkClassnameKey                          = "classname"
+	resourceSinkCPUKey                                = "cpu"
+	resourceSinkRAMKey                                = "ram_mb"
+	resourceSinkDiskKey                               = "disk_mb"
+	resourceSinkConfigsKey                            = "configs"
+	resourceSinkAutoACKKey                            = "auto_ack"
+	resourceSinkTimeoutKey                            = "timeout_ms"
+	resourceSinkCustomRuntimeOptionsKey               = "custom_runtime_options"
+	resourceSinkDeadLetterTopicKey                    = "dead_letter_topic"
+	resourceSinkMaxRedeliverCountKey                  = "max_redeliver_count"
+	resourceSinkNegativeCountRedeliveryDelayKey       = "negative_ack_redelivery_delay_ms"
+	resourceSinkRetainKeyOrderingKey                  = "retain_key_ordering"
+	resourceSinkSinkTypeKey                           = "sink_type"
+	resourceSinkSecretsKey                            = "secrets"
 )
 
 var resourceSinkDescriptions = make(map[string]string)
@@ -222,11 +226,60 @@ func resourcePulsarSink() *schema.Resource {
 				Description: resourceSinkDescriptions[resourceSinkInputSpecsKey],
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						resourceSinkInputSpecsSubsetTopicKey:             {Type: schema.TypeString, Required: true},
-						resourceSinkInputSpecsSubsetSchemaTypeKey:        {Type: schema.TypeString, Required: true},
-						resourceSinkInputSpecsSubsetSerdeClassNameKey:    {Type: schema.TypeString, Required: true},
-						resourceSinkInputSpecsSubsetIsRegexPatternKey:    {Type: schema.TypeBool, Required: true},
-						resourceSinkInputSpecsSubsetReceiverQueueSizeKey: {Type: schema.TypeInt, Required: true},
+						resourceSinkInputSpecsSubsetTopicKey: {
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "The input topic that this consumer configuration applies to.",
+						},
+						resourceSinkInputSpecsSubsetSchemaTypeKey: {
+							Type:     schema.TypeString,
+							Optional: true,
+							//nolint:lll
+							Description: "The schema type of this topic, either a builtin schema type such as `avro` or a Schema implementation class name. Cannot be set together with `serde_class_name`.",
+						},
+						resourceSinkInputSpecsSubsetSerdeClassNameKey: {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Description: "The serde class name of this topic. Cannot be set together with `schema_type`.",
+						},
+						resourceSinkInputSpecsSubsetIsRegexPatternKey: {
+							Type:     schema.TypeBool,
+							Optional: true,
+							//nolint:lll
+							Description: "Whether the topic is a regex pattern matching multiple topics. Pulsar rejects a change to this on an existing sink.",
+						},
+						resourceSinkInputSpecsSubsetReceiverQueueSizeKey: {
+							Type:     schema.TypeInt,
+							Optional: true,
+							Computed: true,
+							//nolint:lll
+							Description: "The consumer receiver queue size for this topic. Pulsar defaults to 1000 when unset, which buffers up to that many messages per sink instance.",
+							ValidateFunc: func(val interface{}, key string) ([]string, []error) {
+								if v := val.(int); v < 0 {
+									return nil, []error{
+										fmt.Errorf("%s must be greater than or equal to 0, got %d", key, v),
+									}
+								}
+								return nil, nil
+							},
+						},
+						resourceSinkInputSpecsSubsetPoolMessagesKey: {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Description: "Whether the consumer pools messages for this topic.",
+						},
+						resourceSinkInputSpecsSubsetSchemaPropertiesKey: {
+							Type:        schema.TypeMap,
+							Optional:    true,
+							Description: "Schema properties key/values for this topic.",
+							Elem:        &schema.Schema{Type: schema.TypeString},
+						},
+						resourceSinkInputSpecsSubsetConsumerPropertiesKey: {
+							Type:        schema.TypeMap,
+							Optional:    true,
+							Description: "Consumer properties key/values for this topic.",
+							Elem:        &schema.Schema{Type: schema.TypeString},
+						},
 					},
 				},
 			},
@@ -457,6 +510,16 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 			item[resourceSinkInputSpecsSubsetSerdeClassNameKey] = config.SerdeClassName
 			item[resourceSinkInputSpecsSubsetIsRegexPatternKey] = config.RegexPattern
 			item[resourceSinkInputSpecsSubsetReceiverQueueSizeKey] = config.ReceiverQueueSize
+			item[resourceSinkInputSpecsSubsetPoolMessagesKey] = config.PoolMessages
+			// The broker returns these maps non-nil but usually empty; only surface them when they
+			// hold something, so an empty map does not read as configuration the user never wrote.
+			if len(config.SchemaProperties) != 0 {
+				item[resourceSinkInputSpecsSubsetSchemaPropertiesKey] = convertToInterfaceMap(config.SchemaProperties)
+			}
+			if len(config.ConsumerProperties) != 0 {
+				item[resourceSinkInputSpecsSubsetConsumerPropertiesKey] =
+					convertToInterfaceMap(config.ConsumerProperties)
+			}
 			inputSpecs = append(inputSpecs, item)
 		}
 		err = d.Set(resourceSinkInputSpecsKey, inputSpecs)
@@ -633,6 +696,61 @@ func resourcePulsarSinkDelete(ctx context.Context, d *schema.ResourceData, meta 
 	return diag.FromErr(client.DeleteSink(tenant, namespace, name))
 }
 
+// sinkStringMap narrows a schema.TypeMap value to map[string]string, returning nil when empty so
+// the field is omitted from the request payload.
+func sinkStringMap(value interface{}) map[string]string {
+	interMap, ok := value.(map[string]interface{})
+	if !ok || len(interMap) == 0 {
+		return nil
+	}
+
+	stringMap := make(map[string]string, len(interMap))
+	for key, item := range interMap {
+		stringMap[key], _ = item.(string)
+	}
+
+	return stringMap
+}
+
+// validateSinkInputSpecs enforces the two rules Pulsar applies to inputSpecs that the schema cannot
+// express: topics are the map key so they must be unique, and SinkConfigUtils rejects a spec that
+// sets both schemaType and serdeClassName.
+func validateSinkInputSpecs(inputSpecs interface{}) error {
+	set, ok := inputSpecs.(*schema.Set)
+	if !ok || set.Len() == 0 {
+		return nil
+	}
+
+	seenTopics := make(map[string]bool, set.Len())
+	for _, item := range set.List() {
+		spec, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		topic, _ := spec[resourceSinkInputSpecsSubsetTopicKey].(string)
+		if topic == "" {
+			continue
+		}
+		if seenTopics[topic] {
+			return fmt.Errorf("%s contains duplicate %s %q",
+				resourceSinkInputSpecsKey, resourceSinkInputSpecsSubsetTopicKey, topic)
+		}
+		seenTopics[topic] = true
+
+		schemaType, _ := spec[resourceSinkInputSpecsSubsetSchemaTypeKey].(string)
+		serdeClassName, _ := spec[resourceSinkInputSpecsSubsetSerdeClassNameKey].(string)
+		if schemaType != "" && serdeClassName != "" {
+			return fmt.Errorf("%s %q cannot set both %s and %s",
+				resourceSinkInputSpecsKey, topic,
+				resourceSinkInputSpecsSubsetSchemaTypeKey,
+				resourceSinkInputSpecsSubsetSerdeClassNameKey)
+		}
+	}
+
+	return nil
+}
+
 func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 	sinkConfig := &utils.SinkConfig{}
 
@@ -698,19 +816,37 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.TopicToSchemaType = stringMap
 	}
 
+	if err := validateSinkInputSpecs(d.Get(resourceSinkInputSpecsKey)); err != nil {
+		return nil, err
+	}
+
 	if inter, ok := d.GetOk(resourceSinkInputSpecsKey); ok {
 		set := inter.(*schema.Set)
 		if set.Len() > 0 {
 			inputSpecs := make(map[string]utils.ConsumerConfig)
 			for _, n := range set.List() {
 				m := n.(map[string]interface{})
+				// Every nested attribute except the topic is now Optional, so a key may be absent
+				// from the map; the comma-ok form leaves the zero value in that case.
+				schemaType, _ := m[resourceSinkInputSpecsSubsetSchemaTypeKey].(string)
+				serdeClassName, _ := m[resourceSinkInputSpecsSubsetSerdeClassNameKey].(string)
+				regexPattern, _ := m[resourceSinkInputSpecsSubsetIsRegexPatternKey].(bool)
+				receiverQueueSize, _ := m[resourceSinkInputSpecsSubsetReceiverQueueSizeKey].(int)
+				poolMessages, _ := m[resourceSinkInputSpecsSubsetPoolMessagesKey].(bool)
+
 				inputSpec := utils.ConsumerConfig{
-					SchemaType:        m[resourceSinkInputSpecsSubsetSchemaTypeKey].(string),
-					SerdeClassName:    m[resourceSinkInputSpecsSubsetSerdeClassNameKey].(string),
-					RegexPattern:      m[resourceSinkInputSpecsSubsetIsRegexPatternKey].(bool),
-					ReceiverQueueSize: m[resourceSinkInputSpecsSubsetReceiverQueueSizeKey].(int),
+					SchemaType:        schemaType,
+					SerdeClassName:    serdeClassName,
+					RegexPattern:      regexPattern,
+					ReceiverQueueSize: receiverQueueSize,
+					PoolMessages:      poolMessages,
+					SchemaProperties: sinkStringMap(
+						m[resourceSinkInputSpecsSubsetSchemaPropertiesKey]),
+					ConsumerProperties: sinkStringMap(
+						m[resourceSinkInputSpecsSubsetConsumerPropertiesKey]),
 				}
-				inputSpecs[m[resourceSinkInputSpecsSubsetTopicKey].(string)] = inputSpec
+				topic, _ := m[resourceSinkInputSpecsSubsetTopicKey].(string)
+				inputSpecs[topic] = inputSpec
 			}
 			sinkConfig.InputSpecs = inputSpecs
 		}

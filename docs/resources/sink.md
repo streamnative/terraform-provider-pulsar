@@ -57,11 +57,17 @@ Manages Pulsar IO sinks through the Functions Worker API.
 
 Required:
 
-- `is_regex_pattern` (Boolean)
-- `key` (String)
-- `receiver_queue_size` (Number)
-- `schema_type` (String)
-- `serde_class_name` (String)
+- `key` (String) The input topic that this consumer configuration applies to.
+
+Optional:
+
+- `consumer_properties` (Map of String) Consumer properties key/values for this topic.
+- `is_regex_pattern` (Boolean) Whether the topic is a regex pattern matching multiple topics. Pulsar rejects a change to this on an existing sink.
+- `pool_messages` (Boolean) Whether the consumer pools messages for this topic.
+- `receiver_queue_size` (Number) The consumer receiver queue size for this topic. Pulsar defaults to 1000 when unset, which buffers up to that many messages per sink instance.
+- `schema_properties` (Map of String) Schema properties key/values for this topic.
+- `schema_type` (String) The schema type of this topic, either a builtin schema type such as `avro` or a Schema implementation class name. Cannot be set together with `serde_class_name`.
+- `serde_class_name` (String) The serde class name of this topic. Cannot be set together with `schema_type`.
 
 ## Import
 
