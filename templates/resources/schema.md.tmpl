@@ -12,6 +12,58 @@ description: |-
 
 {{ .SchemaMarkdown | trimspace }}
 
+## Example Usage
+
+Primitive types carry no `schema_data`:
+
+```terraform
+resource "pulsar_schema" "string" {
+  tenant    = "public"
+  namespace = "default"
+  topic     = "string-events"
+  type      = "STRING"
+}
+```
+
+Complex types require `schema_data`. Note that `JSON` schemas are declared with an Avro-style
+record definition, the same shape as `AVRO` — not as a JSON Schema document:
+
+```terraform
+resource "pulsar_schema" "avro" {
+  tenant      = "public"
+  namespace   = "default"
+  topic       = "user-events-avro"
+  type        = "AVRO"
+  schema_data = jsonencode({
+    "type" : "record",
+    "name" : "User",
+    "fields" : [
+      { "name" : "name", "type" : "string" },
+      { "name" : "age", "type" : "int" }
+    ]
+  })
+
+  properties = {
+    "author" = "terraform"
+  }
+}
+
+resource "pulsar_schema" "json" {
+  tenant      = "public"
+  namespace   = "default"
+  topic       = "user-events-json"
+  type        = "JSON"
+  schema_data = jsonencode({
+    "type" : "record",
+    "name" : "User",
+    "fields" : [
+      { "name" : "name", "type" : "string" },
+      { "name" : "age", "type" : "int" }
+    ]
+  })
+}
+```
+
 ## Import
 
 Schemas can be imported using the format `tenant/namespace/topic`:
