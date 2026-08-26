@@ -68,6 +68,8 @@ resource "pulsar_function" "function-1" {
   log_topic                       = "public/default/lt"
   timeout_ms                      = 6666
 
+  compression_type = "LZ4"
+
   custom_runtime_options = jsonencode(
     {
       "env" : {
