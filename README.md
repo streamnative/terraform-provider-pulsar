@@ -24,7 +24,7 @@ Terraform provider for managing Pulsar clusters, tenants, namespaces, topics, sc
 ## Requirements
 
 - Terraform 1.2.7 or newer
-- Go 1.24.4 or newer for source builds
+- Go 1.25.14 or newer for source builds
 
 ## Usage
 
