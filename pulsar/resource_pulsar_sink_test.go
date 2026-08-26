@@ -70,9 +70,20 @@ func TestSink(t *testing.T) {
 						return errors.New("resource id should be tenant/namespace/name format")
 					}
 
-					_, err := client.GetSink(parts[0], parts[1], parts[2])
+					sinkConfig, err := client.GetSink(parts[0], parts[1], parts[2])
 					if err != nil {
 						return err
+					}
+
+					inputSpec := sinkConfig.InputSpecs["sink-1-topic"]
+					if !inputSpec.HasReceiverQueueSize() || inputSpec.ReceiverQueueSize != 0 {
+						return fmt.Errorf("receiver_queue_size=0 did not round-trip: %#v", inputSpec)
+					}
+					if !inputSpec.PoolMessages {
+						return fmt.Errorf("pool_messages did not round-trip: %#v", inputSpec)
+					}
+					if inputSpec.ConsumerProperties["application"] != "billing" {
+						return fmt.Errorf("consumer_properties did not round-trip: %#v", inputSpec)
 					}
 
 					return nil
@@ -137,11 +148,17 @@ func TestImportExistingSink(t *testing.T) {
 		CheckDestroy:      testPulsarSinkDestroy,
 		Steps: []resource.TestStep{
 			{
-				ResourceName:     "pulsar_sink.test",
-				ImportState:      true,
-				Config:           testSampleSink(sinkName),
-				ImportStateId:    fmt.Sprintf("public/default/%s", sinkName),
-				ImportStateCheck: testSinkImported(),
+				ResourceName:       "pulsar_sink.test",
+				ImportState:        true,
+				Config:             testSampleSink(sinkName),
+				ImportStateId:      fmt.Sprintf("public/default/%s", sinkName),
+				ImportStateCheck:   testSinkImported(),
+				ImportStatePersist: true,
+			},
+			{
+				Config:             testSampleSink(sinkName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
@@ -153,8 +170,23 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		if len(s[0].Attributes) != 30 {
-			return fmt.Errorf("expected %d attrs, got %d: %#v", 30, len(s[0].Attributes), s[0].Attributes)
+		attributes := s[0].Attributes
+		if attributes[resourceSinkInputsKey+".#"] != "1" {
+			return fmt.Errorf("expected one imported legacy input, got %#v", attributes)
+		}
+		foundTopic := false
+		for key, value := range attributes {
+			if strings.HasPrefix(key, resourceSinkInputsKey+".") &&
+				key != resourceSinkInputsKey+".#" && value == "sink-1-topic" {
+				foundTopic = true
+				break
+			}
+		}
+		if !foundTopic {
+			return fmt.Errorf("imported input topic is missing: %#v", attributes)
+		}
+		if count := attributes[resourceSinkInputSpecsKey+".#"]; count != "" && count != "0" {
+			return fmt.Errorf("plain imported input should not invent input_specs: %#v", attributes)
 		}
 
 		return nil
@@ -234,7 +266,7 @@ resource "pulsar_sink" "test" {
   negative_ack_redelivery_delay_ms = 3000
   retain_key_ordering = false 
 	retain_ordering = true
-  secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
+  secrets ="{\"secret1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
@@ -244,6 +276,12 @@ resource "pulsar_sink" "test" {
 
   archive = "%s"
   configs = "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
+
+  # Pulsar does not return the original package URL from GET, and secrets are normalized when read.
+  # Ignore those unrelated values while checking that imported input state plans cleanly.
+  lifecycle {
+    ignore_changes = [archive, secrets]
+  }
 }
 `, name, testdataArchive)
 }
@@ -256,6 +294,9 @@ func TestSinkUpdate(t *testing.T) {
 	configString := string(configBytes)
 	newName := "sink" + acctest.RandString(10)
 	configString = strings.ReplaceAll(configString, "sink-1", newName)
+	updatedConfigString := strings.Replace(configString,
+		"receiver_queue_size = 0", "receiver_queue_size = 100", 1)
+	var createdID string
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
@@ -283,12 +324,44 @@ func TestSinkUpdate(t *testing.T) {
 					if err != nil {
 						return err
 					}
+					createdID = rs.Primary.ID
 
 					return nil
 				}),
 			},
 			{
-				Config:             configString,
+				Config: updatedConfigString,
+				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
+					name := "pulsar_sink." + newName
+					rs, ok := s.RootModule().Resources[name]
+					if !ok {
+						return fmt.Errorf("%s not be found", name)
+					}
+					if rs.Primary.ID != createdID {
+						return fmt.Errorf("sink was replaced: id changed from %s to %s", createdID, rs.Primary.ID)
+					}
+
+					parts := strings.Split(rs.Primary.ID, "/")
+					if len(parts) != 3 {
+						return errors.New("resource id should be tenant/namespace/name format")
+					}
+					sinkConfig, err := getV3ClientFromMeta(testAccProvider.Meta()).Sinks().GetSink(
+						parts[0], parts[1], parts[2])
+					if err != nil {
+						return err
+					}
+					inputSpec := sinkConfig.InputSpecs[newName+"-topic"]
+					if !inputSpec.HasReceiverQueueSize() || inputSpec.ReceiverQueueSize != 100 {
+						return fmt.Errorf("receiver queue size update did not round-trip: %#v", inputSpec)
+					}
+					if inputSpec.ConsumerProperties["application"] != "billing" || !inputSpec.PoolMessages {
+						return fmt.Errorf("input spec properties were lost during update: %#v", inputSpec)
+					}
+					return nil
+				}),
+			},
+			{
+				Config:             updatedConfigString,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
