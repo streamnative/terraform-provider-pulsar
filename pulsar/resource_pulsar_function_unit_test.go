@@ -13,6 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFunctionRuntimeConfigConfigsSensitive(t *testing.T) {
+	resourceSchema := resourcePulsarFunction().Schema
+	for _, key := range []string{resourceFunctionSinkConfigKey, resourceFunctionSourceConfigKey} {
+		runtimeConfig, ok := resourceSchema[key].Elem.(*schema.Resource)
+		require.True(t, ok)
+		require.True(t, runtimeConfig.Schema[resourceFunctionRuntimeConfigConfigsKey].Sensitive)
+	}
+}
+
 func TestMergeFunctionCustomRuntimeOptions(t *testing.T) {
 	base := `{"foo":"bar","sinkConfig":{"old":"value"},"sourceConfig":{"keep":"me"}}`
 	sinkConfig := map[string]interface{}{
