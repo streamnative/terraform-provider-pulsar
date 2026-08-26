@@ -33,30 +33,28 @@ resource "pulsar_function" "function-1" {
   # ConsumerConfig and discards the receiver queue size on every apply.
   input_specs {
     key                 = "public/default/input1"
-    receiver_queue_size = 100
+    receiver_queue_size = 250
     schema_type         = "avro"
     consumer_properties = {
       application = "billing"
     }
   }
 
-  # Each legacy input form is deliberately overlapped. input_specs must win on both create and
-  # update, even though Pulsar's update path otherwise applies the legacy forms last.
   input_specs {
     key                 = "public/default/pattern-.*"
-    receiver_queue_size = 101
+    receiver_queue_size = 251
     is_regex_pattern    = true
   }
 
   input_specs {
     key                 = "public/default/serde-input"
-    receiver_queue_size = 102
+    receiver_queue_size = 252
     serde_class_name    = "org.apache.pulsar.functions.api.utils.DefaultSerDe"
   }
 
   input_specs {
     key                 = "public/default/schema-input"
-    receiver_queue_size = 103
+    receiver_queue_size = 253
     schema_type         = "STRING"
   }
 
