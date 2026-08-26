@@ -1,21 +1,40 @@
+version: "2"
+
 run:
-  deadline: 6m
+  timeout: 6m
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - bodyclose
     - gocritic
-    - goimports
-    - gosimple
     - govet
     - ineffassign
+    - lll
     - misspell
+    - prealloc
     - staticcheck
-    - stylecheck
-    - typecheck
     - unconvert
     - unparam
     - unused
-    - lll
-    - prealloc
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

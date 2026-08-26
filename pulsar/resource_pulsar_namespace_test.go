@@ -525,6 +525,7 @@ func TestImportMissingNamespaceFails(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
+		CheckDestroy:      testPulsarNamespaceDestroy,
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
