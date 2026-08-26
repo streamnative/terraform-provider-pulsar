@@ -537,6 +537,7 @@ func TestPermissionGrantBothNamespaceAndTopic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -690,6 +691,7 @@ func TestPermissionGrantNeitherNamespaceNorTopic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{

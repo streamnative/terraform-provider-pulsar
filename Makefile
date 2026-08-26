@@ -102,8 +102,8 @@ lint:
 		./$(PKG_NAME)
 
 tools:
-	go install github.com/bflad/tfproviderlint/cmd/tfproviderlint@v0.27.1
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.54.1
+	go install github.com/bflad/tfproviderlint/cmd/tfproviderlint@v0.31.0
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
 
 test-compile:
 	@if [ "$(TEST)" = "./..." ]; then \

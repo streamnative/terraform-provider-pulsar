@@ -147,6 +147,7 @@ func TestImportMissingTopicFails(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
+		CheckDestroy:      testPulsarTopicDestroy,
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{

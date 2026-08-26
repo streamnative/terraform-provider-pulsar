@@ -33,7 +33,7 @@ jobs:
     env:
       ACCESS_TOKEN: ${{ secrets.SNBOT_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: '${{ github.ref }}'
           fetch-depth: 0
@@ -41,11 +41,11 @@ jobs:
       - name: Set Tag as Environment Variable
         id: set_tag
         run: |
-          echo "GORELEASER_CURRENT_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
-          LAST_TAG=$(git describe --abbrev=0 --tags `git rev-list --tags --skip=1 --max-count=1`)
-          echo "GORELEASER_PREVIOUS_TAG=$LAST_TAG" >> $GITHUB_ENV
+          echo "GORELEASER_CURRENT_TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+          LAST_TAG=$(git describe --abbrev=0 --tags "$(git rev-list --tags --skip=1 --max-count=1)")
+          echo "GORELEASER_PREVIOUS_TAG=$LAST_TAG" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.5.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
       - name: Import GPG key
