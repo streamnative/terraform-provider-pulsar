@@ -264,6 +264,107 @@ func TestUnmarshalSinkInputSpecsPreservesLegacyRepresentation(t *testing.T) {
 	assert.Equal(t, []interface{}{topic}, d.Get(resourceSinkInputsKey).(*schema.Set).List())
 }
 
+func TestUnmarshalSinkInputSpecsRefreshesLegacyRepresentation(t *testing.T) {
+	topics := map[string]string{
+		"plain":          "persistent://public/default/plain",
+		"removed":        "persistent://public/default/removed",
+		"became_pattern": "persistent://public/default/became-pattern",
+		"pattern":        "persistent://public/default/pattern-.*",
+		"serde":          "persistent://public/default/serde",
+		"schema":         "persistent://public/default/schema",
+	}
+	d := sinkResourceData(t, map[string]interface{}{
+		resourceSinkInputsKey: []interface{}{
+			topics["plain"], topics["removed"], topics["became_pattern"],
+		},
+		resourceSinkTopicsPatternKey: topics["pattern"],
+		resourceSinkCustomSerdeInputsKey: map[string]interface{}{
+			topics["serde"]:   "com.acme.OldSerde",
+			topics["removed"]: "com.acme.RemovedSerde",
+		},
+		resourceSinkCustomSchemaInputsKey: map[string]interface{}{
+			topics["schema"]:  "STRING",
+			topics["removed"]: "BYTES",
+		},
+	})
+
+	err := unmarshalSinkInputSpecs(utils.SinkConfig{InputSpecs: map[string]utils.ConsumerConfig{
+		topics["plain"]: {},
+		topics["became_pattern"]: {
+			RegexPattern: true,
+		},
+		topics["pattern"]: {
+			RegexPattern: true,
+		},
+		topics["serde"]: {
+			SerdeClassName: "com.acme.NewSerde",
+		},
+		topics["schema"]: {
+			SchemaType: "AVRO",
+		},
+	}}, d)
+	require.NoError(t, err)
+
+	assert.Equal(t, []interface{}{topics["plain"]}, d.Get(resourceSinkInputsKey).(*schema.Set).List())
+	assert.Equal(t, topics["pattern"], d.Get(resourceSinkTopicsPatternKey))
+	assert.Equal(t, map[string]interface{}{topics["serde"]: "com.acme.NewSerde"},
+		d.Get(resourceSinkCustomSerdeInputsKey))
+	assert.Equal(t, map[string]interface{}{topics["schema"]: "AVRO"},
+		d.Get(resourceSinkCustomSchemaInputsKey))
+
+	specs := d.Get(resourceSinkInputSpecsKey).(*schema.Set).List()
+	require.Len(t, specs, 1)
+	assert.Equal(t, topics["became_pattern"],
+		specs[0].(map[string]interface{})[resourceSinkInputSpecsSubsetTopicKey])
+}
+
+func TestUnmarshalImportedSinkInputsUsesLegacyFieldsWhenLossless(t *testing.T) {
+	topics := map[string]string{
+		"plain":    "persistent://public/default/plain",
+		"pattern":  "persistent://public/default/pattern-.*",
+		"serde":    "persistent://public/default/serde",
+		"schema":   "persistent://public/default/schema",
+		"advanced": "persistent://public/default/advanced",
+	}
+	advanced := utils.ConsumerConfig{
+		PoolMessages:       true,
+		ConsumerProperties: map[string]string{"application": "billing"},
+	}
+	advanced.SetReceiverQueueSize(0)
+	d := sinkResourceData(t, nil)
+
+	err := unmarshalSinkInputSpecs(utils.SinkConfig{InputSpecs: map[string]utils.ConsumerConfig{
+		topics["plain"]: {},
+		topics["pattern"]: {
+			RegexPattern: true,
+		},
+		topics["serde"]: {
+			SerdeClassName: "com.acme.Serde",
+		},
+		topics["schema"]: {
+			SchemaType: "AVRO",
+		},
+		topics["advanced"]: advanced,
+	}}, d)
+	require.NoError(t, err)
+
+	assert.Equal(t, []interface{}{topics["plain"]}, d.Get(resourceSinkInputsKey).(*schema.Set).List())
+	assert.Equal(t, topics["pattern"], d.Get(resourceSinkTopicsPatternKey))
+	assert.Equal(t, map[string]interface{}{topics["serde"]: "com.acme.Serde"},
+		d.Get(resourceSinkCustomSerdeInputsKey))
+	assert.Equal(t, map[string]interface{}{topics["schema"]: "AVRO"},
+		d.Get(resourceSinkCustomSchemaInputsKey))
+
+	specs := d.Get(resourceSinkInputSpecsKey).(*schema.Set).List()
+	require.Len(t, specs, 1)
+	spec := specs[0].(map[string]interface{})
+	assert.Equal(t, topics["advanced"], spec[resourceSinkInputSpecsSubsetTopicKey])
+	assert.Zero(t, spec[resourceSinkInputSpecsSubsetReceiverQueueSizeKey])
+	assert.True(t, spec[resourceSinkInputSpecsSubsetPoolMessagesKey].(bool))
+	assert.Equal(t, map[string]interface{}{"application": "billing"},
+		spec[resourceSinkInputSpecsSubsetConsumerPropertiesKey])
+}
+
 func TestUnmarshalSinkInputSpecsPreservesExplicitZero(t *testing.T) {
 	topic := "persistent://public/default/in-1"
 	d := sinkResourceData(t, map[string]interface{}{
@@ -312,6 +413,49 @@ func sinkInputSpecsDiff(t *testing.T, state, config map[string]interface{}) *ter
 	require.NoError(t, err)
 	require.NotNil(t, diff)
 	return diff
+}
+
+func TestSinkImportedLegacyInputPlansCleanly(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	res := resourcePulsarSink()
+	d := schema.TestResourceDataRaw(t, res.Schema, sinkConfigWithBase(nil))
+	d.SetId("public/default/sink-1")
+
+	require.NoError(t, unmarshalSinkInputSpecs(utils.SinkConfig{
+		InputSpecs: map[string]utils.ConsumerConfig{topic: {}},
+	}, d))
+
+	config := sinkConfigWithBase(map[string]interface{}{
+		resourceSinkInputsKey: []interface{}{topic},
+	})
+	diff, err := res.Diff(context.Background(), d.State(), terraform.NewResourceConfigRaw(config), nil)
+	require.NoError(t, err)
+	if diff != nil {
+		assert.True(t, diff.Empty(), "unexpected import follow-up diff: %#v", diff.Attributes)
+	}
+}
+
+func TestSinkExistingDefaultQueueStatePlansCleanly(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	res := resourcePulsarSink()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{})
+	for key, value := range sinkConfigWithBase(map[string]interface{}{
+		resourceSinkInputSpecsKey: []interface{}{sinkInputSpec(topic, nil)},
+	}) {
+		require.NoError(t, d.Set(key, value))
+	}
+	d.SetId("public/default/sink-1")
+
+	config := sinkConfigWithBase(map[string]interface{}{
+		resourceSinkInputSpecsKey: []interface{}{
+			map[string]interface{}{resourceSinkInputSpecsSubsetTopicKey: topic},
+		},
+	})
+	diff, err := res.Diff(context.Background(), d.State(), terraform.NewResourceConfigRaw(config), nil)
+	require.NoError(t, err)
+	if diff != nil {
+		assert.True(t, diff.Empty(), "existing queue state re-planned: %#v", diff.Attributes)
+	}
 }
 
 func TestSinkInputSpecsForceNew(t *testing.T) {

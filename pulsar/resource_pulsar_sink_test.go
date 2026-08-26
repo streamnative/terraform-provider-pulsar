@@ -148,11 +148,17 @@ func TestImportExistingSink(t *testing.T) {
 		CheckDestroy:      testPulsarSinkDestroy,
 		Steps: []resource.TestStep{
 			{
-				ResourceName:     "pulsar_sink.test",
-				ImportState:      true,
-				Config:           testSampleSink(sinkName),
-				ImportStateId:    fmt.Sprintf("public/default/%s", sinkName),
-				ImportStateCheck: testSinkImported(),
+				ResourceName:       "pulsar_sink.test",
+				ImportState:        true,
+				Config:             testSampleSink(sinkName),
+				ImportStateId:      fmt.Sprintf("public/default/%s", sinkName),
+				ImportStateCheck:   testSinkImported(),
+				ImportStatePersist: true,
+			},
+			{
+				Config:             testSampleSink(sinkName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
@@ -164,14 +170,23 @@ func testSinkImported() resource.ImportStateCheckFunc {
 			return fmt.Errorf("expected %d states, got %d: %#v", 1, len(s), s)
 		}
 
-		// Counts every flattened state attribute, so it changes whenever the sink schema gains or
-		// loses one - including nested attributes of input_specs, which contribute one entry each
-		// plus a "%" count per map.
-		const expectedAttrs = 30
-
-		if len(s[0].Attributes) != expectedAttrs {
-			return fmt.Errorf("expected %d attrs, got %d: %#v",
-				expectedAttrs, len(s[0].Attributes), s[0].Attributes)
+		attributes := s[0].Attributes
+		if attributes[resourceSinkInputsKey+".#"] != "1" {
+			return fmt.Errorf("expected one imported legacy input, got %#v", attributes)
+		}
+		foundTopic := false
+		for key, value := range attributes {
+			if strings.HasPrefix(key, resourceSinkInputsKey+".") &&
+				key != resourceSinkInputsKey+".#" && value == "sink-1-topic" {
+				foundTopic = true
+				break
+			}
+		}
+		if !foundTopic {
+			return fmt.Errorf("imported input topic is missing: %#v", attributes)
+		}
+		if count := attributes[resourceSinkInputSpecsKey+".#"]; count != "" && count != "0" {
+			return fmt.Errorf("plain imported input should not invent input_specs: %#v", attributes)
 		}
 
 		return nil
@@ -251,7 +266,7 @@ resource "pulsar_sink" "test" {
   negative_ack_redelivery_delay_ms = 3000
   retain_key_ordering = false 
 	retain_ordering = true
-  secrets ="{\"SECRET1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
+  secrets ="{\"secret1\": {\"path\": \"sectest\", \"key\": \"hello\"}}"
 
   processing_guarantees = "EFFECTIVELY_ONCE"
 
@@ -261,6 +276,12 @@ resource "pulsar_sink" "test" {
 
   archive = "%s"
   configs = "{\"jdbcUrl\":\"jdbc:postgresql://localhost:5432/pulsar_postgres_jdbc_sink\",\"password\":\"password\",\"tableName\":\"pulsar_postgres_jdbc_sink\",\"userName\":\"postgres\"}"
+
+  # Pulsar does not return the original package URL from GET, and secrets are normalized when read.
+  # Ignore those unrelated values while checking that imported input state plans cleanly.
+  lifecycle {
+    ignore_changes = [archive, secrets]
+  }
 }
 `, name, testdataArchive)
 }

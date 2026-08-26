@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
@@ -260,7 +261,7 @@ func resourcePulsarSink() *schema.Resource {
 							Optional: true,
 							Default:  defaultSinkReceiverQueueSize,
 							//nolint:lll
-							Description: "The consumer receiver queue size for this topic. Defaults to 1000, which buffers up to that many messages per sink instance. Set to 0 to disable prefetch.",
+							Description: "The consumer receiver queue size for this topic. When omitted, the provider sends 1000, which buffers up to that many messages per sink instance. Set to 0 to disable prefetch.",
 							ValidateFunc: func(val interface{}, key string) ([]string, []error) {
 								if v := val.(int); v < 0 {
 									return nil, []error{
@@ -725,6 +726,8 @@ func forceNewSinkInputSet(diff *schema.ResourceDiff, key string) error {
 		for _, item := range set.List() {
 			itemKey := fmt.Sprintf("%s.%d", key, set.F(item))
 			if diff.HasChange(itemKey) {
+				// The aggregate set is already ForceNew; one changed element is sufficient to
+				// preserve that decision when the SDK rehashes an element.
 				return diff.ForceNew(itemKey)
 			}
 		}
@@ -746,6 +749,8 @@ func forceNewSinkInputMap(diff *schema.ResourceDiff, key string) error {
 	for topic := range mapKeys {
 		itemKey := key + "." + topic
 		if diff.HasChange(itemKey) {
+			// The aggregate map is already ForceNew; one changed entry is sufficient to
+			// preserve that decision in the flattened diff.
 			return diff.ForceNew(itemKey)
 		}
 	}
@@ -786,7 +791,9 @@ func forceNewSinkInputSpecs(diff *schema.ResourceDiff, oldSpecs, newSpecs interf
 }
 
 // effectiveSinkInputTopics maps every input topic to its regex flag in the broker's create-path
-// precedence order. input_specs is applied last and is therefore the canonical representation.
+// precedence order. All representations share the broker's inputSpecs keyspace, so an identical
+// topic/pattern string follows the same last-write-wins behavior as SinkConfigUtils. input_specs is
+// applied last and is therefore the canonical representation.
 func effectiveSinkInputTopics(
 	inputs, topicsPattern, customSerdeInputs, customSchemaInputs, inputSpecs interface{},
 ) map[string]bool {
@@ -916,34 +923,35 @@ func sinkLegacyInputMap(
 	return stringMap
 }
 
-// unmarshalSinkInputSpecs keeps the input representation chosen in configuration. Pulsar returns
-// every sink input through both Inputs and InputSpecs and does not reconstruct the legacy pattern or
-// custom maps, so mirroring the response would invent state and cause replacement drift. On import,
-// no legacy field is populated and InputSpecs becomes the canonical complete representation.
+// unmarshalSinkInputSpecs keeps the input representation chosen in configuration while refreshing
+// its values from the broker's canonical InputSpecs map. Pulsar returns every sink input through both
+// Inputs and InputSpecs and does not reconstruct the legacy pattern or custom maps, so copying the
+// response verbatim would invent state and cause replacement drift.
 func unmarshalSinkInputSpecs(sinkConfig utils.SinkConfig, d *schema.ResourceData) error {
-	covered := map[string]bool{}
-	if inter, ok := d.GetOk(resourceSinkInputsKey); ok {
-		for _, item := range inter.(*schema.Set).List() {
-			covered[item.(string)] = true
-		}
+	remoteSpecs := sinkConfig.InputSpecs
+	if remoteSpecs == nil {
+		remoteSpecs = map[string]utils.ConsumerConfig{}
 	}
-	if inter, ok := d.GetOk(resourceSinkTopicsPatternKey); ok {
-		covered[inter.(string)] = true
-	}
-	for _, key := range []string{
-		resourceSinkCustomSerdeInputsKey,
-		resourceSinkCustomSchemaInputsKey,
-	} {
-		if inter, ok := d.GetOk(key); ok {
-			for topic := range sinkInputMapKeys(inter) {
-				covered[topic] = true
-			}
+	// Current Pulsar versions return every entry through InputSpecs. Retain a defensive fallback
+	// for older or partial responses that expose a plain input only through Inputs.
+	for _, topic := range sinkConfig.Inputs {
+		if _, ok := remoteSpecs[topic]; !ok {
+			remoteSpecs[topic] = utils.ConsumerConfig{}
 		}
 	}
 
 	declared := sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
-	specs := make([]interface{}, 0, len(sinkConfig.InputSpecs))
-	for topic, consumerConfig := range sinkConfig.InputSpecs {
+	if !hasConfiguredSinkInputs(d, declared) {
+		return unmarshalImportedSinkInputs(remoteSpecs, d)
+	}
+
+	covered, err := refreshSinkLegacyInputs(remoteSpecs, declared, d)
+	if err != nil {
+		return err
+	}
+
+	specs := make([]interface{}, 0, len(remoteSpecs))
+	for topic, consumerConfig := range remoteSpecs {
 		_, isDeclared := declared[topic]
 		if covered[topic] && !isDeclared {
 			continue
@@ -952,6 +960,168 @@ func unmarshalSinkInputSpecs(sinkConfig utils.SinkConfig, d *schema.ResourceData
 	}
 
 	return d.Set(resourceSinkInputSpecsKey, specs)
+}
+
+func hasConfiguredSinkInputs(d *schema.ResourceData, declared map[string]utils.ConsumerConfig) bool {
+	if len(declared) != 0 {
+		return true
+	}
+	for _, key := range []string{
+		resourceSinkInputsKey,
+		resourceSinkTopicsPatternKey,
+		resourceSinkCustomSerdeInputsKey,
+		resourceSinkCustomSchemaInputsKey,
+	} {
+		if _, ok := d.GetOk(key); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func refreshSinkLegacyInputs(
+	remoteSpecs, declared map[string]utils.ConsumerConfig, d *schema.ResourceData,
+) (map[string]bool, error) {
+	covered := map[string]bool{}
+
+	if inter, ok := d.GetOk(resourceSinkInputsKey); ok {
+		inputs := make([]string, 0, inter.(*schema.Set).Len())
+		for _, item := range inter.(*schema.Set).List() {
+			topic := item.(string)
+			remote, exists := remoteSpecs[topic]
+			_, isDeclared := declared[topic]
+			if !exists || (!isDeclared && remote.RegexPattern) {
+				continue
+			}
+			inputs = append(inputs, topic)
+			covered[topic] = true
+		}
+		if err := d.Set(resourceSinkInputsKey, inputs); err != nil {
+			return nil, err
+		}
+	}
+
+	if inter, ok := d.GetOk(resourceSinkTopicsPatternKey); ok {
+		pattern := inter.(string)
+		remote, exists := remoteSpecs[pattern]
+		_, isDeclared := declared[pattern]
+		if exists && (isDeclared || remote.RegexPattern) {
+			covered[pattern] = true
+		} else if err := d.Set(resourceSinkTopicsPatternKey, ""); err != nil {
+			return nil, err
+		}
+	}
+
+	type legacyMap struct {
+		key   string
+		value func(utils.ConsumerConfig) string
+	}
+	for _, legacy := range []legacyMap{
+		{resourceSinkCustomSerdeInputsKey, func(config utils.ConsumerConfig) string {
+			return config.SerdeClassName
+		}},
+		{resourceSinkCustomSchemaInputsKey, func(config utils.ConsumerConfig) string {
+			return config.SchemaType
+		}},
+	} {
+		inter, ok := d.GetOk(legacy.key)
+		if !ok {
+			continue
+		}
+		values := sinkStringMap(inter)
+		refreshed := make(map[string]string, len(values))
+		for topic, value := range values {
+			remote, exists := remoteSpecs[topic]
+			_, isDeclared := declared[topic]
+			if !exists {
+				continue
+			}
+			if isDeclared {
+				// input_specs wins on the wire, so preserve an overlapped legacy value that the
+				// broker cannot reconstruct independently.
+				refreshed[topic] = value
+				covered[topic] = true
+				continue
+			}
+			if remote.RegexPattern {
+				continue
+			}
+			if remoteValue := legacy.value(remote); remoteValue != "" {
+				refreshed[topic] = remoteValue
+				covered[topic] = true
+			}
+		}
+		if err := d.Set(legacy.key, refreshed); err != nil {
+			return nil, err
+		}
+	}
+
+	return covered, nil
+}
+
+func unmarshalImportedSinkInputs(
+	remoteSpecs map[string]utils.ConsumerConfig, d *schema.ResourceData,
+) error {
+	topics := make([]string, 0, len(remoteSpecs))
+	regexCandidates := 0
+	for topic, consumerConfig := range remoteSpecs {
+		topics = append(topics, topic)
+		if sinkInputSpecUsesOnlyLegacyDefaults(consumerConfig) && consumerConfig.RegexPattern &&
+			consumerConfig.SerdeClassName == "" && consumerConfig.SchemaType == "" {
+			regexCandidates++
+		}
+	}
+	sort.Strings(topics)
+
+	inputs := make([]string, 0, len(remoteSpecs))
+	customSerdeInputs := map[string]string{}
+	customSchemaInputs := map[string]string{}
+	pattern := ""
+	specs := make([]interface{}, 0, len(remoteSpecs))
+	for _, topic := range topics {
+		consumerConfig := remoteSpecs[topic]
+		if sinkInputSpecUsesOnlyLegacyDefaults(consumerConfig) {
+			switch {
+			case consumerConfig.RegexPattern && regexCandidates == 1 &&
+				consumerConfig.SerdeClassName == "" && consumerConfig.SchemaType == "":
+				pattern = topic
+				continue
+			case !consumerConfig.RegexPattern && consumerConfig.SerdeClassName != "":
+				customSerdeInputs[topic] = consumerConfig.SerdeClassName
+				continue
+			case !consumerConfig.RegexPattern && consumerConfig.SchemaType != "":
+				customSchemaInputs[topic] = consumerConfig.SchemaType
+				continue
+			case !consumerConfig.RegexPattern && consumerConfig.SerdeClassName == "" &&
+				consumerConfig.SchemaType == "":
+				inputs = append(inputs, topic)
+				continue
+			}
+		}
+		specs = append(specs, flattenSinkInputSpec(topic, consumerConfig))
+	}
+
+	for key, value := range map[string]interface{}{
+		resourceSinkInputsKey:             inputs,
+		resourceSinkTopicsPatternKey:      pattern,
+		resourceSinkCustomSerdeInputsKey:  customSerdeInputs,
+		resourceSinkCustomSchemaInputsKey: customSchemaInputs,
+		resourceSinkInputSpecsKey:         specs,
+	} {
+		if err := d.Set(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func sinkInputSpecUsesOnlyLegacyDefaults(consumerConfig utils.ConsumerConfig) bool {
+	return !consumerConfig.HasReceiverQueueSize() &&
+		!consumerConfig.PoolMessages &&
+		len(consumerConfig.ConsumerProperties) == 0 &&
+		len(consumerConfig.SchemaProperties) == 0 &&
+		consumerConfig.CryptoConfig == nil &&
+		(consumerConfig.SchemaType == "" || consumerConfig.SerdeClassName == "")
 }
 
 func flattenSinkInputSpec(topic string, consumerConfig utils.ConsumerConfig) map[string]interface{} {
