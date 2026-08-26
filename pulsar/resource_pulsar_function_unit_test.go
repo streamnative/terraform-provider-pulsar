@@ -13,6 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFunctionRuntimeConfigConfigsSensitive(t *testing.T) {
+	resourceSchema := resourcePulsarFunction().Schema
+	for _, key := range []string{resourceFunctionSinkConfigKey, resourceFunctionSourceConfigKey} {
+		runtimeConfig, ok := resourceSchema[key].Elem.(*schema.Resource)
+		require.True(t, ok)
+		require.True(t, runtimeConfig.Schema[resourceFunctionRuntimeConfigConfigsKey].Sensitive)
+	}
+}
+
 func TestUnmarshalFunctionProducerConfigClearsZeroValues(t *testing.T) {
 	d := schema.TestResourceDataRaw(t, resourcePulsarFunction().Schema, map[string]interface{}{
 		resourceFunctionPCMaxPendingMsgKey:                1000,

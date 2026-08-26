@@ -306,6 +306,7 @@ func resourcePulsarSink() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
+				Sensitive:   true,
 				Description: resourceSinkDescriptions[resourceSinkConfigsKey],
 			},
 			resourceSinkAutoACKKey: {

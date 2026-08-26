@@ -91,7 +91,7 @@ Optional:
 
 Optional:
 
-- `configs` (Map of String) Sink-specific key/value options.
+- `configs` (Map of String, Sensitive) Sink-specific key/value options.
 - `sink_type` (String) Sink implementation identifier.
 
 
@@ -100,7 +100,7 @@ Optional:
 
 Optional:
 
-- `configs` (Map of String) Source-specific key/value options.
+- `configs` (Map of String, Sensitive) Source-specific key/value options.
 - `source_type` (String) Source implementation identifier.
 
 ## Import
