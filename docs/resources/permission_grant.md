@@ -27,3 +27,15 @@ Manages role permissions on exactly one Pulsar namespace or topic. Do not manage
 
 - `id` (String) The ID of this resource.
 
+## Import
+
+The import ID uses the same format as the resource ID: `{namespace}/{role}` for namespace grants or `{topic}/{role}` for topic grants. The role is the segment after the last `/`, so roles containing `/` cannot be imported.
+
+```shell
+terraform import pulsar_permission_grant.example tenant/namespace/role1
+```
+
+```shell
+terraform import pulsar_permission_grant.example persistent://tenant/namespace/topic1/role1
+```
+

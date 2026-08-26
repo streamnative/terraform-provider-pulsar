@@ -28,14 +28,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
-// TestAccPulsarNamespace_importHydratesPolicyBlocks is a regression test for issues #206 /
+// TestAccPulsarNamespace_hydratesPolicyBlocks is a regression test for issues #206 /
 // support #4724: importing a namespace must populate the Optional+Computed policy blocks into state
 // so the first plan after the import is empty and the user never has to run a mutating apply just to
 // finish the import.
 //
 // Before the fix, resourcePulsarNamespaceRead gated every block behind d.GetOk, so an import — which
 // starts from empty prior state — hydrated none of them and each one showed up as a pending change.
-func TestAccPulsarNamespace_importHydratesPolicyBlocks(t *testing.T) {
+func TestAccPulsarNamespace_hydratesPolicyBlocks(t *testing.T) {
 	tName := acctest.RandString(10)
 	nsName := acctest.RandString(10)
 	resourceName := "pulsar_namespace.test"

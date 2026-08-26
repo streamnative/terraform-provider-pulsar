@@ -1,6 +1,6 @@
 module github.com/streamnative/terraform-provider-pulsar
 
-go 1.24.4
+go 1.25.14
 
 replace github.com/apache/pulsar-client-go => github.com/freeznet/pulsar-client-go v0.6.1-0.20260820085718-cac614eda861
 

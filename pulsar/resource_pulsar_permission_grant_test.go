@@ -537,6 +537,7 @@ func TestPermissionGrantBothNamespaceAndTopic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -690,6 +691,7 @@ func TestPermissionGrantNeitherNamespaceNorTopic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -711,4 +713,149 @@ resource "pulsar_permission_grant" "test" {
     actions = ["produce", "consume"]
 }
 `, wsURL, role)
+}
+
+func TestImportExistingPermissionGrantNamespace(t *testing.T) {
+	resourceName := "pulsar_permission_grant.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+	importID := fmt.Sprintf("%s/%s/%s", tName, nsName, roleName)
+
+	config := testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName,
+		`["produce", "consume"]`)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarPermissionGrantExists(),
+				),
+			},
+			{
+				Config:            config,
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateId:     importID,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func TestImportExistingPermissionGrantTopic(t *testing.T) {
+	resourceName := "pulsar_permission_grant.test"
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	topicName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+	importID := fmt.Sprintf("persistent://%s/%s/%s/%s", tName, nsName, topicName, roleName)
+
+	config := testPulsarPermissionGrantTopic(testWebServiceURL, cName, tName, nsName, topicName, roleName,
+		`["produce", "consume"]`)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					testPulsarPermissionGrantExists(),
+				),
+			},
+			{
+				Config:            config,
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateId:     importID,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func TestImportNonExistingPermissionGrant(t *testing.T) {
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+	nonExistingRole := "non-existing-role-" + acctest.RandString(10)
+	importID := fmt.Sprintf("%s/%s/%s", tName, nsName, nonExistingRole)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				// Create the namespace first: import steps never apply Config,
+				// the SDK only sets it as the import working directory.
+				Config: testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName, `["produce"]`),
+			},
+			{
+				ResourceName:  "pulsar_permission_grant.test",
+				ImportState:   true,
+				ImportStateId: importID,
+				ExpectError:   regexp.MustCompile("ERROR_PERMISSION_GRANT_NOT_FOUND"),
+			},
+		},
+	})
+}
+
+// TestImportNonExistingNamespacePermissionGrant imports a grant whose
+// namespace does not exist. The 404 from the permissions read must be
+// classified as ERROR_PERMISSION_GRANT_NOT_FOUND instead of a raw read error.
+func TestImportNonExistingNamespacePermissionGrant(t *testing.T) {
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+	importID := fmt.Sprintf("%s/%s/%s", tName, nsName, roleName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName: "pulsar_permission_grant.test",
+				ImportState:  true,
+				Config: testPulsarPermissionGrantNamespace(
+					testWebServiceURL, acctest.RandString(10), tName, nsName, roleName, `["produce"]`),
+				ImportStateId: importID,
+				ExpectError:   regexp.MustCompile("ERROR_PERMISSION_GRANT_NOT_FOUND"),
+			},
+		},
+	})
+}
+
+func TestImportExistingPermissionGrantWithIncorrectId(t *testing.T) {
+	cName := acctest.RandString(10)
+	tName := acctest.RandString(10)
+	nsName := acctest.RandString(10)
+	roleName := acctest.RandString(10)
+	// missing the role segment
+	incorrectID := fmt.Sprintf("%s/%s", tName, nsName)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testPulsarPermissionGrantDestroy,
+		Steps: []resource.TestStep{
+			{
+				ResourceName:  "pulsar_permission_grant.test",
+				ImportState:   true,
+				Config:        testPulsarPermissionGrantNamespace(testWebServiceURL, cName, tName, nsName, roleName, `["produce"]`),
+				ImportStateId: incorrectID,
+				ExpectError:   regexp.MustCompile("ERROR_PARSE_PERMISSION_GRANT_IMPORT_ID"),
+			},
+		},
+	})
 }
