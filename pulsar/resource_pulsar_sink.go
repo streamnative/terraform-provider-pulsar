@@ -50,7 +50,6 @@ const (
 	resourceSinkInputSpecsSubsetIsRegexPatternKey    = "is_regex_pattern"
 	resourceSinkInputSpecsSubsetReceiverQueueSizeKey = "receiver_queue_size"
 	resourceSinkInputSpecsSubsetPoolMessagesKey      = "pool_messages"
-	resourceSinkInputSpecsSubsetSchemaPropertiesKey  = "schema_properties"
 	//nolint:lll
 	resourceSinkInputSpecsSubsetConsumerPropertiesKey = "consumer_properties"
 	resourceSinkProcessingGuaranteesKey               = "processing_guarantees"
@@ -72,6 +71,16 @@ const (
 	resourceSinkSinkTypeKey                           = "sink_type"
 	resourceSinkSecretsKey                            = "secrets"
 )
+
+const defaultSinkReceiverQueueSize = 1000
+
+var sinkInputSourceKeys = []string{
+	resourceSinkInputsKey,
+	resourceSinkTopicsPatternKey,
+	resourceSinkCustomSerdeInputsKey,
+	resourceSinkCustomSchemaInputsKey,
+	resourceSinkInputSpecsKey,
+}
 
 var resourceSinkDescriptions = make(map[string]string)
 
@@ -116,6 +125,7 @@ func resourcePulsarSink() *schema.Resource {
 		ReadContext:   resourcePulsarSinkRead,
 		UpdateContext: resourcePulsarSinkUpdate,
 		DeleteContext: resourcePulsarSinkDelete,
+		CustomizeDiff: resourcePulsarSinkCustomizeDiff,
 		Description:   "Manages Pulsar IO sinks through the Functions Worker API.",
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
@@ -156,14 +166,12 @@ func resourcePulsarSink() *schema.Resource {
 			resourceSinkInputsKey: {
 				Type:        schema.TypeSet,
 				Optional:    true,
-				ForceNew:    true,
 				Description: resourceSinkDescriptions[resourceSinkInputsKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			resourceSinkTopicsPatternKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
-				ForceNew:    true,
 				Description: resourceSinkDescriptions[resourceSinkTopicsPatternKey],
 			},
 			resourceSinkSubscriptionNameKey: {
@@ -222,7 +230,6 @@ func resourcePulsarSink() *schema.Resource {
 			resourceSinkInputSpecsKey: {
 				Type:        schema.TypeSet,
 				Optional:    true,
-				Computed:    true,
 				Description: resourceSinkDescriptions[resourceSinkInputSpecsKey],
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -251,9 +258,9 @@ func resourcePulsarSink() *schema.Resource {
 						resourceSinkInputSpecsSubsetReceiverQueueSizeKey: {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Computed: true,
+							Default:  defaultSinkReceiverQueueSize,
 							//nolint:lll
-							Description: "The consumer receiver queue size for this topic. Pulsar defaults to 1000 when unset, which buffers up to that many messages per sink instance.",
+							Description: "The consumer receiver queue size for this topic. Defaults to 1000, which buffers up to that many messages per sink instance. Set to 0 to disable prefetch.",
 							ValidateFunc: func(val interface{}, key string) ([]string, []error) {
 								if v := val.(int); v < 0 {
 									return nil, []error{
@@ -267,12 +274,6 @@ func resourcePulsarSink() *schema.Resource {
 							Type:        schema.TypeBool,
 							Optional:    true,
 							Description: "Whether the consumer pools messages for this topic.",
-						},
-						resourceSinkInputSpecsSubsetSchemaPropertiesKey: {
-							Type:        schema.TypeMap,
-							Optional:    true,
-							Description: "Schema properties key/values for this topic.",
-							Elem:        &schema.Schema{Type: schema.TypeString},
 						},
 						resourceSinkInputSpecsSubsetConsumerPropertiesKey: {
 							Type:        schema.TypeMap,
@@ -451,19 +452,8 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 		return diag.FromErr(errors.Wrapf(err, "failed to get %s sink from %s/%s", name, tenant, namespace))
 	}
 
-	inputs := make([]string, len(sinkConfig.Inputs))
-	copy(inputs, sinkConfig.Inputs)
-
-	err = d.Set(resourceSinkInputsKey, inputs)
-	if err != nil {
+	if err = unmarshalSinkInputSpecs(sinkConfig, d); err != nil {
 		return diag.FromErr(err)
-	}
-
-	if sinkConfig.TopicsPattern != nil {
-		err = d.Set(resourceSinkTopicsPatternKey, sinkConfig.TopicsPattern)
-		if err != nil {
-			return diag.FromErr(err)
-		}
 	}
 
 	if len(sinkConfig.SourceSubscriptionName) != 0 {
@@ -476,56 +466,6 @@ func resourcePulsarSinkRead(ctx context.Context, d *schema.ResourceData, meta in
 	err = d.Set(resourceSinkCleanupSubscriptionKey, sinkConfig.CleanupSubscription)
 	if err != nil {
 		return diag.FromErr(err)
-	}
-
-	if len(sinkConfig.TopicToSerdeClassName) != 0 {
-		customSerdeInputs := make(map[string]interface{}, len(sinkConfig.TopicToSerdeClassName))
-		for key, value := range sinkConfig.TopicToSerdeClassName {
-			customSerdeInputs[key] = value
-		}
-		err = d.Set(resourceSinkCustomSerdeInputsKey, customSerdeInputs)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	if len(sinkConfig.TopicToSchemaType) != 0 {
-		customSchemaInputs := make(map[string]interface{}, len(sinkConfig.TopicToSchemaType))
-		for key, value := range sinkConfig.TopicToSchemaType {
-			customSchemaInputs[key] = value
-		}
-
-		err = d.Set(resourceSinkCustomSchemaInputsKey, customSchemaInputs)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	if len(sinkConfig.InputSpecs) > 0 {
-		var inputSpecs []interface{}
-		for key, config := range sinkConfig.InputSpecs {
-			item := make(map[string]interface{})
-			item[resourceSinkInputSpecsSubsetTopicKey] = key
-			item[resourceSinkInputSpecsSubsetSchemaTypeKey] = config.SchemaType
-			item[resourceSinkInputSpecsSubsetSerdeClassNameKey] = config.SerdeClassName
-			item[resourceSinkInputSpecsSubsetIsRegexPatternKey] = config.RegexPattern
-			item[resourceSinkInputSpecsSubsetReceiverQueueSizeKey] = config.ReceiverQueueSize
-			item[resourceSinkInputSpecsSubsetPoolMessagesKey] = config.PoolMessages
-			// The broker returns these maps non-nil but usually empty; only surface them when they
-			// hold something, so an empty map does not read as configuration the user never wrote.
-			if len(config.SchemaProperties) != 0 {
-				item[resourceSinkInputSpecsSubsetSchemaPropertiesKey] = convertToInterfaceMap(config.SchemaProperties)
-			}
-			if len(config.ConsumerProperties) != 0 {
-				item[resourceSinkInputSpecsSubsetConsumerPropertiesKey] =
-					convertToInterfaceMap(config.ConsumerProperties)
-			}
-			inputSpecs = append(inputSpecs, item)
-		}
-		err = d.Set(resourceSinkInputSpecsKey, inputSpecs)
-		if err != nil {
-			return diag.FromErr(err)
-		}
 	}
 
 	err = d.Set(resourceSinkParallelismKey, sinkConfig.Parallelism)
@@ -696,6 +636,209 @@ func resourcePulsarSinkDelete(ctx context.Context, d *schema.ResourceData, meta 
 	return diag.FromErr(client.DeleteSink(tenant, namespace, name))
 }
 
+// resourcePulsarSinkCustomizeDiff validates input_specs and mirrors the broker's update rules:
+// consumer settings can change in place, while changing a topic or its regex flag replaces the sink.
+// Moving an unchanged topic between a legacy input field and input_specs remains an in-place update.
+func resourcePulsarSinkCustomizeDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
+	newSpecs := diff.Get(resourceSinkInputSpecsKey)
+	if err := validateSinkInputSpecs(newSpecs); err != nil {
+		return err
+	}
+
+	if diff.Id() == "" {
+		return nil
+	}
+
+	inputChanged := false
+	for _, key := range sinkInputSourceKeys {
+		if diff.HasChange(key) {
+			inputChanged = true
+			break
+		}
+	}
+	if !inputChanged {
+		return nil
+	}
+
+	oldInputs, newInputs := diff.GetChange(resourceSinkInputsKey)
+	oldPattern, newPattern := diff.GetChange(resourceSinkTopicsPatternKey)
+	oldCustomSerde, newCustomSerde := diff.GetChange(resourceSinkCustomSerdeInputsKey)
+	oldCustomSchema, newCustomSchema := diff.GetChange(resourceSinkCustomSchemaInputsKey)
+	oldSpecs, newSpecs := diff.GetChange(resourceSinkInputSpecsKey)
+
+	oldTopics := effectiveSinkInputTopics(
+		oldInputs, oldPattern, oldCustomSerde, oldCustomSchema, oldSpecs,
+	)
+	newTopics := effectiveSinkInputTopics(
+		newInputs, newPattern, newCustomSerde, newCustomSchema, newSpecs,
+	)
+
+	if len(oldTopics) != len(newTopics) {
+		return forceNewSinkInputTopology(diff, oldSpecs, newSpecs)
+	}
+	for topic, regexPattern := range newTopics {
+		oldRegexPattern, ok := oldTopics[topic]
+		if !ok || oldRegexPattern != regexPattern {
+			return forceNewSinkInputTopology(diff, oldSpecs, newSpecs)
+		}
+	}
+
+	return nil
+}
+
+func forceNewSinkInputTopology(diff *schema.ResourceDiff, oldSpecs, newSpecs interface{}) error {
+	if diff.HasChange(resourceSinkInputSpecsKey) {
+		return forceNewSinkInputSpecs(diff, oldSpecs, newSpecs)
+	}
+
+	if diff.HasChange(resourceSinkInputsKey) {
+		return forceNewSinkInputSet(diff, resourceSinkInputsKey)
+	}
+
+	if diff.HasChange(resourceSinkTopicsPatternKey) {
+		return diff.ForceNew(resourceSinkTopicsPatternKey)
+	}
+
+	for _, key := range []string{
+		resourceSinkCustomSerdeInputsKey,
+		resourceSinkCustomSchemaInputsKey,
+	} {
+		if diff.HasChange(key) {
+			return forceNewSinkInputMap(diff, key)
+		}
+	}
+
+	return errors.New("input topology changed without an input attribute diff")
+}
+
+func forceNewSinkInputSet(diff *schema.ResourceDiff, key string) error {
+	if err := diff.ForceNew(key); err != nil {
+		return err
+	}
+
+	oldValue, newValue := diff.GetChange(key)
+	for _, value := range []interface{}{oldValue, newValue} {
+		set, ok := value.(*schema.Set)
+		if !ok {
+			continue
+		}
+		for _, item := range set.List() {
+			itemKey := fmt.Sprintf("%s.%d", key, set.F(item))
+			if diff.HasChange(itemKey) {
+				return diff.ForceNew(itemKey)
+			}
+		}
+	}
+
+	return nil
+}
+
+func forceNewSinkInputMap(diff *schema.ResourceDiff, key string) error {
+	if err := diff.ForceNew(key); err != nil {
+		return err
+	}
+
+	oldValue, newValue := diff.GetChange(key)
+	mapKeys := sinkInputMapKeys(oldValue)
+	for topic := range sinkInputMapKeys(newValue) {
+		mapKeys[topic] = true
+	}
+	for topic := range mapKeys {
+		itemKey := key + "." + topic
+		if diff.HasChange(itemKey) {
+			return diff.ForceNew(itemKey)
+		}
+	}
+
+	return nil
+}
+
+// A set-level ForceNew is insufficient when a set element changes but the element count does not.
+// Mark the nested topology attribute too so Terraform preserves the replacement decision.
+func forceNewSinkInputSpecs(diff *schema.ResourceDiff, oldSpecs, newSpecs interface{}) error {
+	if err := diff.ForceNew(resourceSinkInputSpecsKey); err != nil {
+		return err
+	}
+
+	for _, attribute := range []string{
+		resourceSinkInputSpecsSubsetTopicKey,
+		resourceSinkInputSpecsSubsetIsRegexPatternKey,
+	} {
+		for _, specs := range []interface{}{oldSpecs, newSpecs} {
+			set, ok := specs.(*schema.Set)
+			if !ok {
+				continue
+			}
+
+			for _, item := range set.List() {
+				key := fmt.Sprintf("%s.%d.%s", resourceSinkInputSpecsKey, set.F(item), attribute)
+				if !diff.HasChange(key) {
+					continue
+				}
+				if err := diff.ForceNew(key); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// effectiveSinkInputTopics maps every input topic to its regex flag in the broker's create-path
+// precedence order. input_specs is applied last and is therefore the canonical representation.
+func effectiveSinkInputTopics(
+	inputs, topicsPattern, customSerdeInputs, customSchemaInputs, inputSpecs interface{},
+) map[string]bool {
+	topics := map[string]bool{}
+
+	if set, ok := inputs.(*schema.Set); ok {
+		for _, item := range set.List() {
+			if topic, ok := item.(string); ok && topic != "" {
+				topics[topic] = false
+			}
+		}
+	}
+
+	if pattern, ok := topicsPattern.(string); ok && pattern != "" {
+		topics[pattern] = true
+	}
+
+	for topic := range sinkInputMapKeys(customSerdeInputs) {
+		topics[topic] = false
+	}
+	for topic := range sinkInputMapKeys(customSchemaInputs) {
+		topics[topic] = false
+	}
+
+	for topic, consumerConfig := range sinkInputSpecsFromSchema(inputSpecs) {
+		topics[topic] = consumerConfig.RegexPattern
+	}
+
+	return topics
+}
+
+func sinkInputMapKeys(value interface{}) map[string]bool {
+	keys := map[string]bool{}
+
+	switch values := value.(type) {
+	case map[string]interface{}:
+		for key := range values {
+			if key != "" {
+				keys[key] = true
+			}
+		}
+	case map[string]string:
+		for key := range values {
+			if key != "" {
+				keys[key] = true
+			}
+		}
+	}
+
+	return keys
+}
+
 // sinkStringMap narrows a schema.TypeMap value to map[string]string, returning nil when empty so
 // the field is omitted from the request payload.
 func sinkStringMap(value interface{}) map[string]string {
@@ -710,6 +853,130 @@ func sinkStringMap(value interface{}) map[string]string {
 	}
 
 	return stringMap
+}
+
+func sinkInputSpecsFromSchema(inputSpecs interface{}) map[string]utils.ConsumerConfig {
+	set, ok := inputSpecs.(*schema.Set)
+	if !ok || set.Len() == 0 {
+		return nil
+	}
+
+	specs := make(map[string]utils.ConsumerConfig, set.Len())
+	for _, item := range set.List() {
+		spec, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		topic, _ := spec[resourceSinkInputSpecsSubsetTopicKey].(string)
+		if topic == "" {
+			continue
+		}
+
+		consumerConfig := utils.ConsumerConfig{}
+		if v, ok := spec[resourceSinkInputSpecsSubsetSchemaTypeKey].(string); ok {
+			consumerConfig.SchemaType = v
+		}
+		if v, ok := spec[resourceSinkInputSpecsSubsetSerdeClassNameKey].(string); ok {
+			consumerConfig.SerdeClassName = v
+		}
+		if v, ok := spec[resourceSinkInputSpecsSubsetIsRegexPatternKey].(bool); ok {
+			consumerConfig.RegexPattern = v
+		}
+		if v, ok := spec[resourceSinkInputSpecsSubsetReceiverQueueSizeKey].(int); ok {
+			consumerConfig.SetReceiverQueueSize(v)
+		}
+		if v, ok := spec[resourceSinkInputSpecsSubsetPoolMessagesKey].(bool); ok {
+			consumerConfig.PoolMessages = v
+		}
+		consumerConfig.ConsumerProperties = sinkStringMap(
+			spec[resourceSinkInputSpecsSubsetConsumerPropertiesKey])
+
+		specs[topic] = consumerConfig
+	}
+
+	if len(specs) == 0 {
+		return nil
+	}
+
+	return specs
+}
+
+func sinkLegacyInputMap(
+	value interface{}, inputSpecs map[string]utils.ConsumerConfig,
+) map[string]string {
+	stringMap := sinkStringMap(value)
+	for topic := range inputSpecs {
+		delete(stringMap, topic)
+	}
+	if len(stringMap) == 0 {
+		return nil
+	}
+
+	return stringMap
+}
+
+// unmarshalSinkInputSpecs keeps the input representation chosen in configuration. Pulsar returns
+// every sink input through both Inputs and InputSpecs and does not reconstruct the legacy pattern or
+// custom maps, so mirroring the response would invent state and cause replacement drift. On import,
+// no legacy field is populated and InputSpecs becomes the canonical complete representation.
+func unmarshalSinkInputSpecs(sinkConfig utils.SinkConfig, d *schema.ResourceData) error {
+	covered := map[string]bool{}
+	if inter, ok := d.GetOk(resourceSinkInputsKey); ok {
+		for _, item := range inter.(*schema.Set).List() {
+			covered[item.(string)] = true
+		}
+	}
+	if inter, ok := d.GetOk(resourceSinkTopicsPatternKey); ok {
+		covered[inter.(string)] = true
+	}
+	for _, key := range []string{
+		resourceSinkCustomSerdeInputsKey,
+		resourceSinkCustomSchemaInputsKey,
+	} {
+		if inter, ok := d.GetOk(key); ok {
+			for topic := range sinkInputMapKeys(inter) {
+				covered[topic] = true
+			}
+		}
+	}
+
+	declared := sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
+	specs := make([]interface{}, 0, len(sinkConfig.InputSpecs))
+	for topic, consumerConfig := range sinkConfig.InputSpecs {
+		_, isDeclared := declared[topic]
+		if covered[topic] && !isDeclared {
+			continue
+		}
+		specs = append(specs, flattenSinkInputSpec(topic, consumerConfig))
+	}
+
+	return d.Set(resourceSinkInputSpecsKey, specs)
+}
+
+func flattenSinkInputSpec(topic string, consumerConfig utils.ConsumerConfig) map[string]interface{} {
+	spec := map[string]interface{}{
+		resourceSinkInputSpecsSubsetTopicKey:             topic,
+		resourceSinkInputSpecsSubsetReceiverQueueSizeKey: defaultSinkReceiverQueueSize,
+		resourceSinkInputSpecsSubsetIsRegexPatternKey:    consumerConfig.RegexPattern,
+		resourceSinkInputSpecsSubsetPoolMessagesKey:      consumerConfig.PoolMessages,
+	}
+
+	if consumerConfig.HasReceiverQueueSize() {
+		spec[resourceSinkInputSpecsSubsetReceiverQueueSizeKey] = consumerConfig.ReceiverQueueSize
+	}
+	if consumerConfig.SchemaType != "" {
+		spec[resourceSinkInputSpecsSubsetSchemaTypeKey] = consumerConfig.SchemaType
+	}
+	if consumerConfig.SerdeClassName != "" {
+		spec[resourceSinkInputSpecsSubsetSerdeClassNameKey] = consumerConfig.SerdeClassName
+	}
+	if len(consumerConfig.ConsumerProperties) != 0 {
+		spec[resourceSinkInputSpecsSubsetConsumerPropertiesKey] =
+			convertToInterfaceMap(consumerConfig.ConsumerProperties)
+	}
+
+	return spec
 }
 
 // validateSinkInputSpecs enforces the two rules Pulsar applies to inputSpecs that the schema cannot
@@ -730,6 +997,8 @@ func validateSinkInputSpecs(inputSpecs interface{}) error {
 
 		topic, _ := spec[resourceSinkInputSpecsSubsetTopicKey].(string)
 		if topic == "" {
+			// The SDK can include an empty placeholder while diffing TypeSet elements. The nested
+			// Required schema still validates actual user configuration.
 			continue
 		}
 		if seenTopics[topic] {
@@ -766,20 +1035,37 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.Name = inter.(string)
 	}
 
+	if err := validateSinkInputSpecs(d.Get(resourceSinkInputSpecsKey)); err != nil {
+		return nil, err
+	}
+
+	inputSpecs := sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
+	if len(inputSpecs) != 0 {
+		sinkConfig.InputSpecs = inputSpecs
+	}
+
 	if inter, ok := d.GetOk(resourceSinkInputsKey); ok {
 		inputsSet := inter.(*schema.Set)
 		var inputs []string
 
 		for _, item := range inputsSet.List() {
-			inputs = append(inputs, item.(string))
+			topic := item.(string)
+			if _, isInputSpec := inputSpecs[topic]; isInputSpec {
+				continue
+			}
+			inputs = append(inputs, topic)
 		}
 
-		sinkConfig.Inputs = inputs
+		if len(inputs) != 0 {
+			sinkConfig.Inputs = inputs
+		}
 	}
 
 	if inter, ok := d.GetOk(resourceSinkTopicsPatternKey); ok {
 		pattern := inter.(string)
-		sinkConfig.TopicsPattern = &pattern
+		if _, isInputSpec := inputSpecs[pattern]; !isInputSpec {
+			sinkConfig.TopicsPattern = &pattern
+		}
 	}
 
 	if inter, ok := d.GetOk(resourceSinkSubscriptionNameKey); ok {
@@ -795,61 +1081,11 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 	}
 
 	if inter, ok := d.GetOk(resourceSinkCustomSerdeInputsKey); ok {
-		interMap := inter.(map[string]interface{})
-		stringMap := make(map[string]string, len(interMap))
-
-		for key, value := range interMap {
-			stringMap[key] = value.(string)
-		}
-
-		sinkConfig.TopicToSerdeClassName = stringMap
+		sinkConfig.TopicToSerdeClassName = sinkLegacyInputMap(inter, inputSpecs)
 	}
 
 	if inter, ok := d.GetOk(resourceSinkCustomSchemaInputsKey); ok {
-		interMap := inter.(map[string]interface{})
-		stringMap := make(map[string]string, len(interMap))
-
-		for key, value := range interMap {
-			stringMap[key] = value.(string)
-		}
-
-		sinkConfig.TopicToSchemaType = stringMap
-	}
-
-	if err := validateSinkInputSpecs(d.Get(resourceSinkInputSpecsKey)); err != nil {
-		return nil, err
-	}
-
-	if inter, ok := d.GetOk(resourceSinkInputSpecsKey); ok {
-		set := inter.(*schema.Set)
-		if set.Len() > 0 {
-			inputSpecs := make(map[string]utils.ConsumerConfig)
-			for _, n := range set.List() {
-				m := n.(map[string]interface{})
-				// Every nested attribute except the topic is now Optional, so a key may be absent
-				// from the map; the comma-ok form leaves the zero value in that case.
-				schemaType, _ := m[resourceSinkInputSpecsSubsetSchemaTypeKey].(string)
-				serdeClassName, _ := m[resourceSinkInputSpecsSubsetSerdeClassNameKey].(string)
-				regexPattern, _ := m[resourceSinkInputSpecsSubsetIsRegexPatternKey].(bool)
-				receiverQueueSize, _ := m[resourceSinkInputSpecsSubsetReceiverQueueSizeKey].(int)
-				poolMessages, _ := m[resourceSinkInputSpecsSubsetPoolMessagesKey].(bool)
-
-				inputSpec := utils.ConsumerConfig{
-					SchemaType:        schemaType,
-					SerdeClassName:    serdeClassName,
-					RegexPattern:      regexPattern,
-					ReceiverQueueSize: receiverQueueSize,
-					PoolMessages:      poolMessages,
-					SchemaProperties: sinkStringMap(
-						m[resourceSinkInputSpecsSubsetSchemaPropertiesKey]),
-					ConsumerProperties: sinkStringMap(
-						m[resourceSinkInputSpecsSubsetConsumerPropertiesKey]),
-				}
-				topic, _ := m[resourceSinkInputSpecsSubsetTopicKey].(string)
-				inputSpecs[topic] = inputSpec
-			}
-			sinkConfig.InputSpecs = inputSpecs
-		}
+		sinkConfig.TopicToSchemaType = sinkLegacyInputMap(inter, inputSpecs)
 	}
 
 	if inter, ok := d.GetOk(resourceSinkProcessingGuaranteesKey); ok {

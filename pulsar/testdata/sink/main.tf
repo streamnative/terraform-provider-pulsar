@@ -22,10 +22,20 @@ provider "pulsar" {
 resource "pulsar_sink" "sink-1" {
   provider = pulsar
 
-  name                  = "sink-1"
-  tenant                = "public"
-  namespace             = "default"
-  inputs                = ["sink-1-topic"]
+  name      = "sink-1"
+  tenant    = "public"
+  namespace = "default"
+  inputs    = ["sink-1-topic"]
+  # Deliberately overlap inputs and input_specs. The provider must send the complete input_specs
+  # entry as the canonical representation so Pulsar's update path cannot overwrite its settings.
+  input_specs {
+    key                 = "sink-1-topic"
+    receiver_queue_size = 0
+    pool_messages       = true
+    consumer_properties = {
+      application = "billing"
+    }
+  }
   subscription_position = "Latest"
   cleanup_subscription  = false
   parallelism           = 1

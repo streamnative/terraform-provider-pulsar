@@ -70,9 +70,20 @@ func TestSink(t *testing.T) {
 						return errors.New("resource id should be tenant/namespace/name format")
 					}
 
-					_, err := client.GetSink(parts[0], parts[1], parts[2])
+					sinkConfig, err := client.GetSink(parts[0], parts[1], parts[2])
 					if err != nil {
 						return err
+					}
+
+					inputSpec := sinkConfig.InputSpecs["sink-1-topic"]
+					if !inputSpec.HasReceiverQueueSize() || inputSpec.ReceiverQueueSize != 0 {
+						return fmt.Errorf("receiver_queue_size=0 did not round-trip: %#v", inputSpec)
+					}
+					if !inputSpec.PoolMessages {
+						return fmt.Errorf("pool_messages did not round-trip: %#v", inputSpec)
+					}
+					if inputSpec.ConsumerProperties["application"] != "billing" {
+						return fmt.Errorf("consumer_properties did not round-trip: %#v", inputSpec)
 					}
 
 					return nil
@@ -156,7 +167,7 @@ func testSinkImported() resource.ImportStateCheckFunc {
 		// Counts every flattened state attribute, so it changes whenever the sink schema gains or
 		// loses one - including nested attributes of input_specs, which contribute one entry each
 		// plus a "%" count per map.
-		const expectedAttrs = 33
+		const expectedAttrs = 30
 
 		if len(s[0].Attributes) != expectedAttrs {
 			return fmt.Errorf("expected %d attrs, got %d: %#v",
@@ -262,6 +273,9 @@ func TestSinkUpdate(t *testing.T) {
 	configString := string(configBytes)
 	newName := "sink" + acctest.RandString(10)
 	configString = strings.ReplaceAll(configString, "sink-1", newName)
+	updatedConfigString := strings.Replace(configString,
+		"receiver_queue_size = 0", "receiver_queue_size = 100", 1)
+	var createdID string
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
@@ -289,12 +303,44 @@ func TestSinkUpdate(t *testing.T) {
 					if err != nil {
 						return err
 					}
+					createdID = rs.Primary.ID
 
 					return nil
 				}),
 			},
 			{
-				Config:             configString,
+				Config: updatedConfigString,
+				Check: resource.ComposeTestCheckFunc(func(s *terraform.State) error {
+					name := "pulsar_sink." + newName
+					rs, ok := s.RootModule().Resources[name]
+					if !ok {
+						return fmt.Errorf("%s not be found", name)
+					}
+					if rs.Primary.ID != createdID {
+						return fmt.Errorf("sink was replaced: id changed from %s to %s", createdID, rs.Primary.ID)
+					}
+
+					parts := strings.Split(rs.Primary.ID, "/")
+					if len(parts) != 3 {
+						return errors.New("resource id should be tenant/namespace/name format")
+					}
+					sinkConfig, err := getV3ClientFromMeta(testAccProvider.Meta()).Sinks().GetSink(
+						parts[0], parts[1], parts[2])
+					if err != nil {
+						return err
+					}
+					inputSpec := sinkConfig.InputSpecs[newName+"-topic"]
+					if !inputSpec.HasReceiverQueueSize() || inputSpec.ReceiverQueueSize != 100 {
+						return fmt.Errorf("receiver queue size update did not round-trip: %#v", inputSpec)
+					}
+					if inputSpec.ConsumerProperties["application"] != "billing" || !inputSpec.PoolMessages {
+						return fmt.Errorf("input spec properties were lost during update: %#v", inputSpec)
+					}
+					return nil
+				}),
+			},
+			{
+				Config:             updatedConfigString,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
