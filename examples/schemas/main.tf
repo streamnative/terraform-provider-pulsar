@@ -49,3 +49,21 @@ resource "pulsar_schema" "avro" {
     ]
   })
 }
+
+// JSON schemas use an Avro-style record definition, the same shape as AVRO above -
+// not a JSON Schema document.
+resource "pulsar_schema" "json" {
+  tenant    = "public"
+  namespace = "default"
+  topic     = "user-events-json"
+  type      = "JSON"
+
+  schema_data = jsonencode({
+    type = "record"
+    name = "UserEvent"
+    fields = [
+      { name = "id", type = "string" },
+      { name = "email", type = "string" }
+    ]
+  })
+}

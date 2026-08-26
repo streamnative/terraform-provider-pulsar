@@ -22,8 +22,10 @@ Manages Pulsar Functions through the Functions Worker API.
 ### Optional
 
 - `auto_ack` (Boolean) Whether to automatically acknowledge messages processed by the function.
+- `batch_builder` (String) BatchBuilder provides two types of batch construction methods, DEFAULT and KEY_BASED.
 - `classname` (String) The class name of the function.
 - `cleanup_subscription` (Boolean) Whether to clean up subscription when the function is deleted.
+- `compression_type` (String) Set the compression type for the producer. Pulsar Functions default to LZ4. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE
 - `cpu` (Number) The CPU that needs to be allocated per function instance
 - `custom_runtime_options` (String) The custom runtime options of the function.
 - `custom_schema_inputs` (Map of String) The custom schema inputs of the function.
@@ -39,6 +41,8 @@ Manages Pulsar Functions through the Functions Worker API.
 - `jar` (String) The path to the jar file.
 - `log_topic` (String) The log topic of the function.
 - `max_message_retries` (Number) The maximum number of times that a message will be retried when the function is configured with `EFFECTIVELY_ONCE` processing guarantees.
+- `max_pending_messages` (Number) The maximum size of a queue holding pending messages
+- `max_pending_messages_across_partitions` (Number) The maximum number of pending messages across partitions
 - `output` (String) The output topic of the function.
 - `output_schema_type` (String) The output schema type of the function.
 - `output_serde_classname` (String) The output serde class name of the function.
@@ -57,6 +61,7 @@ Manages Pulsar Functions through the Functions Worker API.
 - `subscription_position` (String) The subscription position. Supported values: `Latest`, `Earliest`.
 - `timeout_ms` (Number) The timeout of the function in milliseconds.
 - `topics_pattern` (String) The input topics pattern of the function. The pattern is a regex expression. The function consumes from all topics matching the pattern.
+- `use_thread_local_producers` (Boolean) Whether to use thread local producers
 - `user_config` (Map of String) User-defined config key/values
 
 ### Read-Only
@@ -86,7 +91,7 @@ Optional:
 
 Optional:
 
-- `configs` (Map of String) Sink-specific key/value options.
+- `configs` (Map of String, Sensitive) Sink-specific key/value options.
 - `sink_type` (String) Sink implementation identifier.
 
 
@@ -95,7 +100,7 @@ Optional:
 
 Optional:
 
-- `configs` (Map of String) Source-specific key/value options.
+- `configs` (Map of String, Sensitive) Source-specific key/value options.
 - `source_type` (String) Source implementation identifier.
 
 ## Import

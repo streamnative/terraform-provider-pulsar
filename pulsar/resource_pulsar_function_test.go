@@ -29,6 +29,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -106,6 +107,14 @@ func TestFunction(t *testing.T) {
 						config.InputSpecs["public/default/schema-input"].ReceiverQueueSize)
 					assert.Equal(t, "STRING", config.InputSpecs["public/default/schema-input"].SchemaType)
 
+					// #220 part A: the output producer configuration must round-trip.
+					require.NotNil(t, config.ProducerConfig)
+					assert.Equal(t, "ZSTD", config.ProducerConfig.CompressionType)
+					assert.Equal(t, "KEY_BASED", config.ProducerConfig.BatchBuilder)
+					assert.Equal(t, 1000, config.ProducerConfig.MaxPendingMessages)
+					assert.Equal(t, 50000, config.ProducerConfig.MaxPendingMessagesAcrossPartitions)
+					assert.True(t, config.ProducerConfig.UseThreadLocalProducers)
+
 					return nil
 				}),
 			},
@@ -146,6 +155,13 @@ func TestFunction(t *testing.T) {
 					// across the update: if the provider left it in inputs, validateUpdate() would
 					// have reset it to a default ConsumerConfig here.
 					assert.Equal(t, "avro", config.InputSpecs["public/default/input1"].SchemaType)
+
+					require.NotNil(t, config.ProducerConfig)
+					assert.Equal(t, "LZ4", config.ProducerConfig.CompressionType)
+					assert.Empty(t, config.ProducerConfig.BatchBuilder)
+					assert.Zero(t, config.ProducerConfig.MaxPendingMessages)
+					assert.Zero(t, config.ProducerConfig.MaxPendingMessagesAcrossPartitions)
+					assert.False(t, config.ProducerConfig.UseThreadLocalProducers)
 
 					return nil
 				}),

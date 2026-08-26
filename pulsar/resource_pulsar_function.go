@@ -102,6 +102,24 @@ var functionInputSourceKeys = []string{
 	resourceFunctionInputSpecsKey,
 }
 
+var functionProducerConfigKeys = []string{
+	resourceFunctionPCMaxPendingMsgKey,
+	resourceFunctionPCMaxPendingMsgAcrossPartitionKey,
+	resourceFunctionPCUseThreadLocalProducersKey,
+	resourceFunctionPCBatchBuilderKey,
+	resourceFunctionPCCompressionTypeKey,
+}
+
+// Producer configuration for the function's output topic. The attribute names mirror the ones
+// pulsar_source already exposes, so the two resources read the same way.
+const (
+	resourceFunctionPCMaxPendingMsgKey                = "max_pending_messages"
+	resourceFunctionPCMaxPendingMsgAcrossPartitionKey = "max_pending_messages_across_partitions"
+	resourceFunctionPCUseThreadLocalProducersKey      = "use_thread_local_producers"
+	resourceFunctionPCBatchBuilderKey                 = "batch_builder"
+	resourceFunctionPCCompressionTypeKey              = "compression_type"
+)
+
 const (
 	runtimeOptionSinkConfigKey         = "sinkConfig"
 	runtimeOptionSourceConfigKey       = "sourceConfig"
@@ -177,6 +195,15 @@ func init() {
 		resourceFunctionUserConfig:              "User-defined config key/values",
 		resourceFunctionSinkConfigKey:           "Sink configuration key/values serialized into custom_runtime_options.",
 		resourceFunctionSourceConfigKey:         "Source configuration key/values serialized into custom_runtime_options.",
+		//nolint:lll
+		resourceFunctionPCMaxPendingMsgKey: "The maximum size of a queue holding pending messages",
+		//nolint:lll
+		resourceFunctionPCMaxPendingMsgAcrossPartitionKey: "The maximum number of pending messages across partitions",
+		resourceFunctionPCUseThreadLocalProducersKey:      "Whether to use thread local producers",
+		//nolint:lll
+		resourceFunctionPCBatchBuilderKey: "BatchBuilder provides two types of batch construction methods, DEFAULT and KEY_BASED.",
+		//nolint:lll
+		resourceFunctionPCCompressionTypeKey: "Set the compression type for the producer. Pulsar Functions default to LZ4. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE",
 	}
 }
 
@@ -504,9 +531,36 @@ func resourcePulsarFunction() *schema.Resource {
 				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionDiskKey],
 			},
+			resourceFunctionPCMaxPendingMsgKey: {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCMaxPendingMsgKey],
+			},
+			resourceFunctionPCMaxPendingMsgAcrossPartitionKey: {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCMaxPendingMsgAcrossPartitionKey],
+			},
+			resourceFunctionPCUseThreadLocalProducersKey: {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCUseThreadLocalProducersKey],
+			},
+			resourceFunctionPCBatchBuilderKey: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCBatchBuilderKey],
+			},
+			resourceFunctionPCCompressionTypeKey: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				Description: resourceFunctionDescriptions[resourceFunctionPCCompressionTypeKey],
+			},
 			resourceFunctionUserConfig: {
 				Type:        schema.TypeMap,
 				Optional:    true,
+				Sensitive:   true,
 				Description: resourceFunctionDescriptions[resourceFunctionUserConfig],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
@@ -528,6 +582,7 @@ func resourcePulsarFunction() *schema.Resource {
 							Type:        schema.TypeMap,
 							Optional:    true,
 							Computed:    true,
+							Sensitive:   true,
 							Description: "Sink-specific key/value options.",
 							Elem:        &schema.Schema{Type: schema.TypeString},
 						},
@@ -552,6 +607,7 @@ func resourcePulsarFunction() *schema.Resource {
 							Type:        schema.TypeMap,
 							Optional:    true,
 							Computed:    true,
+							Sensitive:   true,
 							Description: "Source-specific key/value options.",
 							Elem:        &schema.Schema{Type: schema.TypeString},
 						},
@@ -1204,6 +1260,8 @@ func marshalFunctionConfig(d *schema.ResourceData) (*utils.FunctionConfig, error
 		functionConfig.UserConfig = interMap
 	}
 
+	functionConfig.ProducerConfig = marshalFunctionProducerConfig(d)
+
 	return functionConfig, nil
 }
 
@@ -1297,7 +1355,91 @@ func flattenFunctionInputSpec(topic string, consumerConfig utils.ConsumerConfig)
 	return spec
 }
 
+// marshalFunctionProducerConfig builds the output producer's configuration, mirroring how
+// pulsar_source populates the same struct. It returns nil when nothing is configured so the
+// request is unchanged for functions that do not set any of these.
+func marshalFunctionProducerConfig(d *schema.ResourceData) *utils.ProducerConfig {
+	producerConfig := &utils.ProducerConfig{}
+	configured := false
+
+	if inter, ok := d.GetOk(resourceFunctionPCMaxPendingMsgKey); ok {
+		producerConfig.MaxPendingMessages = inter.(int)
+		configured = true
+	}
+
+	if inter, ok := d.GetOk(resourceFunctionPCMaxPendingMsgAcrossPartitionKey); ok {
+		producerConfig.MaxPendingMessagesAcrossPartitions = inter.(int)
+		configured = true
+	}
+
+	if inter, ok := d.GetOk(resourceFunctionPCUseThreadLocalProducersKey); ok {
+		producerConfig.UseThreadLocalProducers = inter.(bool)
+		configured = true
+	}
+
+	if inter, ok := d.GetOk(resourceFunctionPCBatchBuilderKey); ok {
+		producerConfig.BatchBuilder = inter.(string)
+		configured = true
+	}
+
+	if inter, ok := d.GetOk(resourceFunctionPCCompressionTypeKey); ok {
+		producerConfig.CompressionType = inter.(string)
+		configured = true
+	}
+
+	if !configured && d.Id() != "" && d.HasChanges(functionProducerConfigKeys...) {
+		// FunctionConfigUtils.validateUpdate() preserves the existing producer config when the
+		// request field is nil. Send the Function default explicitly when the last configured
+		// producer attribute is removed so zero-valued settings are actually cleared.
+		return &utils.ProducerConfig{CompressionType: "LZ4"}
+	}
+
+	if !configured {
+		return nil
+	}
+
+	return producerConfig
+}
+
+// unmarshalFunctionProducerConfig writes the complete output producer configuration into state.
+// Zero values must be written too: skipping them leaves an earlier non-zero state value behind when
+// the producer configuration is removed or changed outside Terraform.
+func unmarshalFunctionProducerConfig(functionConfig utils.FunctionConfig, d *schema.ResourceData) error {
+	producerConfig := functionConfig.ProducerConfig
+	if producerConfig == nil {
+		producerConfig = &utils.ProducerConfig{}
+	}
+
+	if err := d.Set(resourceFunctionPCMaxPendingMsgKey, producerConfig.MaxPendingMessages); err != nil {
+		return err
+	}
+
+	if err := d.Set(resourceFunctionPCMaxPendingMsgAcrossPartitionKey,
+		producerConfig.MaxPendingMessagesAcrossPartitions); err != nil {
+		return err
+	}
+
+	if err := d.Set(resourceFunctionPCUseThreadLocalProducersKey,
+		producerConfig.UseThreadLocalProducers); err != nil {
+		return err
+	}
+
+	if err := d.Set(resourceFunctionPCBatchBuilderKey, producerConfig.BatchBuilder); err != nil {
+		return err
+	}
+
+	if err := d.Set(resourceFunctionPCCompressionTypeKey, producerConfig.CompressionType); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func unmarshalFunctionConfig(functionConfig utils.FunctionConfig, d *schema.ResourceData) error {
+	if err := unmarshalFunctionProducerConfig(functionConfig, d); err != nil {
+		return err
+	}
+
 	if functionConfig.Jar != nil {
 		err := d.Set(resourceFunctionJarKey, *functionConfig.Jar)
 		if err != nil {

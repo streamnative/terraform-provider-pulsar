@@ -26,7 +26,7 @@ Manages Pulsar IO sources through the Functions Worker API.
 - `batch_builder` (String) BatchBuilder provides two types of batch construction methods, DEFAULT and KEY_BASED.
 - `classname` (String) The source's class name if archive is file-url-path (file://)
 - `compression_type` (String) Set the compression type for the producer. By default, message payloads are not compressed. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE
-- `configs` (String) User defined configs key/values (JSON string)
+- `configs` (String, Sensitive) User defined configs key/values (JSON string)
 - `consumer_crypto_failure_action` (String) The desired action if consumer fail to decrypt data, one of FAIL, DISCARD, CONSUME
 - `cpu` (Number) The CPU that needs to be allocated per source instance (applicable only to Docker runtime)
 - `crypto_key_reader_classname` (String) The classname for the crypto key reader that can be used to access the keys in the keystore

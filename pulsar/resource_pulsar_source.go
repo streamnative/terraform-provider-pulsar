@@ -222,6 +222,7 @@ func resourcePulsarSource() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
+				Sensitive:   true,
 				Description: resourceSourceDescriptions[resourceSourceConfigsKey],
 			},
 			resourceSourceRuntimeFlagsKey: {
