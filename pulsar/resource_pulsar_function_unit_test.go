@@ -22,6 +22,26 @@ func TestFunctionRuntimeConfigConfigsSensitive(t *testing.T) {
 	}
 }
 
+func TestUnmarshalFunctionProducerConfigClearsZeroValues(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourcePulsarFunction().Schema, map[string]interface{}{
+		resourceFunctionPCMaxPendingMsgKey:                1000,
+		resourceFunctionPCMaxPendingMsgAcrossPartitionKey: 50000,
+		resourceFunctionPCUseThreadLocalProducersKey:      true,
+		resourceFunctionPCBatchBuilderKey:                 "KEY_BASED",
+		resourceFunctionPCCompressionTypeKey:              "ZSTD",
+	})
+
+	err := unmarshalFunctionProducerConfig(utils.FunctionConfig{
+		ProducerConfig: &utils.ProducerConfig{},
+	}, d)
+	require.NoError(t, err)
+	assert.Zero(t, d.Get(resourceFunctionPCMaxPendingMsgKey))
+	assert.Zero(t, d.Get(resourceFunctionPCMaxPendingMsgAcrossPartitionKey))
+	assert.False(t, d.Get(resourceFunctionPCUseThreadLocalProducersKey).(bool))
+	assert.Empty(t, d.Get(resourceFunctionPCBatchBuilderKey))
+	assert.Empty(t, d.Get(resourceFunctionPCCompressionTypeKey))
+}
+
 func TestMergeFunctionCustomRuntimeOptions(t *testing.T) {
 	base := `{"foo":"bar","sinkConfig":{"old":"value"},"sourceConfig":{"keep":"me"}}`
 	sinkConfig := map[string]interface{}{
