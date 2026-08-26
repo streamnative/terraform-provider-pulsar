@@ -25,12 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v6
         with:
-          go-version: 1.24
+          go-version-file: go.mod
         id: go
 
       - name: Setup Terraform
@@ -45,9 +45,9 @@ jobs:
       - name: Build the terraform-provider-pulsar
         run: |
           make build
-          mkdir -p $HOME/.terraform.d/plugins/linux_amd64
-          sudo mv terraform-provider-pulsar $HOME/.terraform.d/plugins/linux_amd64/
-          echo "The terraform-provider-pulsar location:" `readlink -f $HOME/.terraform.d/plugins/linux_amd64/`
+          mkdir -p "$HOME/.terraform.d/plugins/linux_amd64"
+          sudo mv terraform-provider-pulsar "$HOME/.terraform.d/plugins/linux_amd64/"
+          echo "The terraform-provider-pulsar location: $(readlink -f "$HOME/.terraform.d/plugins/linux_amd64/")"
 
       - name: Run Acceptance Tests for the Provider on Standalone Instance
         run: |
@@ -62,12 +62,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v6
         with:
-          go-version: 1.24
+          go-version-file: go.mod
         id: go
 
       - name: Setup Terraform
@@ -82,9 +82,9 @@ jobs:
       - name: Build the terraform-provider-pulsar
         run: |
           make build
-          mkdir -p $HOME/.terraform.d/plugins/linux_amd64
-          sudo mv terraform-provider-pulsar $HOME/.terraform.d/plugins/linux_amd64/
-          echo "The terraform-provider-pulsar location:" `readlink -f $HOME/.terraform.d/plugins/linux_amd64/`
+          mkdir -p "$HOME/.terraform.d/plugins/linux_amd64"
+          sudo mv terraform-provider-pulsar "$HOME/.terraform.d/plugins/linux_amd64/"
+          echo "The terraform-provider-pulsar location: $(readlink -f "$HOME/.terraform.d/plugins/linux_amd64/")"
 
       - name: Run Acceptance Tests for the Provider on Standalone Instance
         run: |

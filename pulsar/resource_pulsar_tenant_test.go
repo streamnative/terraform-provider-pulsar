@@ -107,6 +107,7 @@ func TestImportMissingTenantFails(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
+		CheckDestroy:      testPulsarTenantDestroy,
 		ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
