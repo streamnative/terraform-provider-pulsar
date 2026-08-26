@@ -102,6 +102,14 @@ var functionInputSourceKeys = []string{
 	resourceFunctionInputSpecsKey,
 }
 
+var functionProducerConfigKeys = []string{
+	resourceFunctionPCMaxPendingMsgKey,
+	resourceFunctionPCMaxPendingMsgAcrossPartitionKey,
+	resourceFunctionPCUseThreadLocalProducersKey,
+	resourceFunctionPCBatchBuilderKey,
+	resourceFunctionPCCompressionTypeKey,
+}
+
 // Producer configuration for the function's output topic. The attribute names mirror the ones
 // pulsar_source already exposes, so the two resources read the same way.
 const (
@@ -195,7 +203,7 @@ func init() {
 		//nolint:lll
 		resourceFunctionPCBatchBuilderKey: "BatchBuilder provides two types of batch construction methods, DEFAULT and KEY_BASED.",
 		//nolint:lll
-		resourceFunctionPCCompressionTypeKey: "Set the compression type for the producer. By default, message payloads are not compressed. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE",
+		resourceFunctionPCCompressionTypeKey: "Set the compression type for the producer. Pulsar Functions default to LZ4. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE",
 	}
 }
 
@@ -1376,6 +1384,13 @@ func marshalFunctionProducerConfig(d *schema.ResourceData) *utils.ProducerConfig
 		configured = true
 	}
 
+	if !configured && d.Id() != "" && d.HasChanges(functionProducerConfigKeys...) {
+		// FunctionConfigUtils.validateUpdate() preserves the existing producer config when the
+		// request field is nil. Send the Function default explicitly when the last configured
+		// producer attribute is removed so zero-valued settings are actually cleared.
+		return &utils.ProducerConfig{CompressionType: "LZ4"}
+	}
+
 	if !configured {
 		return nil
 	}
@@ -1383,27 +1398,22 @@ func marshalFunctionProducerConfig(d *schema.ResourceData) *utils.ProducerConfig
 	return producerConfig
 }
 
-// unmarshalFunctionProducerConfig writes the output producer's configuration into state. Each field
-// is only surfaced when the server returned something for it, so a function that configures none of
-// them does not gain a diff.
+// unmarshalFunctionProducerConfig writes the complete output producer configuration into state.
+// Zero values must be written too: skipping them leaves an earlier non-zero state value behind when
+// the producer configuration is removed or changed outside Terraform.
 func unmarshalFunctionProducerConfig(functionConfig utils.FunctionConfig, d *schema.ResourceData) error {
-	if functionConfig.ProducerConfig == nil {
-		return nil
-	}
-
 	producerConfig := functionConfig.ProducerConfig
-
-	if producerConfig.MaxPendingMessages != 0 {
-		if err := d.Set(resourceFunctionPCMaxPendingMsgKey, producerConfig.MaxPendingMessages); err != nil {
-			return err
-		}
+	if producerConfig == nil {
+		producerConfig = &utils.ProducerConfig{}
 	}
 
-	if producerConfig.MaxPendingMessagesAcrossPartitions != 0 {
-		if err := d.Set(resourceFunctionPCMaxPendingMsgAcrossPartitionKey,
-			producerConfig.MaxPendingMessagesAcrossPartitions); err != nil {
-			return err
-		}
+	if err := d.Set(resourceFunctionPCMaxPendingMsgKey, producerConfig.MaxPendingMessages); err != nil {
+		return err
+	}
+
+	if err := d.Set(resourceFunctionPCMaxPendingMsgAcrossPartitionKey,
+		producerConfig.MaxPendingMessagesAcrossPartitions); err != nil {
+		return err
 	}
 
 	if err := d.Set(resourceFunctionPCUseThreadLocalProducersKey,
@@ -1411,16 +1421,12 @@ func unmarshalFunctionProducerConfig(functionConfig utils.FunctionConfig, d *sch
 		return err
 	}
 
-	if producerConfig.BatchBuilder != "" {
-		if err := d.Set(resourceFunctionPCBatchBuilderKey, producerConfig.BatchBuilder); err != nil {
-			return err
-		}
+	if err := d.Set(resourceFunctionPCBatchBuilderKey, producerConfig.BatchBuilder); err != nil {
+		return err
 	}
 
-	if producerConfig.CompressionType != "" {
-		if err := d.Set(resourceFunctionPCCompressionTypeKey, producerConfig.CompressionType); err != nil {
-			return err
-		}
+	if err := d.Set(resourceFunctionPCCompressionTypeKey, producerConfig.CompressionType); err != nil {
+		return err
 	}
 
 	return nil

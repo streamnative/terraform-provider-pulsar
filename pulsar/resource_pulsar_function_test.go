@@ -156,6 +156,13 @@ func TestFunction(t *testing.T) {
 					// have reset it to a default ConsumerConfig here.
 					assert.Equal(t, "avro", config.InputSpecs["public/default/input1"].SchemaType)
 
+					require.NotNil(t, config.ProducerConfig)
+					assert.Equal(t, "LZ4", config.ProducerConfig.CompressionType)
+					assert.Empty(t, config.ProducerConfig.BatchBuilder)
+					assert.Zero(t, config.ProducerConfig.MaxPendingMessages)
+					assert.Zero(t, config.ProducerConfig.MaxPendingMessagesAcrossPartitions)
+					assert.False(t, config.ProducerConfig.UseThreadLocalProducers)
+
 					return nil
 				}),
 			},

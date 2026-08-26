@@ -25,7 +25,7 @@ Manages Pulsar Functions through the Functions Worker API.
 - `batch_builder` (String) BatchBuilder provides two types of batch construction methods, DEFAULT and KEY_BASED.
 - `classname` (String) The class name of the function.
 - `cleanup_subscription` (Boolean) Whether to clean up subscription when the function is deleted.
-- `compression_type` (String) Set the compression type for the producer. By default, message payloads are not compressed. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE
+- `compression_type` (String) Set the compression type for the producer. Pulsar Functions default to LZ4. Supported compression types are: LZ4, ZLIB, ZSTD, SNAPPY and NONE
 - `cpu` (Number) The CPU that needs to be allocated per function instance
 - `custom_runtime_options` (String) The custom runtime options of the function.
 - `custom_schema_inputs` (Map of String) The custom schema inputs of the function.
