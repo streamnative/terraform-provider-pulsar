@@ -132,22 +132,15 @@ func TestFunctionProducerConfigApplyOwnership(t *testing.T) {
 			},
 		},
 		{
-			name:  "explicit zero preserves omitted remote peers on update",
+			name:  "producer updates defer to fresh broker merge",
 			state: functionProducerState(t, remoteProducerConfig, "old-output"),
 			config: functionConfigWithBase(map[string]interface{}{
 				resourceFunctionOutputKey:          "old-output",
 				resourceFunctionPCMaxPendingMsgKey: 0,
 			}),
-			want: &utils.ProducerConfig{
-				MaxPendingMessages:                 0,
-				MaxPendingMessagesAcrossPartitions: 50000,
-				UseThreadLocalProducers:            true,
-				BatchBuilder:                       "KEY_BASED",
-				CompressionType:                    "ZSTD",
-			},
 		},
 		{
-			name:  "explicit zero and false values are sent on update",
+			name:  "explicit zero and false values defer to fresh broker merge",
 			state: functionProducerState(t, remoteProducerConfig, "old-output"),
 			config: functionConfigWithBase(map[string]interface{}{
 				resourceFunctionOutputKey:                         "old-output",
@@ -156,10 +149,6 @@ func TestFunctionProducerConfigApplyOwnership(t *testing.T) {
 				resourceFunctionPCUseThreadLocalProducersKey:      false,
 				resourceFunctionPCCompressionTypeKey:              "LZ4",
 			}),
-			want: &utils.ProducerConfig{
-				BatchBuilder:    "KEY_BASED",
-				CompressionType: "LZ4",
-			},
 		},
 		{
 			name:  "omitted producer fields are not sent on unrelated update",

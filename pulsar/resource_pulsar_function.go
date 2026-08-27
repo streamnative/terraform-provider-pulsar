@@ -1110,6 +1110,23 @@ func resourcePulsarFunctionUpdate(ctx context.Context, d *schema.ResourceData, m
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	if functionProducerConfigChanged(d) {
+		currentFunctionConfig, err := client.GetFunction(
+			functionConfig.Tenant,
+			functionConfig.Namespace,
+			functionConfig.Name,
+		)
+		if err != nil {
+			return diag.FromErr(errors.Wrapf(err, "failed to get function %s", d.Id()))
+		}
+
+		functionConfig.ProducerConfig = mergeFunctionProducerConfig(d, currentFunctionConfig.ProducerConfig)
+	} else {
+		// Pulsar replaces ProducerConfig as a whole. Do not resend HCL-owned values when an
+		// unrelated field changes: a nil value tells FunctionConfigUtils.validateUpdate() to
+		// retain the broker's current producer configuration.
+		functionConfig.ProducerConfig = nil
+	}
 
 	var archive string
 	switch {
@@ -1460,30 +1477,81 @@ func flattenFunctionInputSpec(topic string, consumerConfig utils.ConsumerConfig)
 
 // marshalFunctionProducerConfig sends a producer configuration only when HCL explicitly manages a
 // producer attribute. All attributes are Optional+Computed, so omitted values remain broker-owned.
-// When an update changes one field, include the effective values of its peers because Pulsar
-// replaces the whole ProducerConfig rather than patching individual fields.
+// Updates with a producer-field diff are completed from a fresh broker read in
+// resourcePulsarFunctionUpdate because Pulsar replaces ProducerConfig rather than patching it.
 func marshalFunctionProducerConfig(d *schema.ResourceData) *utils.ProducerConfig {
-	for _, key := range functionProducerConfigKeys {
-		if functionProducerConfigAttributeConfigured(d, key) {
-			compressionType := d.Get(resourceFunctionPCCompressionTypeKey).(string)
-			if compressionType == "" {
-				// ProducerConfig serializes CompressionType even when empty, while Pulsar Functions
-				// defaults an omitted value to LZ4. Keep the provider's request valid when a new
-				// configuration manages another producer field but leaves compression_type unset.
-				compressionType = "LZ4"
-			}
+	if !d.IsNewResource() || !functionProducerConfigConfigured(d) {
+		return nil
+	}
 
-			return &utils.ProducerConfig{
-				MaxPendingMessages:                 d.Get(resourceFunctionPCMaxPendingMsgKey).(int),
-				MaxPendingMessagesAcrossPartitions: d.Get(resourceFunctionPCMaxPendingMsgAcrossPartitionKey).(int),
-				UseThreadLocalProducers:            d.Get(resourceFunctionPCUseThreadLocalProducersKey).(bool),
-				BatchBuilder:                       d.Get(resourceFunctionPCBatchBuilderKey).(string),
-				CompressionType:                    compressionType,
-			}
+	compressionType := d.Get(resourceFunctionPCCompressionTypeKey).(string)
+	if compressionType == "" {
+		// ProducerConfig serializes CompressionType even when empty, while Pulsar Functions
+		// defaults an omitted value to LZ4. Keep the provider's create request valid when a new
+		// configuration manages another producer field but leaves compression_type unset.
+		compressionType = "LZ4"
+	}
+
+	return &utils.ProducerConfig{
+		MaxPendingMessages:                 d.Get(resourceFunctionPCMaxPendingMsgKey).(int),
+		MaxPendingMessagesAcrossPartitions: d.Get(resourceFunctionPCMaxPendingMsgAcrossPartitionKey).(int),
+		UseThreadLocalProducers:            d.Get(resourceFunctionPCUseThreadLocalProducersKey).(bool),
+		BatchBuilder:                       d.Get(resourceFunctionPCBatchBuilderKey).(string),
+		CompressionType:                    compressionType,
+	}
+}
+
+func functionProducerConfigChanged(d *schema.ResourceData) bool {
+	for _, key := range functionProducerConfigKeys {
+		if d.HasChange(key) {
+			return true
 		}
 	}
 
-	return nil
+	return false
+}
+
+func functionProducerConfigConfigured(d *schema.ResourceData) bool {
+	for _, key := range functionProducerConfigKeys {
+		if functionProducerConfigAttributeConfigured(d, key) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// mergeFunctionProducerConfig starts from the current broker object instead of Terraform state.
+// Copying the full struct preserves fields not exposed by this resource, including CryptoConfig,
+// BatchingConfig, and fields added to utils.ProducerConfig in future client versions.
+func mergeFunctionProducerConfig(d *schema.ResourceData, current *utils.ProducerConfig) *utils.ProducerConfig {
+	producerConfig := utils.ProducerConfig{
+		// Pulsar Functions defaults CompressionType to LZ4. Start there when no producer config
+		// exists remotely so a partial first update gets the same defaults as a partial create.
+		CompressionType: "LZ4",
+	}
+	if current != nil {
+		producerConfig = *current
+	}
+
+	if functionProducerConfigAttributeConfigured(d, resourceFunctionPCMaxPendingMsgKey) {
+		producerConfig.MaxPendingMessages = d.Get(resourceFunctionPCMaxPendingMsgKey).(int)
+	}
+	if functionProducerConfigAttributeConfigured(d, resourceFunctionPCMaxPendingMsgAcrossPartitionKey) {
+		producerConfig.MaxPendingMessagesAcrossPartitions =
+			d.Get(resourceFunctionPCMaxPendingMsgAcrossPartitionKey).(int)
+	}
+	if functionProducerConfigAttributeConfigured(d, resourceFunctionPCUseThreadLocalProducersKey) {
+		producerConfig.UseThreadLocalProducers = d.Get(resourceFunctionPCUseThreadLocalProducersKey).(bool)
+	}
+	if functionProducerConfigAttributeConfigured(d, resourceFunctionPCBatchBuilderKey) {
+		producerConfig.BatchBuilder = d.Get(resourceFunctionPCBatchBuilderKey).(string)
+	}
+	if functionProducerConfigAttributeConfigured(d, resourceFunctionPCCompressionTypeKey) {
+		producerConfig.CompressionType = d.Get(resourceFunctionPCCompressionTypeKey).(string)
+	}
+
+	return &producerConfig
 }
 
 func functionProducerConfigAttributeConfigured(d *schema.ResourceData, key string) bool {
