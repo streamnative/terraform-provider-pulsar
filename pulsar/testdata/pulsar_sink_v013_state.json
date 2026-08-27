@@ -1,0 +1,47 @@
+{
+  "version": 4,
+  "terraform_version": "1.15.6",
+  "serial": 1,
+  "lineage": "22222222-2222-2222-2222-222222222222",
+  "outputs": {},
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "pulsar_sink",
+      "name": "test",
+      "provider": "provider[\"registry.terraform.io/streamnative/pulsar\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "archive": "builtin://jdbc",
+            "auto_ack": true,
+            "cleanup_subscription": false,
+            "id": "public/default/sink-1",
+            "input_specs": [
+              {
+                "is_regex_pattern": false,
+                "key": "persistent://public/default/in-1",
+                "receiver_queue_size": 0,
+                "schema_type": "",
+                "serde_class_name": ""
+              }
+            ],
+            "inputs": [
+              "persistent://public/default/in-1"
+            ],
+            "name": "sink-1",
+            "namespace": "default",
+            "parallelism": 1,
+            "processing_guarantees": "ATLEAST_ONCE",
+            "retain_ordering": true,
+            "subscription_position": "Earliest",
+            "tenant": "public"
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}

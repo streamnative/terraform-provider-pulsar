@@ -41,8 +41,24 @@ jobs:
       - name: Set Tag as Environment Variable
         id: set_tag
         run: |
-          echo "GORELEASER_CURRENT_TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
-          LAST_TAG=$(git describe --abbrev=0 --tags "$(git rev-list --tags --skip=1 --max-count=1)")
+          set -o pipefail
+          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+          echo "GORELEASER_CURRENT_TAG=$CURRENT_TAG" >> "$GITHUB_ENV"
+
+          # Only stable vMAJOR.MINOR.PATCH tags delimit release notes.
+          LAST_TAG="$(
+            git tag --merged "$CURRENT_TAG" --sort=-version:refname |
+              awk -v current_tag="$CURRENT_TAG" '
+                $0 != current_tag && $0 ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ {
+                  print
+                  exit
+                }
+              '
+          )"
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous stable release tag found for $CURRENT_TAG" >&2
+            exit 1
+          fi
           echo "GORELEASER_PREVIOUS_TAG=$LAST_TAG" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6

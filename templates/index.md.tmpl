@@ -26,4 +26,21 @@ provider "pulsar" {
 }
 ```
 
+## Upgrading to v0.14
+
+`pulsar_function.user_config`, `pulsar_function.sink_config[*].configs`, `pulsar_function.source_config[*].configs`, `pulsar_sink.configs`, and `pulsar_source.configs` now propagate Terraform's `Sensitive` marking.
+
+Existing root outputs that reference these values must set `sensitive = true`:
+
+```terraform
+output "function_user_config" {
+  value     = pulsar_function.example.user_config
+  sensitive = true
+}
+```
+
+Use `nonsensitive()` only when exposing a value is intentional. `Sensitive` redacts Terraform CLI and UI output, but state may still contain plaintext; protect state storage and access.
+
+When upgrading existing `pulsar_function` or `pulsar_sink` state with `-refresh=false`, some Terraform versions may show a one-time in-place change while recording schema or sensitivity metadata. This is a state-only migration and does not call Pulsar APIs. A normal refreshed plan, and subsequent `-refresh=false` plans after the migration, are clean.
+
 {{ .SchemaMarkdown | trimspace }}

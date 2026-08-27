@@ -26,6 +26,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
@@ -128,6 +129,14 @@ func resourcePulsarSink() *schema.Resource {
 		DeleteContext: resourcePulsarSinkDelete,
 		CustomizeDiff: resourcePulsarSinkCustomizeDiff,
 		Description:   "Manages Pulsar IO sinks through the Functions Worker API.",
+		SchemaVersion: 1,
+		StateUpgraders: []schema.StateUpgrader{
+			{
+				Type:    pulsarSinkStateTypeV0(),
+				Upgrade: resourcePulsarSinkStateUpgradeV0,
+				Version: 0,
+			},
+		},
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				id := d.Id()
@@ -227,10 +236,13 @@ func resourcePulsarSink() *schema.Resource {
 				Description: resourceSinkDescriptions[resourceSinkCustomSchemaInputsKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
-			// terraform doesn't nested map, so use TypeSet.
+			// Terraform does not support nested maps, so use TypeSet. v0.13 populated this field for
+			// legacy input representations; keep those values computed so an upgrade does not plan
+			// their removal.
 			resourceSinkInputSpecsKey: {
 				Type:        schema.TypeSet,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceSinkDescriptions[resourceSinkInputSpecsKey],
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -414,6 +426,67 @@ func resourcePulsarSink() *schema.Resource {
 			},
 		},
 	}
+}
+
+// pulsarSinkStateTypeV0 is the frozen schema-version 0 shape. It accepts v0.13's five-field
+// input_specs elements and the two fields v0.14.0-rc.1 added without a schema version bump. Keep
+// it independent from the current schema so Terraform decodes legacy TypeSet elements before
+// re-encoding them under the current schema.
+func pulsarSinkStateTypeV0() cty.Type {
+	inputSpecsType := cty.Set(cty.Object(map[string]cty.Type{
+		resourceSinkInputSpecsSubsetTopicKey:              cty.String,
+		resourceSinkInputSpecsSubsetSchemaTypeKey:         cty.String,
+		resourceSinkInputSpecsSubsetSerdeClassNameKey:     cty.String,
+		resourceSinkInputSpecsSubsetIsRegexPatternKey:     cty.Bool,
+		resourceSinkInputSpecsSubsetReceiverQueueSizeKey:  cty.Number,
+		resourceSinkInputSpecsSubsetPoolMessagesKey:       cty.Bool,
+		resourceSinkInputSpecsSubsetConsumerPropertiesKey: cty.Map(cty.String),
+	}))
+
+	return cty.Object(map[string]cty.Type{
+		"id":                                        cty.String,
+		resourceSinkArchiveKey:                      cty.String,
+		resourceSinkAutoACKKey:                      cty.Bool,
+		resourceSinkClassnameKey:                    cty.String,
+		resourceSinkCleanupSubscriptionKey:          cty.Bool,
+		resourceSinkConfigsKey:                      cty.String,
+		resourceSinkCPUKey:                          cty.Number,
+		resourceSinkCustomRuntimeOptionsKey:         cty.String,
+		resourceSinkCustomSchemaInputsKey:           cty.Map(cty.String),
+		resourceSinkCustomSerdeInputsKey:            cty.Map(cty.String),
+		resourceSinkDeadLetterTopicKey:              cty.String,
+		resourceSinkDiskKey:                         cty.Number,
+		resourceSinkInputsKey:                       cty.Set(cty.String),
+		resourceSinkInputSpecsKey:                   inputSpecsType,
+		resourceSinkMaxRedeliverCountKey:            cty.Number,
+		resourceSinkNameKey:                         cty.String,
+		resourceSinkNamespaceKey:                    cty.String,
+		resourceSinkNegativeCountRedeliveryDelayKey: cty.Number,
+		resourceSinkParallelismKey:                  cty.Number,
+		resourceSinkProcessingGuaranteesKey:         cty.String,
+		resourceSinkRAMKey:                          cty.Number,
+		resourceSinkRetainKeyOrderingKey:            cty.Bool,
+		resourceSinkRetainOrderingKey:               cty.Bool,
+		resourceSinkSecretsKey:                      cty.String,
+		resourceSinkSinkTypeKey:                     cty.String,
+		resourceSinkSubscriptionNameKey:             cty.String,
+		resourceSinkSubscriptionPositionKey:         cty.String,
+		resourceSinkTenantKey:                       cty.String,
+		resourceSinkTimeoutKey:                      cty.Number,
+		resourceSinkTopicsPatternKey:                cty.String,
+	})
+}
+
+func resourcePulsarSinkStateUpgradeV0(
+	_ context.Context,
+	rawState map[string]interface{},
+	_ interface{},
+) (map[string]interface{}, error) {
+	if rawState == nil {
+		return nil, fmt.Errorf("pulsar_sink state upgrade from version 0: state is nil")
+	}
+
+	return rawState, nil
 }
 
 func resourcePulsarSinkCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -612,6 +685,14 @@ func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	if sinkConfigHasUnownedLegacyInputTopics(sinkConfig) {
+		currentSinkConfig, err := client.GetSink(sinkConfig.Tenant, sinkConfig.Namespace, sinkConfig.Name)
+		if err != nil {
+			return diag.FromErr(errors.Wrapf(err, "failed to get %s sink from %s/%s",
+				sinkConfig.Name, sinkConfig.Tenant, sinkConfig.Namespace))
+		}
+		mergeSinkLegacyInputSpecsFromBroker(sinkConfig, currentSinkConfig)
+	}
 
 	updateOptions := &utils.UpdateOptions{
 		UpdateAuthData: true,
@@ -643,7 +724,17 @@ func resourcePulsarSinkDelete(ctx context.Context, d *schema.ResourceData, meta 
 // Moving an unchanged topic between a legacy input field and input_specs remains an in-place update.
 func resourcePulsarSinkCustomizeDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
 	newSpecs := diff.Get(resourceSinkInputSpecsKey)
+	if rawConfigOmitsSinkInputSpecs(diff.GetRawConfig()) {
+		newSpecs = nil
+	}
 	if err := validateSinkInputSpecs(newSpecs); err != nil {
+		return err
+	}
+	if err := mergeSinkLegacyTypesIntoInputSpecs(
+		sinkInputSpecsFromSchema(newSpecs),
+		sinkStringMap(diff.Get(resourceSinkCustomSerdeInputsKey)),
+		sinkStringMap(diff.Get(resourceSinkCustomSchemaInputsKey)),
+	); err != nil {
 		return err
 	}
 
@@ -666,22 +757,25 @@ func resourcePulsarSinkCustomizeDiff(_ context.Context, diff *schema.ResourceDif
 	oldPattern, newPattern := diff.GetChange(resourceSinkTopicsPatternKey)
 	oldCustomSerde, newCustomSerde := diff.GetChange(resourceSinkCustomSerdeInputsKey)
 	oldCustomSchema, newCustomSchema := diff.GetChange(resourceSinkCustomSchemaInputsKey)
-	oldSpecs, newSpecs := diff.GetChange(resourceSinkInputSpecsKey)
+	oldSpecs, plannedSpecs := diff.GetChange(resourceSinkInputSpecsKey)
+	if rawConfigOmitsSinkInputSpecs(diff.GetRawConfig()) {
+		plannedSpecs = nil
+	}
 
 	oldTopics := effectiveSinkInputTopics(
 		oldInputs, oldPattern, oldCustomSerde, oldCustomSchema, oldSpecs,
 	)
 	newTopics := effectiveSinkInputTopics(
-		newInputs, newPattern, newCustomSerde, newCustomSchema, newSpecs,
+		newInputs, newPattern, newCustomSerde, newCustomSchema, plannedSpecs,
 	)
 
 	if len(oldTopics) != len(newTopics) {
-		return forceNewSinkInputTopology(diff, oldSpecs, newSpecs)
+		return forceNewSinkInputTopology(diff, oldSpecs, plannedSpecs)
 	}
 	for topic, regexPattern := range newTopics {
 		oldRegexPattern, ok := oldTopics[topic]
 		if !ok || oldRegexPattern != regexPattern {
-			return forceNewSinkInputTopology(diff, oldSpecs, newSpecs)
+			return forceNewSinkInputTopology(diff, oldSpecs, plannedSpecs)
 		}
 	}
 
@@ -910,6 +1004,90 @@ func sinkInputSpecsFromSchema(inputSpecs interface{}) map[string]utils.ConsumerC
 	return specs
 }
 
+// rawConfigOmitsSinkInputSpecs is true only when the current HCL is available and omits the
+// attribute. A refresh has no raw config, so callers conservatively retain state in that case.
+func rawConfigOmitsSinkInputSpecs(rawConfig cty.Value) bool {
+	return rawConfig.IsKnown() && !rawConfig.IsNull() &&
+		!rawValueHasTopLevelAttribute(rawConfig, resourceSinkInputSpecsKey)
+}
+
+func configuredSinkInputSpecsValue(d *schema.ResourceData) interface{} {
+	if rawConfigOmitsSinkInputSpecs(d.GetRawConfig()) {
+		return nil
+	}
+
+	return d.Get(resourceSinkInputSpecsKey)
+}
+
+// configuredSinkInputSpecs separates HCL-owned blocks from v0.13's computed state. During an
+// apply the raw config is authoritative. Refresh requests carry state but no config, so preserve
+// the existing state in that case; input_specs being Optional+Computed keeps that fallback clean.
+func configuredSinkInputSpecs(d *schema.ResourceData) map[string]utils.ConsumerConfig {
+	return sinkInputSpecsFromSchema(configuredSinkInputSpecsValue(d))
+}
+
+// mergeSinkLegacyTypesIntoInputSpecs preserves a legacy type when a topic also has input_specs.
+// The queue-only case is unambiguous. All other conflicting or incomplete combinations fail rather
+// than relying on SinkConfigUtils' precedence and silently dropping a type.
+func mergeSinkLegacyTypesIntoInputSpecs(
+	inputSpecs map[string]utils.ConsumerConfig,
+	serdeInputs, schemaInputs map[string]string,
+) error {
+	for topic, inputSpec := range inputSpecs {
+		serdeClassName, hasSerde := serdeInputs[topic]
+		schemaType, hasSchema := schemaInputs[topic]
+		if !hasSerde && !hasSchema {
+			continue
+		}
+
+		if hasSerde && hasSchema {
+			return fmt.Errorf("%s %q overlaps both %s and %s",
+				resourceSinkInputSpecsKey, topic,
+				resourceSinkCustomSerdeInputsKey, resourceSinkCustomSchemaInputsKey)
+		}
+
+		if hasSerde {
+			if serdeClassName == "" {
+				return fmt.Errorf("%s %q overlaps %s with an empty value",
+					resourceSinkInputSpecsKey, topic, resourceSinkCustomSerdeInputsKey)
+			}
+			if inputSpec.SchemaType != "" {
+				return fmt.Errorf("%s %q cannot combine %s with %s",
+					resourceSinkInputSpecsKey, topic,
+					resourceSinkInputSpecsSubsetSchemaTypeKey, resourceSinkCustomSerdeInputsKey)
+			}
+			if inputSpec.SerdeClassName != "" && inputSpec.SerdeClassName != serdeClassName {
+				return fmt.Errorf("%s %q has conflicting %s values between %s and %s",
+					resourceSinkInputSpecsKey, topic, resourceSinkInputSpecsSubsetSerdeClassNameKey,
+					resourceSinkInputSpecsKey, resourceSinkCustomSerdeInputsKey)
+			}
+			inputSpec.SerdeClassName = serdeClassName
+		}
+
+		if hasSchema {
+			if schemaType == "" {
+				return fmt.Errorf("%s %q overlaps %s with an empty value",
+					resourceSinkInputSpecsKey, topic, resourceSinkCustomSchemaInputsKey)
+			}
+			if inputSpec.SerdeClassName != "" {
+				return fmt.Errorf("%s %q cannot combine %s with %s",
+					resourceSinkInputSpecsKey, topic,
+					resourceSinkInputSpecsSubsetSerdeClassNameKey, resourceSinkCustomSchemaInputsKey)
+			}
+			if inputSpec.SchemaType != "" && inputSpec.SchemaType != schemaType {
+				return fmt.Errorf("%s %q has conflicting %s values between %s and %s",
+					resourceSinkInputSpecsKey, topic, resourceSinkInputSpecsSubsetSchemaTypeKey,
+					resourceSinkInputSpecsKey, resourceSinkCustomSchemaInputsKey)
+			}
+			inputSpec.SchemaType = schemaType
+		}
+
+		inputSpecs[topic] = inputSpec
+	}
+
+	return nil
+}
+
 func sinkLegacyInputMap(
 	value interface{}, inputSpecs map[string]utils.ConsumerConfig,
 ) map[string]string {
@@ -922,6 +1100,127 @@ func sinkLegacyInputMap(
 	}
 
 	return stringMap
+}
+
+// sinkConfigHasUnownedLegacyInputTopics reports whether an update request contains a legacy input
+// representation that is not already represented by an HCL-owned input_specs entry.
+func sinkConfigHasUnownedLegacyInputTopics(sinkConfig *utils.SinkConfig) bool {
+	for _, topic := range sinkConfig.Inputs {
+		if !sinkInputSpecIsHCLConfigured(sinkConfig, topic) {
+			return true
+		}
+	}
+	if sinkConfig.TopicsPattern != nil && !sinkInputSpecIsHCLConfigured(sinkConfig, *sinkConfig.TopicsPattern) {
+		return true
+	}
+	for _, inputMap := range []map[string]string{
+		sinkConfig.TopicToSerdeClassName,
+		sinkConfig.TopicToSchemaType,
+	} {
+		for topic := range inputMap {
+			if !sinkInputSpecIsHCLConfigured(sinkConfig, topic) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func sinkInputSpecIsHCLConfigured(sinkConfig *utils.SinkConfig, topic string) bool {
+	_, configured := sinkConfig.InputSpecs[topic]
+	return configured
+}
+
+// mergeSinkLegacyInputSpecsFromBroker converts broker-known legacy inputs into canonical
+// InputSpecs. UpdateSink validates legacy fields by rebuilding their ConsumerConfig, so retain the
+// broker's complete config and only overlay settings legacy HCL actually owns. Topics absent from
+// the broker's InputSpecs stay in the legacy request as a compatibility fallback.
+func mergeSinkLegacyInputSpecsFromBroker(sinkConfig *utils.SinkConfig, currentSinkConfig utils.SinkConfig) {
+	hclInputSpecs := make(map[string]bool, len(sinkConfig.InputSpecs))
+	for topic := range sinkConfig.InputSpecs {
+		hclInputSpecs[topic] = true
+	}
+	mergedTopics := map[string]bool{}
+	mergeTopic := func(topic string, overlay func(*utils.ConsumerConfig)) {
+		if hclInputSpecs[topic] {
+			return
+		}
+
+		consumerConfig, exists := sinkConfig.InputSpecs[topic]
+		if !exists {
+			consumerConfig, exists = currentSinkConfig.InputSpecs[topic]
+			if !exists {
+				return
+			}
+		}
+
+		overlay(&consumerConfig)
+		if sinkConfig.InputSpecs == nil {
+			sinkConfig.InputSpecs = map[string]utils.ConsumerConfig{}
+		}
+		sinkConfig.InputSpecs[topic] = consumerConfig
+		mergedTopics[topic] = true
+	}
+
+	for _, topic := range sinkConfig.Inputs {
+		mergeTopic(topic, func(consumerConfig *utils.ConsumerConfig) {
+			consumerConfig.RegexPattern = false
+		})
+	}
+	if sinkConfig.TopicsPattern != nil {
+		mergeTopic(*sinkConfig.TopicsPattern, func(consumerConfig *utils.ConsumerConfig) {
+			consumerConfig.RegexPattern = true
+		})
+	}
+	for topic, serdeClassName := range sinkConfig.TopicToSerdeClassName {
+		mergeTopic(topic, func(consumerConfig *utils.ConsumerConfig) {
+			consumerConfig.RegexPattern = false
+			consumerConfig.SchemaType = ""
+			consumerConfig.SerdeClassName = serdeClassName
+		})
+	}
+	for topic, schemaType := range sinkConfig.TopicToSchemaType {
+		mergeTopic(topic, func(consumerConfig *utils.ConsumerConfig) {
+			consumerConfig.RegexPattern = false
+			consumerConfig.SerdeClassName = ""
+			consumerConfig.SchemaType = schemaType
+		})
+	}
+
+	if len(mergedTopics) == 0 {
+		return
+	}
+
+	inputs := make([]string, 0, len(sinkConfig.Inputs))
+	for _, topic := range sinkConfig.Inputs {
+		if !mergedTopics[topic] {
+			inputs = append(inputs, topic)
+		}
+	}
+	if len(inputs) == 0 {
+		sinkConfig.Inputs = nil
+	} else {
+		sinkConfig.Inputs = inputs
+	}
+	if sinkConfig.TopicsPattern != nil && mergedTopics[*sinkConfig.TopicsPattern] {
+		sinkConfig.TopicsPattern = nil
+	}
+	sinkConfig.TopicToSerdeClassName = removeMergedSinkLegacyInputMap(
+		sinkConfig.TopicToSerdeClassName, mergedTopics)
+	sinkConfig.TopicToSchemaType = removeMergedSinkLegacyInputMap(
+		sinkConfig.TopicToSchemaType, mergedTopics)
+}
+
+func removeMergedSinkLegacyInputMap(inputMap map[string]string, mergedTopics map[string]bool) map[string]string {
+	for topic := range mergedTopics {
+		delete(inputMap, topic)
+	}
+	if len(inputMap) == 0 {
+		return nil
+	}
+
+	return inputMap
 }
 
 // unmarshalSinkInputSpecs keeps the input representation chosen in configuration while refreshing
@@ -941,11 +1240,13 @@ func unmarshalSinkInputSpecs(sinkConfig utils.SinkConfig, d *schema.ResourceData
 		}
 	}
 
-	declared := sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
+	declared := configuredSinkInputSpecs(d)
 	if !hasConfiguredSinkInputs(d, declared) {
 		return unmarshalImportedSinkInputs(remoteSpecs, d)
 	}
 
+	legacySerdeInputs := sinkStringMap(d.Get(resourceSinkCustomSerdeInputsKey))
+	legacySchemaInputs := sinkStringMap(d.Get(resourceSinkCustomSchemaInputsKey))
 	covered, err := refreshSinkLegacyInputs(remoteSpecs, declared, d)
 	if err != nil {
 		return err
@@ -957,10 +1258,39 @@ func unmarshalSinkInputSpecs(sinkConfig utils.SinkConfig, d *schema.ResourceData
 		if covered[topic] && !isDeclared {
 			continue
 		}
+		consumerConfig = sinkInputSpecStateConfig(
+			topic, consumerConfig, declared, legacySerdeInputs, legacySchemaInputs,
+		)
 		specs = append(specs, flattenSinkInputSpec(topic, consumerConfig))
 	}
 
 	return d.Set(resourceSinkInputSpecsKey, specs)
+}
+
+// sinkInputSpecStateConfig retains the HCL representation when SinkConfigUtils has merged a
+// legacy type into a queue-only input_specs request. Otherwise Read would write that type into the
+// TypeSet, change its hash, and produce a perpetual follow-up diff.
+func sinkInputSpecStateConfig(
+	topic string,
+	consumerConfig utils.ConsumerConfig,
+	declared map[string]utils.ConsumerConfig,
+	legacySerdeInputs, legacySchemaInputs map[string]string,
+) utils.ConsumerConfig {
+	declaredConfig, isDeclared := declared[topic]
+	if !isDeclared {
+		return consumerConfig
+	}
+
+	if _, ownedByLegacySerde := legacySerdeInputs[topic]; ownedByLegacySerde &&
+		declaredConfig.SerdeClassName == "" {
+		consumerConfig.SerdeClassName = ""
+	}
+	if _, ownedByLegacySchema := legacySchemaInputs[topic]; ownedByLegacySchema &&
+		declaredConfig.SchemaType == "" {
+		consumerConfig.SchemaType = ""
+	}
+
+	return consumerConfig
 }
 
 func hasConfiguredSinkInputs(d *schema.ResourceData, declared map[string]utils.ConsumerConfig) bool {
@@ -1206,11 +1536,19 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.Name = inter.(string)
 	}
 
-	if err := validateSinkInputSpecs(d.Get(resourceSinkInputSpecsKey)); err != nil {
+	configuredInputSpecs := configuredSinkInputSpecsValue(d)
+	if err := validateSinkInputSpecs(configuredInputSpecs); err != nil {
 		return nil, err
 	}
 
-	inputSpecs := sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
+	inputSpecs := sinkInputSpecsFromSchema(configuredInputSpecs)
+	if err := mergeSinkLegacyTypesIntoInputSpecs(
+		inputSpecs,
+		sinkStringMap(d.Get(resourceSinkCustomSerdeInputsKey)),
+		sinkStringMap(d.Get(resourceSinkCustomSchemaInputsKey)),
+	); err != nil {
+		return nil, err
+	}
 	if len(inputSpecs) != 0 {
 		sinkConfig.InputSpecs = inputSpecs
 	}

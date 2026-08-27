@@ -38,4 +38,3 @@ terraform import pulsar_permission_grant.example tenant/namespace/role1
 ```shell
 terraform import pulsar_permission_grant.example persistent://tenant/namespace/topic1/role1
 ```
-

@@ -60,6 +60,18 @@ terraform import pulsar_source.example public/default/example
 ```shell
 terraform import pulsar_sink.example public/default/example
 ```
+{{ else if eq .Name "pulsar_permission_grant" -}}
+## Import
+
+The import ID uses the same format as the resource ID: `{namespace}/{role}` for namespace grants or `{topic}/{role}` for topic grants. The role is the segment after the last `/`, so roles containing `/` cannot be imported.
+
+```shell
+terraform import pulsar_permission_grant.example tenant/namespace/role1
+```
+
+```shell
+terraform import pulsar_permission_grant.example persistent://tenant/namespace/topic1/role1
+```
 {{ else if eq .Name "pulsar_subscription" -}}
 ## Import
 
