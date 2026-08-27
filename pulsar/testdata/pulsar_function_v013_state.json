@@ -1,0 +1,68 @@
+{
+  "version": 4,
+  "terraform_version": "1.15.6",
+  "serial": 1,
+  "lineage": "1deaad58-07a6-7efb-e6de-c7848110192b",
+  "outputs": {},
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "pulsar_function",
+      "name": "upgrade",
+      "provider": "provider[\"registry.terraform.io/streamnative/pulsar\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "auto_ack": false,
+            "classname": "org.apache.pulsar.functions.api.examples.WordCountFunction",
+            "cleanup_subscription": false,
+            "cpu": 1,
+            "custom_runtime_options": null,
+            "custom_schema_inputs": null,
+            "custom_schema_outputs": null,
+            "custom_serde_inputs": null,
+            "dead_letter_topic": null,
+            "disk_mb": 10240,
+            "forward_source_message_property": true,
+            "go": null,
+            "id": "public/default/producer-upgrade-function",
+            "input_type_classname": null,
+            "inputs": [
+              "public/default/producer-upgrade-input"
+            ],
+            "jar": "function://public/default/api-examples@v1",
+            "log_topic": null,
+            "max_message_retries": null,
+            "name": "producer-upgrade-function",
+            "namespace": "default",
+            "output": "public/default/producer-upgrade-output",
+            "output_schema_type": null,
+            "output_serde_classname": null,
+            "output_type_classname": null,
+            "parallelism": 1,
+            "processing_guarantees": "ATLEAST_ONCE",
+            "py": null,
+            "ram_mb": 1024,
+            "retain_key_ordering": false,
+            "retain_ordering": false,
+            "secrets": null,
+            "sink_config": [],
+            "skip_to_latest": false,
+            "source_config": [],
+            "subscription_name": null,
+            "subscription_position": "Latest",
+            "tenant": "public",
+            "timeout_ms": null,
+            "topics_pattern": null,
+            "user_config": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}
