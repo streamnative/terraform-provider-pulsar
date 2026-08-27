@@ -62,7 +62,7 @@ Manages Pulsar Functions through the Functions Worker API.
 - `timeout_ms` (Number) The timeout of the function in milliseconds.
 - `topics_pattern` (String) The input topics pattern of the function. The pattern is a regex expression. The function consumes from all topics matching the pattern.
 - `use_thread_local_producers` (Boolean) Whether to use thread local producers
-- `user_config` (Map of String, Sensitive) User-defined config key/values
+- `user_config` (Map of String) User-defined config key/values
 
 ### Read-Only
 
@@ -91,7 +91,7 @@ Optional:
 
 Optional:
 
-- `configs` (Map of String, Sensitive) Sink-specific key/value options.
+- `configs` (Map of String) Sink-specific key/value options.
 - `sink_type` (String) Sink implementation identifier.
 
 
@@ -100,7 +100,7 @@ Optional:
 
 Optional:
 
-- `configs` (Map of String, Sensitive) Source-specific key/value options.
+- `configs` (Map of String) Source-specific key/value options.
 - `source_type` (String) Source implementation identifier.
 
 ## Import

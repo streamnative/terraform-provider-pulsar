@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAccPulsarFunction_UpgradeFromV013RefreshFalseMigratesSensitiveMetadata(t *testing.T) {
+func TestAccPulsarFunction_UpgradeFromV013RefreshFalsePlanIsClean(t *testing.T) {
 	if os.Getenv(resource.EnvTfAcc) == "" {
 		t.Skipf("set %s to run acceptance tests", resource.EnvTfAcc)
 	}
@@ -105,75 +104,11 @@ provider_installation {
 	)
 	require.NoErrorf(t, err, "terraform init failed:\n%s", output)
 
-	// v0.13 state predates user_config's Sensitive schema flag. Terraform 1.2.x can absorb the
-	// metadata change with an empty plan, while newer releases may report a one-time state-only
-	// update. Neither path may call Pulsar.
+	// Newly added Optional+Computed attributes must not create an upgrade diff for v0.13 state.
 	output, err = runNamespaceUpgradeTerraformWithCurrentProvider(
 		t, terraformPath, workingDir, terraformEnv,
 		"plan", "-refresh=false", "-detailed-exitcode", "-input=false", "-no-color",
 	)
-	migrationPlanned := terraformStateOnlyMigrationPlanned(t, err, output)
+	require.NoErrorf(t, err, "v0.13 state produced a non-empty refresh=false plan:\n%s", output)
 	require.Zero(t, requestCount.Load(), "refresh=false plan must not call Pulsar APIs")
-
-	output, err = runNamespaceUpgradeTerraformWithCurrentProvider(
-		t, terraformPath, workingDir, terraformEnv,
-		"apply", "-refresh=false", "-auto-approve", "-input=false", "-no-color",
-	)
-	require.NoErrorf(t, err, "v0.13 state metadata migration apply failed:\n%s", output)
-	require.Zero(t, requestCount.Load(), "state-only apply must not call Pulsar APIs")
-
-	output, err = runNamespaceUpgradeTerraformWithCurrentProvider(
-		t, terraformPath, workingDir, terraformEnv,
-		"plan", "-refresh=false", "-detailed-exitcode", "-input=false", "-no-color",
-	)
-	require.NoErrorf(t, err, "migrated v0.13 state produced a non-empty refresh=false plan:\n%s", output)
-	require.Zero(t, requestCount.Load(), "post-migration plan must not call Pulsar APIs")
-
-	if migrationPlanned {
-		assertFunctionStateRecordsSensitiveUserConfig(t, filepath.Join(workingDir, "terraform.tfstate"))
-	}
-}
-
-func assertFunctionStateRecordsSensitiveUserConfig(t *testing.T, statePath string) {
-	t.Helper()
-
-	type sensitiveAttributeStep struct {
-		Type  string      `json:"type"`
-		Value interface{} `json:"value"`
-	}
-	type functionInstance struct {
-		SchemaVersion       int                        `json:"schema_version"`
-		SensitiveAttributes [][]sensitiveAttributeStep `json:"sensitive_attributes"`
-	}
-	type terraformState struct {
-		Resources []struct {
-			Type      string             `json:"type"`
-			Instances []functionInstance `json:"instances"`
-		} `json:"resources"`
-	}
-
-	stateJSON, err := os.ReadFile(statePath)
-	require.NoError(t, err)
-
-	var state terraformState
-	require.NoError(t, json.Unmarshal(stateJSON, &state))
-	for _, stateResource := range state.Resources {
-		if stateResource.Type != "pulsar_function" {
-			continue
-		}
-		require.Len(t, stateResource.Instances, 1)
-		instance := stateResource.Instances[0]
-		require.Zero(t, instance.SchemaVersion)
-		for _, path := range instance.SensitiveAttributes {
-			for _, step := range path {
-				if step.Type == "get_attr" && step.Value == resourceFunctionUserConfig {
-					return
-				}
-			}
-		}
-		require.Fail(t, "missing user_config sensitive path", "state: %s", stateJSON)
-		return
-	}
-
-	t.Fatal("pulsar_function state not found")
 }

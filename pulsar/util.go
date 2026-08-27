@@ -28,10 +28,12 @@ func isPackageURLSupported(functionPkgURL string) bool {
 
 func jsonValidateFunc(i interface{}, s string) ([]string, []error) {
 	v := i.(string)
-	_, err := json.Marshal(v)
-	if err != nil {
+	if strings.TrimSpace(v) == "" {
+		return nil, nil
+	}
+	if !json.Valid([]byte(v)) {
 		return nil, []error{
-			fmt.Errorf("cannot marshal %s: %s", v, err.Error()),
+			fmt.Errorf("%s must contain valid JSON", s),
 		}
 	}
 	return nil, nil

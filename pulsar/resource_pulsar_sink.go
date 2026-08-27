@@ -370,11 +370,11 @@ func resourcePulsarSink() *schema.Resource {
 				Description: resourceSinkDescriptions[resourceSinkDiskKey],
 			},
 			resourceSinkConfigsKey: {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				Sensitive:   true,
-				Description: resourceSinkDescriptions[resourceSinkConfigsKey],
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				Description:  resourceSinkDescriptions[resourceSinkConfigsKey],
+				ValidateFunc: jsonValidateFunc,
 			},
 			resourceSinkAutoACKKey: {
 				Type:        schema.TypeBool,
@@ -1642,7 +1642,7 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 
 		err := json.Unmarshal([]byte(configsJSON), &configs)
 		if err != nil {
-			return nil, errors.Wrapf(err, "cannot unmarshal the configs: %s", configsJSON)
+			return nil, errors.Wrap(err, "cannot unmarshal configs")
 		}
 
 		sinkConfig.Configs = configs
