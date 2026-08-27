@@ -1047,6 +1047,8 @@ func unmarshalSinkInputSpecs(sinkConfig utils.SinkConfig, d *schema.ResourceData
 		return unmarshalImportedSinkInputs(remoteSpecs, d)
 	}
 
+	legacySerdeInputs := sinkStringMap(d.Get(resourceSinkCustomSerdeInputsKey))
+	legacySchemaInputs := sinkStringMap(d.Get(resourceSinkCustomSchemaInputsKey))
 	covered, err := refreshSinkLegacyInputs(remoteSpecs, declared, d)
 	if err != nil {
 		return err
@@ -1058,10 +1060,39 @@ func unmarshalSinkInputSpecs(sinkConfig utils.SinkConfig, d *schema.ResourceData
 		if covered[topic] && !isDeclared {
 			continue
 		}
+		consumerConfig = sinkInputSpecStateConfig(
+			topic, consumerConfig, declared, legacySerdeInputs, legacySchemaInputs,
+		)
 		specs = append(specs, flattenSinkInputSpec(topic, consumerConfig))
 	}
 
 	return d.Set(resourceSinkInputSpecsKey, specs)
+}
+
+// sinkInputSpecStateConfig retains the HCL representation when SinkConfigUtils has merged a
+// legacy type into a queue-only input_specs request. Otherwise Read would write that type into the
+// TypeSet, change its hash, and produce a perpetual follow-up diff.
+func sinkInputSpecStateConfig(
+	topic string,
+	consumerConfig utils.ConsumerConfig,
+	declared map[string]utils.ConsumerConfig,
+	legacySerdeInputs, legacySchemaInputs map[string]string,
+) utils.ConsumerConfig {
+	declaredConfig, isDeclared := declared[topic]
+	if !isDeclared {
+		return consumerConfig
+	}
+
+	if _, ownedByLegacySerde := legacySerdeInputs[topic]; ownedByLegacySerde &&
+		declaredConfig.SerdeClassName == "" {
+		consumerConfig.SerdeClassName = ""
+	}
+	if _, ownedByLegacySchema := legacySchemaInputs[topic]; ownedByLegacySchema &&
+		declaredConfig.SchemaType == "" {
+		consumerConfig.SchemaType = ""
+	}
+
+	return consumerConfig
 }
 
 func hasConfiguredSinkInputs(d *schema.ResourceData, declared map[string]utils.ConsumerConfig) bool {

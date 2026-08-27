@@ -344,6 +344,97 @@ func TestMarshalSinkInputSpecsMergesLegacyTypes(t *testing.T) {
 	}
 }
 
+func TestSinkInputSpecsLegacyTypesRoundTripCleanly(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	tests := []struct {
+		name           string
+		legacySerde    string
+		legacySchema   string
+		declaredSerde  string
+		declaredSchema string
+	}{
+		{
+			name:        "queue-only with legacy serde",
+			legacySerde: "com.acme.Serde",
+		},
+		{
+			name:         "queue-only with legacy schema",
+			legacySchema: "AVRO",
+		},
+		{
+			name:          "explicit serde matches legacy value",
+			legacySerde:   "com.acme.Serde",
+			declaredSerde: "com.acme.Serde",
+		},
+		{
+			name:           "explicit schema matches legacy value",
+			legacySchema:   "AVRO",
+			declaredSchema: "AVRO",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			inputSpec := map[string]interface{}{
+				resourceSinkInputSpecsSubsetTopicKey:             topic,
+				resourceSinkInputSpecsSubsetReceiverQueueSizeKey: 100,
+			}
+			if test.declaredSerde != "" {
+				inputSpec[resourceSinkInputSpecsSubsetSerdeClassNameKey] = test.declaredSerde
+			}
+			if test.declaredSchema != "" {
+				inputSpec[resourceSinkInputSpecsSubsetSchemaTypeKey] = test.declaredSchema
+			}
+
+			config := sinkConfigWithBase(map[string]interface{}{
+				resourceSinkAutoACKKey:    true,
+				resourceSinkInputSpecsKey: []interface{}{inputSpec},
+			})
+			if test.legacySerde != "" {
+				config[resourceSinkCustomSerdeInputsKey] = map[string]interface{}{
+					topic: test.legacySerde,
+				}
+			}
+			if test.legacySchema != "" {
+				config[resourceSinkCustomSchemaInputsKey] = map[string]interface{}{
+					topic: test.legacySchema,
+				}
+			}
+
+			res := resourcePulsarSink()
+			d := schema.TestResourceDataRaw(t, res.Schema, config)
+			d.SetId("public/default/sink-1")
+			wireConfig, err := marshalSinkConfig(d)
+			require.NoError(t, err)
+			assert.Equal(t, test.legacySerde, wireConfig.InputSpecs[topic].SerdeClassName)
+			assert.Equal(t, test.legacySchema, wireConfig.InputSpecs[topic].SchemaType)
+
+			require.NoError(t, unmarshalSinkInputSpecs(*wireConfig, d))
+			specs := d.Get(resourceSinkInputSpecsKey).(*schema.Set).List()
+			require.Len(t, specs, 1)
+			stateSpec := specs[0].(map[string]interface{})
+			assert.Equal(t, test.declaredSerde,
+				stateSpec[resourceSinkInputSpecsSubsetSerdeClassNameKey])
+			assert.Equal(t, test.declaredSchema,
+				stateSpec[resourceSinkInputSpecsSubsetSchemaTypeKey])
+			if test.legacySerde != "" {
+				assert.Equal(t, map[string]interface{}{topic: test.legacySerde},
+					d.Get(resourceSinkCustomSerdeInputsKey))
+			}
+			if test.legacySchema != "" {
+				assert.Equal(t, map[string]interface{}{topic: test.legacySchema},
+					d.Get(resourceSinkCustomSchemaInputsKey))
+			}
+
+			diff, err := res.Diff(context.Background(), d.State(), terraform.NewResourceConfigRaw(config), nil)
+			require.NoError(t, err)
+			if diff != nil {
+				assert.True(t, diff.Empty(), "round-trip state re-planned: %#v", diff.Attributes)
+			}
+		})
+	}
+}
+
 func TestMarshalSinkInputSpecsRejectsAmbiguousLegacyTypes(t *testing.T) {
 	topic := "persistent://public/default/in-1"
 	tests := []struct {
