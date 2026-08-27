@@ -680,22 +680,25 @@ func resourcePulsarSinkCustomizeDiff(_ context.Context, diff *schema.ResourceDif
 	oldPattern, newPattern := diff.GetChange(resourceSinkTopicsPatternKey)
 	oldCustomSerde, newCustomSerde := diff.GetChange(resourceSinkCustomSerdeInputsKey)
 	oldCustomSchema, newCustomSchema := diff.GetChange(resourceSinkCustomSchemaInputsKey)
-	oldSpecs, newSpecs := diff.GetChange(resourceSinkInputSpecsKey)
+	oldSpecs, plannedSpecs := diff.GetChange(resourceSinkInputSpecsKey)
+	if rawConfigOmitsSinkInputSpecs(diff.GetRawConfig()) {
+		plannedSpecs = nil
+	}
 
 	oldTopics := effectiveSinkInputTopics(
 		oldInputs, oldPattern, oldCustomSerde, oldCustomSchema, oldSpecs,
 	)
 	newTopics := effectiveSinkInputTopics(
-		newInputs, newPattern, newCustomSerde, newCustomSchema, newSpecs,
+		newInputs, newPattern, newCustomSerde, newCustomSchema, plannedSpecs,
 	)
 
 	if len(oldTopics) != len(newTopics) {
-		return forceNewSinkInputTopology(diff, oldSpecs, newSpecs)
+		return forceNewSinkInputTopology(diff, oldSpecs, plannedSpecs)
 	}
 	for topic, regexPattern := range newTopics {
 		oldRegexPattern, ok := oldTopics[topic]
 		if !ok || oldRegexPattern != regexPattern {
-			return forceNewSinkInputTopology(diff, oldSpecs, newSpecs)
+			return forceNewSinkInputTopology(diff, oldSpecs, plannedSpecs)
 		}
 	}
 

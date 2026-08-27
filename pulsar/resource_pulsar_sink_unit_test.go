@@ -619,6 +619,7 @@ func TestSinkV013ComputedInputSpecsPlanWithoutRefresh(t *testing.T) {
 	legacyState := sinkV013StateWithComputedInputSpecs(t, legacyConfig, []interface{}{
 		sinkV013InputSpec(topic),
 	})
+	legacyState.RawConfig = sinkRawConfigWithoutInputSpecs()
 
 	res := resourcePulsarSink()
 	assert.True(t, res.Schema[resourceSinkInputSpecsKey].Computed)
@@ -628,6 +629,40 @@ func TestSinkV013ComputedInputSpecsPlanWithoutRefresh(t *testing.T) {
 	require.NoError(t, err)
 	if diff != nil {
 		assert.True(t, diff.Empty(), "legacy state re-planned: %#v", diff.Attributes)
+	}
+}
+
+func TestSinkV013ComputedInputSpecsLegacyTopologyChangesRequireReplacement(t *testing.T) {
+	oldTopic := "persistent://public/default/old"
+	tests := []struct {
+		name   string
+		config map[string]interface{}
+	}{
+		{
+			name: "removing legacy input",
+			config: sinkConfigWithBase(map[string]interface{}{
+				resourceSinkAutoACKKey: true,
+			}),
+		},
+		{
+			name:   "renaming legacy input",
+			config: sinkLegacyInputConfig("persistent://public/default/new"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			legacyState := sinkV013StateWithComputedInputSpecs(t, sinkLegacyInputConfig(oldTopic), []interface{}{
+				sinkV013InputSpec(oldTopic),
+			})
+			legacyState.RawConfig = sinkRawConfigWithoutInputSpecs()
+
+			diff, err := resourcePulsarSink().Diff(context.Background(), legacyState,
+				terraform.NewResourceConfigRaw(test.config), nil)
+			require.NoError(t, err)
+			require.NotNil(t, diff)
+			assert.True(t, diff.RequiresNew())
+		})
 	}
 }
 
