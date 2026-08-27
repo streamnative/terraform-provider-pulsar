@@ -19,9 +19,14 @@ package pulsar
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	pulsaradmin "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	adminconfig "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -117,6 +122,82 @@ func sinkRawConfigWithoutInputSpecs() cty.Value {
 	return cty.ObjectVal(map[string]cty.Value{
 		resourceSinkInputSpecsKey: cty.NullVal(cty.Set(cty.EmptyObject)),
 	})
+}
+
+func sinkRawConfigWithInputSpecs(topic string) cty.Value {
+	return cty.ObjectVal(map[string]cty.Value{
+		resourceSinkInputSpecsKey: cty.SetVal([]cty.Value{
+			cty.ObjectVal(map[string]cty.Value{
+				resourceSinkInputSpecsSubsetTopicKey: cty.StringVal(topic),
+			}),
+		}),
+	})
+}
+
+type sinkUpdateRequestRecorder struct {
+	getRequests    int
+	updateRequests int
+	updateConfig   *utils.SinkConfig
+}
+
+func sinkUpdateTestClientBundle(t *testing.T, serverURL string) PulsarClientBundle {
+	t.Helper()
+
+	client, err := pulsaradmin.New(&adminconfig.Config{
+		WebServiceURL:    serverURL,
+		PulsarAPIVersion: adminconfig.V3,
+	})
+	require.NoError(t, err)
+
+	return PulsarClientBundle{Client: client, V3Client: client}
+}
+
+func sinkUpdateTestServer(
+	t *testing.T, currentSinkConfig utils.SinkConfig,
+) (*httptest.Server, *sinkUpdateRequestRecorder) {
+	t.Helper()
+
+	recorder := &sinkUpdateRequestRecorder{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			recorder.getRequests++
+			writeJSONResponse(t, w, http.StatusOK, currentSinkConfig)
+		case http.MethodPut:
+			recorder.updateRequests++
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			requestConfig := &utils.SinkConfig{}
+			if err := json.Unmarshal([]byte(r.FormValue("sinkConfig")), requestConfig); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			recorder.updateConfig = requestConfig
+			writeJSONResponse(t, w, http.StatusNoContent, nil)
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+
+	return server, recorder
+}
+
+func sinkAdvancedConsumerConfig() utils.ConsumerConfig {
+	consumerConfig := utils.ConsumerConfig{
+		PoolMessages:       true,
+		SchemaProperties:   map[string]string{"schema": "property"},
+		ConsumerProperties: map[string]string{"consumer": "property"},
+		CryptoConfig: &utils.CryptoConfig{
+			CryptoKeyReaderClassName:    "com.acme.KeyReader",
+			CryptoKeyReaderConfig:       map[string]interface{}{"key": "value"},
+			EncryptionKeys:              []string{"key-1"},
+			ConsumerCryptoFailureAction: "CONSUME",
+		},
+	}
+	consumerConfig.SetReceiverQueueSize(defaultSinkReceiverQueueSize)
+	return consumerConfig
 }
 
 // The point of #218: tuning the queue size must not force the user to also name a schema type and
@@ -855,6 +936,142 @@ func TestMarshalSinkConfigIgnoresV013ComputedInputSpecsOnLegacyUpdate(t *testing
 		sinkConfig.TopicToSerdeClassName)
 	assert.Equal(t, map[string]string{schemaTopic: "AVRO"}, sinkConfig.TopicToSchemaType)
 	assert.Equal(t, 2, sinkConfig.Parallelism)
+}
+
+func TestResourcePulsarSinkUpdatePreservesBrokerInputSpecsForLegacyInputs(t *testing.T) {
+	topic := "persistent://public/default/input"
+	computedInputSpec := sinkV013InputSpec(topic)
+	computedInputSpec[resourceSinkInputSpecsSubsetReceiverQueueSizeKey] = 0
+	legacyState := sinkV013StateWithComputedInputSpecs(t, sinkLegacyInputConfig(topic), []interface{}{
+		computedInputSpec,
+	})
+	legacyState.RawConfig = sinkRawConfigWithoutInputSpecs()
+	d := sinkCurrentDataFromState(t, legacyState)
+	require.NoError(t, d.Set(resourceSinkParallelismKey, 2))
+
+	brokerConsumerConfig := sinkAdvancedConsumerConfig()
+	server, recorder := sinkUpdateTestServer(t, utils.SinkConfig{
+		InputSpecs: map[string]utils.ConsumerConfig{topic: brokerConsumerConfig},
+	})
+	defer server.Close()
+
+	diags := resourcePulsarSinkUpdate(
+		context.Background(), d, sinkUpdateTestClientBundle(t, server.URL),
+	)
+	require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
+
+	require.NotNil(t, recorder.updateConfig)
+	assert.Equal(t, 2, recorder.getRequests, "broker merge must happen before Read refresh")
+	assert.Equal(t, 1, recorder.updateRequests)
+	assert.Nil(t, recorder.updateConfig.Inputs)
+	assert.Nil(t, recorder.updateConfig.TopicToSerdeClassName)
+	assert.Nil(t, recorder.updateConfig.TopicToSchemaType)
+	require.Len(t, recorder.updateConfig.InputSpecs, 1)
+	assert.Equal(t, brokerConsumerConfig, recorder.updateConfig.InputSpecs[topic])
+	assert.Equal(t, defaultSinkReceiverQueueSize,
+		recorder.updateConfig.InputSpecs[topic].ReceiverQueueSize,
+		"stale v0.13 queue size must not override broker config")
+}
+
+func TestMergeSinkLegacyInputSpecsFromBrokerPreservesAdvancedPeers(t *testing.T) {
+	topic := "persistent://public/default/input"
+	tests := []struct {
+		name      string
+		configure func(*utils.SinkConfig)
+		overlay   func(*utils.ConsumerConfig)
+	}{
+		{
+			name: "serde",
+			configure: func(sinkConfig *utils.SinkConfig) {
+				sinkConfig.TopicToSerdeClassName = map[string]string{topic: "com.acme.NewSerde"}
+			},
+			overlay: func(consumerConfig *utils.ConsumerConfig) {
+				consumerConfig.SerdeClassName = "com.acme.OldSerde"
+			},
+		},
+		{
+			name: "schema",
+			configure: func(sinkConfig *utils.SinkConfig) {
+				sinkConfig.TopicToSchemaType = map[string]string{topic: "JSON"}
+			},
+			overlay: func(consumerConfig *utils.ConsumerConfig) {
+				consumerConfig.SchemaType = "AVRO"
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			brokerConsumerConfig := sinkAdvancedConsumerConfig()
+			test.overlay(&brokerConsumerConfig)
+			wantConsumerConfig := brokerConsumerConfig
+			if test.name == "serde" {
+				wantConsumerConfig.SerdeClassName = "com.acme.NewSerde"
+			} else {
+				wantConsumerConfig.SchemaType = "JSON"
+			}
+
+			sinkConfig := &utils.SinkConfig{}
+			test.configure(sinkConfig)
+			require.True(t, sinkConfigHasUnownedLegacyInputTopics(sinkConfig))
+			mergeSinkLegacyInputSpecsFromBroker(sinkConfig, utils.SinkConfig{
+				InputSpecs: map[string]utils.ConsumerConfig{topic: brokerConsumerConfig},
+			})
+
+			assert.Equal(t, wantConsumerConfig, sinkConfig.InputSpecs[topic])
+			assert.Nil(t, sinkConfig.TopicToSerdeClassName)
+			assert.Nil(t, sinkConfig.TopicToSchemaType)
+		})
+	}
+}
+
+func TestMergeSinkLegacyInputSpecsFromBrokerKeepsMissingSpecsLegacy(t *testing.T) {
+	topic := "persistent://public/default/input"
+	sinkConfig := &utils.SinkConfig{
+		Inputs:                []string{topic},
+		TopicToSerdeClassName: map[string]string{topic: "com.acme.Serde"},
+	}
+
+	mergeSinkLegacyInputSpecsFromBroker(sinkConfig, utils.SinkConfig{})
+
+	assert.Nil(t, sinkConfig.InputSpecs)
+	assert.Equal(t, []string{topic}, sinkConfig.Inputs)
+	assert.Equal(t, map[string]string{topic: "com.acme.Serde"}, sinkConfig.TopicToSerdeClassName)
+}
+
+func TestResourcePulsarSinkUpdateKeepsExplicitInputSpecsAuthoritative(t *testing.T) {
+	topic := "persistent://public/default/input"
+	desiredInputSpec := sinkInputSpec(topic, map[string]interface{}{
+		resourceSinkInputSpecsSubsetReceiverQueueSizeKey: 17,
+	})
+	d := sinkResourceData(t, sinkConfigWithBase(map[string]interface{}{
+		resourceSinkAutoACKKey:    true,
+		resourceSinkInputSpecsKey: []interface{}{desiredInputSpec},
+	}))
+	d.SetId("public/default/sink-1")
+	state := d.State()
+	state.RawConfig = sinkRawConfigWithInputSpecs(topic)
+	d = sinkCurrentDataFromState(t, state)
+	require.NoError(t, d.Set(resourceSinkParallelismKey, 2))
+
+	brokerConsumerConfig := sinkAdvancedConsumerConfig()
+	server, recorder := sinkUpdateTestServer(t, utils.SinkConfig{
+		InputSpecs: map[string]utils.ConsumerConfig{topic: brokerConsumerConfig},
+	})
+	defer server.Close()
+
+	diags := resourcePulsarSinkUpdate(
+		context.Background(), d, sinkUpdateTestClientBundle(t, server.URL),
+	)
+	require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
+
+	require.NotNil(t, recorder.updateConfig)
+	assert.Equal(t, 1, recorder.getRequests, "only Read refresh should fetch broker config")
+	assert.Equal(t, 1, recorder.updateRequests)
+	require.Len(t, recorder.updateConfig.InputSpecs, 1)
+	assert.Equal(t, 17, recorder.updateConfig.InputSpecs[topic].ReceiverQueueSize)
+	assert.False(t, recorder.updateConfig.InputSpecs[topic].PoolMessages)
+	assert.Nil(t, recorder.updateConfig.InputSpecs[topic].ConsumerProperties)
 }
 
 func TestSinkComputedInputSpecsDoNotTriggerLegacyOverlapValidation(t *testing.T) {

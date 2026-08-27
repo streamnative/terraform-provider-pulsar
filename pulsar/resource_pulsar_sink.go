@@ -685,6 +685,14 @@ func resourcePulsarSinkUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	if sinkConfigHasUnownedLegacyInputTopics(sinkConfig) {
+		currentSinkConfig, err := client.GetSink(sinkConfig.Tenant, sinkConfig.Namespace, sinkConfig.Name)
+		if err != nil {
+			return diag.FromErr(errors.Wrapf(err, "failed to get %s sink from %s/%s",
+				sinkConfig.Name, sinkConfig.Tenant, sinkConfig.Namespace))
+		}
+		mergeSinkLegacyInputSpecsFromBroker(sinkConfig, currentSinkConfig)
+	}
 
 	updateOptions := &utils.UpdateOptions{
 		UpdateAuthData: true,
@@ -1092,6 +1100,127 @@ func sinkLegacyInputMap(
 	}
 
 	return stringMap
+}
+
+// sinkConfigHasUnownedLegacyInputTopics reports whether an update request contains a legacy input
+// representation that is not already represented by an HCL-owned input_specs entry.
+func sinkConfigHasUnownedLegacyInputTopics(sinkConfig *utils.SinkConfig) bool {
+	for _, topic := range sinkConfig.Inputs {
+		if !sinkInputSpecIsHCLConfigured(sinkConfig, topic) {
+			return true
+		}
+	}
+	if sinkConfig.TopicsPattern != nil && !sinkInputSpecIsHCLConfigured(sinkConfig, *sinkConfig.TopicsPattern) {
+		return true
+	}
+	for _, inputMap := range []map[string]string{
+		sinkConfig.TopicToSerdeClassName,
+		sinkConfig.TopicToSchemaType,
+	} {
+		for topic := range inputMap {
+			if !sinkInputSpecIsHCLConfigured(sinkConfig, topic) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func sinkInputSpecIsHCLConfigured(sinkConfig *utils.SinkConfig, topic string) bool {
+	_, configured := sinkConfig.InputSpecs[topic]
+	return configured
+}
+
+// mergeSinkLegacyInputSpecsFromBroker converts broker-known legacy inputs into canonical
+// InputSpecs. UpdateSink validates legacy fields by rebuilding their ConsumerConfig, so retain the
+// broker's complete config and only overlay settings legacy HCL actually owns. Topics absent from
+// the broker's InputSpecs stay in the legacy request as a compatibility fallback.
+func mergeSinkLegacyInputSpecsFromBroker(sinkConfig *utils.SinkConfig, currentSinkConfig utils.SinkConfig) {
+	hclInputSpecs := make(map[string]bool, len(sinkConfig.InputSpecs))
+	for topic := range sinkConfig.InputSpecs {
+		hclInputSpecs[topic] = true
+	}
+	mergedTopics := map[string]bool{}
+	mergeTopic := func(topic string, overlay func(*utils.ConsumerConfig)) {
+		if hclInputSpecs[topic] {
+			return
+		}
+
+		consumerConfig, exists := sinkConfig.InputSpecs[topic]
+		if !exists {
+			consumerConfig, exists = currentSinkConfig.InputSpecs[topic]
+			if !exists {
+				return
+			}
+		}
+
+		overlay(&consumerConfig)
+		if sinkConfig.InputSpecs == nil {
+			sinkConfig.InputSpecs = map[string]utils.ConsumerConfig{}
+		}
+		sinkConfig.InputSpecs[topic] = consumerConfig
+		mergedTopics[topic] = true
+	}
+
+	for _, topic := range sinkConfig.Inputs {
+		mergeTopic(topic, func(consumerConfig *utils.ConsumerConfig) {
+			consumerConfig.RegexPattern = false
+		})
+	}
+	if sinkConfig.TopicsPattern != nil {
+		mergeTopic(*sinkConfig.TopicsPattern, func(consumerConfig *utils.ConsumerConfig) {
+			consumerConfig.RegexPattern = true
+		})
+	}
+	for topic, serdeClassName := range sinkConfig.TopicToSerdeClassName {
+		mergeTopic(topic, func(consumerConfig *utils.ConsumerConfig) {
+			consumerConfig.RegexPattern = false
+			consumerConfig.SchemaType = ""
+			consumerConfig.SerdeClassName = serdeClassName
+		})
+	}
+	for topic, schemaType := range sinkConfig.TopicToSchemaType {
+		mergeTopic(topic, func(consumerConfig *utils.ConsumerConfig) {
+			consumerConfig.RegexPattern = false
+			consumerConfig.SerdeClassName = ""
+			consumerConfig.SchemaType = schemaType
+		})
+	}
+
+	if len(mergedTopics) == 0 {
+		return
+	}
+
+	inputs := make([]string, 0, len(sinkConfig.Inputs))
+	for _, topic := range sinkConfig.Inputs {
+		if !mergedTopics[topic] {
+			inputs = append(inputs, topic)
+		}
+	}
+	if len(inputs) == 0 {
+		sinkConfig.Inputs = nil
+	} else {
+		sinkConfig.Inputs = inputs
+	}
+	if sinkConfig.TopicsPattern != nil && mergedTopics[*sinkConfig.TopicsPattern] {
+		sinkConfig.TopicsPattern = nil
+	}
+	sinkConfig.TopicToSerdeClassName = removeMergedSinkLegacyInputMap(
+		sinkConfig.TopicToSerdeClassName, mergedTopics)
+	sinkConfig.TopicToSchemaType = removeMergedSinkLegacyInputMap(
+		sinkConfig.TopicToSchemaType, mergedTopics)
+}
+
+func removeMergedSinkLegacyInputMap(inputMap map[string]string, mergedTopics map[string]bool) map[string]string {
+	for topic := range mergedTopics {
+		delete(inputMap, topic)
+	}
+	if len(inputMap) == 0 {
+		return nil
+	}
+
+	return inputMap
 }
 
 // unmarshalSinkInputSpecs keeps the input representation chosen in configuration while refreshing
