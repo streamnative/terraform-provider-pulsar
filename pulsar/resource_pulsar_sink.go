@@ -129,6 +129,14 @@ func resourcePulsarSink() *schema.Resource {
 		DeleteContext: resourcePulsarSinkDelete,
 		CustomizeDiff: resourcePulsarSinkCustomizeDiff,
 		Description:   "Manages Pulsar IO sinks through the Functions Worker API.",
+		SchemaVersion: 1,
+		StateUpgraders: []schema.StateUpgrader{
+			{
+				Type:    pulsarSinkStateTypeV0(),
+				Upgrade: resourcePulsarSinkStateUpgradeV0,
+				Version: 0,
+			},
+		},
 		Importer: &schema.ResourceImporter{
 			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				id := d.Id()
@@ -418,6 +426,67 @@ func resourcePulsarSink() *schema.Resource {
 			},
 		},
 	}
+}
+
+// pulsarSinkStateTypeV0 is the frozen schema-version 0 shape. It accepts v0.13's five-field
+// input_specs elements and the two fields v0.14.0-rc.1 added without a schema version bump. Keep
+// it independent from the current schema so Terraform decodes legacy TypeSet elements before
+// re-encoding them under the current schema.
+func pulsarSinkStateTypeV0() cty.Type {
+	inputSpecsType := cty.Set(cty.Object(map[string]cty.Type{
+		resourceSinkInputSpecsSubsetTopicKey:              cty.String,
+		resourceSinkInputSpecsSubsetSchemaTypeKey:         cty.String,
+		resourceSinkInputSpecsSubsetSerdeClassNameKey:     cty.String,
+		resourceSinkInputSpecsSubsetIsRegexPatternKey:     cty.Bool,
+		resourceSinkInputSpecsSubsetReceiverQueueSizeKey:  cty.Number,
+		resourceSinkInputSpecsSubsetPoolMessagesKey:       cty.Bool,
+		resourceSinkInputSpecsSubsetConsumerPropertiesKey: cty.Map(cty.String),
+	}))
+
+	return cty.Object(map[string]cty.Type{
+		"id":                                        cty.String,
+		resourceSinkArchiveKey:                      cty.String,
+		resourceSinkAutoACKKey:                      cty.Bool,
+		resourceSinkClassnameKey:                    cty.String,
+		resourceSinkCleanupSubscriptionKey:          cty.Bool,
+		resourceSinkConfigsKey:                      cty.String,
+		resourceSinkCPUKey:                          cty.Number,
+		resourceSinkCustomRuntimeOptionsKey:         cty.String,
+		resourceSinkCustomSchemaInputsKey:           cty.Map(cty.String),
+		resourceSinkCustomSerdeInputsKey:            cty.Map(cty.String),
+		resourceSinkDeadLetterTopicKey:              cty.String,
+		resourceSinkDiskKey:                         cty.Number,
+		resourceSinkInputsKey:                       cty.Set(cty.String),
+		resourceSinkInputSpecsKey:                   inputSpecsType,
+		resourceSinkMaxRedeliverCountKey:            cty.Number,
+		resourceSinkNameKey:                         cty.String,
+		resourceSinkNamespaceKey:                    cty.String,
+		resourceSinkNegativeCountRedeliveryDelayKey: cty.Number,
+		resourceSinkParallelismKey:                  cty.Number,
+		resourceSinkProcessingGuaranteesKey:         cty.String,
+		resourceSinkRAMKey:                          cty.Number,
+		resourceSinkRetainKeyOrderingKey:            cty.Bool,
+		resourceSinkRetainOrderingKey:               cty.Bool,
+		resourceSinkSecretsKey:                      cty.String,
+		resourceSinkSinkTypeKey:                     cty.String,
+		resourceSinkSubscriptionNameKey:             cty.String,
+		resourceSinkSubscriptionPositionKey:         cty.String,
+		resourceSinkTenantKey:                       cty.String,
+		resourceSinkTimeoutKey:                      cty.Number,
+		resourceSinkTopicsPatternKey:                cty.String,
+	})
+}
+
+func resourcePulsarSinkStateUpgradeV0(
+	_ context.Context,
+	rawState map[string]interface{},
+	_ interface{},
+) (map[string]interface{}, error) {
+	if rawState == nil {
+		return nil, fmt.Errorf("pulsar_sink state upgrade from version 0: state is nil")
+	}
+
+	return rawState, nil
 }
 
 func resourcePulsarSinkCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
