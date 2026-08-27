@@ -62,7 +62,7 @@ func TestResourcePulsarFunctionUpdate_UnrelatedChangesOmitProducerConfig(t *test
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			res := resourcePulsarFunction()
-			state := functionProducerState(t, brokerProducerConfig, "old-output")
+			state := functionProducerState(t, brokerProducerConfig)
 			config := functionConfigWithBase(map[string]interface{}{
 				resourceFunctionOutputKey:            "old-output",
 				resourceFunctionPCMaxPendingMsgKey:   brokerProducerConfig.MaxPendingMessages,
@@ -151,7 +151,7 @@ func TestResourcePulsarFunctionUpdate_MergesFreshProducerConfig(t *testing.T) {
 	}
 
 	res := resourcePulsarFunction()
-	state := functionProducerState(t, staleProducerConfig, "old-output")
+	state := functionProducerState(t, staleProducerConfig)
 	config := functionConfigWithBase(map[string]interface{}{
 		resourceFunctionOutputKey:          "old-output",
 		resourceFunctionPCMaxPendingMsgKey: 0,

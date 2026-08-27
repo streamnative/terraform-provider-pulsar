@@ -133,7 +133,7 @@ func TestFunctionProducerConfigApplyOwnership(t *testing.T) {
 		},
 		{
 			name:  "producer updates defer to fresh broker merge",
-			state: functionProducerState(t, remoteProducerConfig, "old-output"),
+			state: functionProducerState(t, remoteProducerConfig),
 			config: functionConfigWithBase(map[string]interface{}{
 				resourceFunctionOutputKey:          "old-output",
 				resourceFunctionPCMaxPendingMsgKey: 0,
@@ -141,7 +141,7 @@ func TestFunctionProducerConfigApplyOwnership(t *testing.T) {
 		},
 		{
 			name:  "explicit zero and false values defer to fresh broker merge",
-			state: functionProducerState(t, remoteProducerConfig, "old-output"),
+			state: functionProducerState(t, remoteProducerConfig),
 			config: functionConfigWithBase(map[string]interface{}{
 				resourceFunctionOutputKey:                         "old-output",
 				resourceFunctionPCMaxPendingMsgKey:                0,
@@ -152,7 +152,7 @@ func TestFunctionProducerConfigApplyOwnership(t *testing.T) {
 		},
 		{
 			name:  "omitted producer fields are not sent on unrelated update",
-			state: functionProducerState(t, remoteProducerConfig, "old-output"),
+			state: functionProducerState(t, remoteProducerConfig),
 			config: functionConfigWithBase(map[string]interface{}{
 				resourceFunctionOutputKey: "new-output",
 			}),
@@ -215,7 +215,6 @@ func functionConfigWithBase(values map[string]interface{}) map[string]interface{
 func functionProducerState(
 	t *testing.T,
 	producerConfig utils.ProducerConfig,
-	output string,
 ) *terraform.InstanceState {
 	t.Helper()
 
@@ -225,7 +224,7 @@ func functionProducerState(
 			resourceFunctionTenantKey:    "public",
 			resourceFunctionNamespaceKey: "default",
 			resourceFunctionNameKey:      "function-1",
-			resourceFunctionOutputKey:    output,
+			resourceFunctionOutputKey:    "old-output",
 		},
 	})
 	require.NoError(t, unmarshalFunctionProducerConfig(utils.FunctionConfig{
