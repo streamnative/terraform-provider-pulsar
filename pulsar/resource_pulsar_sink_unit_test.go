@@ -113,6 +113,12 @@ func sinkLegacyInputConfig(topic string) map[string]interface{} {
 	})
 }
 
+func sinkRawConfigWithoutInputSpecs() cty.Value {
+	return cty.ObjectVal(map[string]cty.Value{
+		resourceSinkInputSpecsKey: cty.NullVal(cty.Set(cty.EmptyObject)),
+	})
+}
+
 // The point of #218: tuning the queue size must not force the user to also name a schema type and
 // a serde class, which Pulsar rejects together anyway.
 func TestMarshalSinkInputSpecsQueueSizeOnly(t *testing.T) {
@@ -656,10 +662,8 @@ func TestUnmarshalSinkInputSpecsUsesRawConfigOwnership(t *testing.T) {
 		wantSpecs int
 	}{
 		{
-			name: "legacy HCL omits input_specs",
-			rawConfig: cty.ObjectVal(map[string]cty.Value{
-				resourceSinkInputSpecsKey: cty.NullVal(cty.Set(cty.EmptyObject)),
-			}),
+			name:      "legacy HCL omits input_specs",
+			rawConfig: sinkRawConfigWithoutInputSpecs(),
 		},
 		{
 			name: "explicit input_specs remains owned",
@@ -688,6 +692,65 @@ func TestUnmarshalSinkInputSpecsUsesRawConfigOwnership(t *testing.T) {
 			assert.Len(t, d.Get(resourceSinkInputSpecsKey).(*schema.Set).List(), test.wantSpecs)
 		})
 	}
+}
+
+func TestMarshalSinkConfigIgnoresV013ComputedInputSpecsOnLegacyUpdate(t *testing.T) {
+	inputTopic := "persistent://public/default/input"
+	serdeTopic := "persistent://public/default/serde"
+	schemaTopic := "persistent://public/default/schema"
+	legacyConfig := sinkLegacyInputConfig(inputTopic)
+	legacyConfig[resourceSinkCustomSerdeInputsKey] = map[string]interface{}{
+		serdeTopic: "com.acme.Serde",
+	}
+	legacyConfig[resourceSinkCustomSchemaInputsKey] = map[string]interface{}{
+		schemaTopic: "AVRO",
+	}
+
+	computedInput := sinkV013InputSpec(inputTopic)
+	computedInput[resourceSinkInputSpecsSubsetReceiverQueueSizeKey] = 0
+	computedSerde := sinkV013InputSpec(serdeTopic)
+	computedSerde[resourceSinkInputSpecsSubsetSerdeClassNameKey] = "com.acme.Serde"
+	computedSchema := sinkV013InputSpec(schemaTopic)
+	computedSchema[resourceSinkInputSpecsSubsetSchemaTypeKey] = "AVRO"
+	legacyState := sinkV013StateWithComputedInputSpecs(t, legacyConfig, []interface{}{
+		computedInput,
+		computedSerde,
+		computedSchema,
+	})
+	legacyState.RawConfig = sinkRawConfigWithoutInputSpecs()
+	d := sinkCurrentDataFromState(t, legacyState)
+	require.NoError(t, d.Set(resourceSinkParallelismKey, 2))
+
+	sinkConfig, err := marshalSinkConfig(d)
+	require.NoError(t, err)
+	assert.Nil(t, sinkConfig.InputSpecs)
+	assert.Equal(t, []string{inputTopic}, sinkConfig.Inputs)
+	assert.Equal(t, map[string]string{serdeTopic: "com.acme.Serde"},
+		sinkConfig.TopicToSerdeClassName)
+	assert.Equal(t, map[string]string{schemaTopic: "AVRO"}, sinkConfig.TopicToSchemaType)
+	assert.Equal(t, 2, sinkConfig.Parallelism)
+}
+
+func TestSinkComputedInputSpecsDoNotTriggerLegacyOverlapValidation(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	legacyConfig := sinkLegacyInputConfig(topic)
+	legacyConfig[resourceSinkCustomSerdeInputsKey] = map[string]interface{}{
+		topic: "com.acme.OldSerde",
+	}
+	computedSpec := sinkV013InputSpec(topic)
+	computedSpec[resourceSinkInputSpecsSubsetSerdeClassNameKey] = "com.acme.OldSerde"
+	legacyState := sinkV013StateWithComputedInputSpecs(t, legacyConfig, []interface{}{computedSpec})
+	legacyState.RawConfig = sinkRawConfigWithoutInputSpecs()
+
+	updatedConfig := sinkLegacyInputConfig(topic)
+	updatedConfig[resourceSinkCustomSerdeInputsKey] = map[string]interface{}{
+		topic: "com.acme.NewSerde",
+	}
+	diff, err := resourcePulsarSink().Diff(context.Background(), legacyState,
+		terraform.NewResourceConfigRaw(updatedConfig), nil)
+	require.NoError(t, err)
+	require.NotNil(t, diff)
+	assert.False(t, diff.RequiresNew())
 }
 
 func TestSinkImportedLegacyInputPlansCleanly(t *testing.T) {

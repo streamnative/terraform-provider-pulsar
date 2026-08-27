@@ -26,6 +26,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
@@ -646,6 +647,9 @@ func resourcePulsarSinkDelete(ctx context.Context, d *schema.ResourceData, meta 
 // Moving an unchanged topic between a legacy input field and input_specs remains an in-place update.
 func resourcePulsarSinkCustomizeDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
 	newSpecs := diff.Get(resourceSinkInputSpecsKey)
+	if rawConfigOmitsSinkInputSpecs(diff.GetRawConfig()) {
+		newSpecs = nil
+	}
 	if err := validateSinkInputSpecs(newSpecs); err != nil {
 		return err
 	}
@@ -920,17 +924,26 @@ func sinkInputSpecsFromSchema(inputSpecs interface{}) map[string]utils.ConsumerC
 	return specs
 }
 
+// rawConfigOmitsSinkInputSpecs is true only when the current HCL is available and omits the
+// attribute. A refresh has no raw config, so callers conservatively retain state in that case.
+func rawConfigOmitsSinkInputSpecs(rawConfig cty.Value) bool {
+	return rawConfig.IsKnown() && !rawConfig.IsNull() &&
+		!rawValueHasTopLevelAttribute(rawConfig, resourceSinkInputSpecsKey)
+}
+
+func configuredSinkInputSpecsValue(d *schema.ResourceData) interface{} {
+	if rawConfigOmitsSinkInputSpecs(d.GetRawConfig()) {
+		return nil
+	}
+
+	return d.Get(resourceSinkInputSpecsKey)
+}
+
 // configuredSinkInputSpecs separates HCL-owned blocks from v0.13's computed state. During an
 // apply the raw config is authoritative. Refresh requests carry state but no config, so preserve
 // the existing state in that case; input_specs being Optional+Computed keeps that fallback clean.
 func configuredSinkInputSpecs(d *schema.ResourceData) map[string]utils.ConsumerConfig {
-	rawConfig := d.GetRawConfig()
-	if rawConfig.IsKnown() && !rawConfig.IsNull() &&
-		!rawValueHasTopLevelAttribute(rawConfig, resourceSinkInputSpecsKey) {
-		return nil
-	}
-
-	return sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
+	return sinkInputSpecsFromSchema(configuredSinkInputSpecsValue(d))
 }
 
 // mergeSinkLegacyTypesIntoInputSpecs preserves a legacy type when a topic also has input_specs.
@@ -1291,11 +1304,12 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 		sinkConfig.Name = inter.(string)
 	}
 
-	if err := validateSinkInputSpecs(d.Get(resourceSinkInputSpecsKey)); err != nil {
+	configuredInputSpecs := configuredSinkInputSpecsValue(d)
+	if err := validateSinkInputSpecs(configuredInputSpecs); err != nil {
 		return nil, err
 	}
 
-	inputSpecs := sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
+	inputSpecs := sinkInputSpecsFromSchema(configuredInputSpecs)
 	if err := mergeSinkLegacyTypesIntoInputSpecs(
 		inputSpecs,
 		sinkStringMap(d.Get(resourceSinkCustomSerdeInputsKey)),
