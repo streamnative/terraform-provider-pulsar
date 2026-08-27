@@ -227,10 +227,13 @@ func resourcePulsarSink() *schema.Resource {
 				Description: resourceSinkDescriptions[resourceSinkCustomSchemaInputsKey],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
-			// terraform doesn't nested map, so use TypeSet.
+			// Terraform does not support nested maps, so use TypeSet. v0.13 populated this field for
+			// legacy input representations; keep those values computed so an upgrade does not plan
+			// their removal.
 			resourceSinkInputSpecsKey: {
 				Type:        schema.TypeSet,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceSinkDescriptions[resourceSinkInputSpecsKey],
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -646,6 +649,13 @@ func resourcePulsarSinkCustomizeDiff(_ context.Context, diff *schema.ResourceDif
 	if err := validateSinkInputSpecs(newSpecs); err != nil {
 		return err
 	}
+	if err := mergeSinkLegacyTypesIntoInputSpecs(
+		sinkInputSpecsFromSchema(newSpecs),
+		sinkStringMap(diff.Get(resourceSinkCustomSerdeInputsKey)),
+		sinkStringMap(diff.Get(resourceSinkCustomSchemaInputsKey)),
+	); err != nil {
+		return err
+	}
 
 	if diff.Id() == "" {
 		return nil
@@ -910,6 +920,81 @@ func sinkInputSpecsFromSchema(inputSpecs interface{}) map[string]utils.ConsumerC
 	return specs
 }
 
+// configuredSinkInputSpecs separates HCL-owned blocks from v0.13's computed state. During an
+// apply the raw config is authoritative. Refresh requests carry state but no config, so preserve
+// the existing state in that case; input_specs being Optional+Computed keeps that fallback clean.
+func configuredSinkInputSpecs(d *schema.ResourceData) map[string]utils.ConsumerConfig {
+	rawConfig := d.GetRawConfig()
+	if rawConfig.IsKnown() && !rawConfig.IsNull() &&
+		!rawValueHasTopLevelAttribute(rawConfig, resourceSinkInputSpecsKey) {
+		return nil
+	}
+
+	return sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
+}
+
+// mergeSinkLegacyTypesIntoInputSpecs preserves a legacy type when a topic also has input_specs.
+// The queue-only case is unambiguous. All other conflicting or incomplete combinations fail rather
+// than relying on SinkConfigUtils' precedence and silently dropping a type.
+func mergeSinkLegacyTypesIntoInputSpecs(
+	inputSpecs map[string]utils.ConsumerConfig,
+	serdeInputs, schemaInputs map[string]string,
+) error {
+	for topic, inputSpec := range inputSpecs {
+		serdeClassName, hasSerde := serdeInputs[topic]
+		schemaType, hasSchema := schemaInputs[topic]
+		if !hasSerde && !hasSchema {
+			continue
+		}
+
+		if hasSerde && hasSchema {
+			return fmt.Errorf("%s %q overlaps both %s and %s",
+				resourceSinkInputSpecsKey, topic,
+				resourceSinkCustomSerdeInputsKey, resourceSinkCustomSchemaInputsKey)
+		}
+
+		if hasSerde {
+			if serdeClassName == "" {
+				return fmt.Errorf("%s %q overlaps %s with an empty value",
+					resourceSinkInputSpecsKey, topic, resourceSinkCustomSerdeInputsKey)
+			}
+			if inputSpec.SchemaType != "" {
+				return fmt.Errorf("%s %q cannot combine %s with %s",
+					resourceSinkInputSpecsKey, topic,
+					resourceSinkInputSpecsSubsetSchemaTypeKey, resourceSinkCustomSerdeInputsKey)
+			}
+			if inputSpec.SerdeClassName != "" && inputSpec.SerdeClassName != serdeClassName {
+				return fmt.Errorf("%s %q has conflicting %s values between %s and %s",
+					resourceSinkInputSpecsKey, topic, resourceSinkInputSpecsSubsetSerdeClassNameKey,
+					resourceSinkInputSpecsKey, resourceSinkCustomSerdeInputsKey)
+			}
+			inputSpec.SerdeClassName = serdeClassName
+		}
+
+		if hasSchema {
+			if schemaType == "" {
+				return fmt.Errorf("%s %q overlaps %s with an empty value",
+					resourceSinkInputSpecsKey, topic, resourceSinkCustomSchemaInputsKey)
+			}
+			if inputSpec.SerdeClassName != "" {
+				return fmt.Errorf("%s %q cannot combine %s with %s",
+					resourceSinkInputSpecsKey, topic,
+					resourceSinkInputSpecsSubsetSerdeClassNameKey, resourceSinkCustomSchemaInputsKey)
+			}
+			if inputSpec.SchemaType != "" && inputSpec.SchemaType != schemaType {
+				return fmt.Errorf("%s %q has conflicting %s values between %s and %s",
+					resourceSinkInputSpecsKey, topic, resourceSinkInputSpecsSubsetSchemaTypeKey,
+					resourceSinkInputSpecsKey, resourceSinkCustomSchemaInputsKey)
+			}
+			inputSpec.SchemaType = schemaType
+		}
+
+		inputSpecs[topic] = inputSpec
+	}
+
+	return nil
+}
+
 func sinkLegacyInputMap(
 	value interface{}, inputSpecs map[string]utils.ConsumerConfig,
 ) map[string]string {
@@ -941,7 +1026,7 @@ func unmarshalSinkInputSpecs(sinkConfig utils.SinkConfig, d *schema.ResourceData
 		}
 	}
 
-	declared := sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
+	declared := configuredSinkInputSpecs(d)
 	if !hasConfiguredSinkInputs(d, declared) {
 		return unmarshalImportedSinkInputs(remoteSpecs, d)
 	}
@@ -1211,6 +1296,13 @@ func marshalSinkConfig(d *schema.ResourceData) (*utils.SinkConfig, error) {
 	}
 
 	inputSpecs := sinkInputSpecsFromSchema(d.Get(resourceSinkInputSpecsKey))
+	if err := mergeSinkLegacyTypesIntoInputSpecs(
+		inputSpecs,
+		sinkStringMap(d.Get(resourceSinkCustomSerdeInputsKey)),
+		sinkStringMap(d.Get(resourceSinkCustomSchemaInputsKey)),
+	); err != nil {
+		return nil, err
+	}
 	if len(inputSpecs) != 0 {
 		sinkConfig.InputSpecs = inputSpecs
 	}

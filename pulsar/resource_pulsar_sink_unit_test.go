@@ -19,9 +19,11 @@ package pulsar
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/stretchr/testify/assert"
@@ -53,6 +55,62 @@ func sinkResourceData(t *testing.T, values map[string]interface{}) *schema.Resou
 	}
 
 	return d
+}
+
+// sinkV013InputSpecsSchema freezes the v0.13 state shape. Its input_specs block was
+// Optional+Computed and had only these five required fields.
+func sinkV013InputSpecsSchema() *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeSet,
+		Optional: true,
+		Computed: true,
+		Elem: &schema.Resource{Schema: map[string]*schema.Schema{
+			resourceSinkInputSpecsSubsetTopicKey:             {Type: schema.TypeString, Required: true},
+			resourceSinkInputSpecsSubsetSchemaTypeKey:        {Type: schema.TypeString, Required: true},
+			resourceSinkInputSpecsSubsetSerdeClassNameKey:    {Type: schema.TypeString, Required: true},
+			resourceSinkInputSpecsSubsetIsRegexPatternKey:    {Type: schema.TypeBool, Required: true},
+			resourceSinkInputSpecsSubsetReceiverQueueSizeKey: {Type: schema.TypeInt, Required: true},
+		}},
+	}
+}
+
+func sinkV013InputSpec(topic string) map[string]interface{} {
+	return map[string]interface{}{
+		resourceSinkInputSpecsSubsetTopicKey:             topic,
+		resourceSinkInputSpecsSubsetSchemaTypeKey:        "",
+		resourceSinkInputSpecsSubsetSerdeClassNameKey:    "",
+		resourceSinkInputSpecsSubsetIsRegexPatternKey:    false,
+		resourceSinkInputSpecsSubsetReceiverQueueSizeKey: defaultSinkReceiverQueueSize,
+	}
+}
+
+func sinkV013StateWithComputedInputSpecs(
+	t *testing.T, config map[string]interface{}, inputSpecs []interface{},
+) *terraform.InstanceState {
+	t.Helper()
+
+	legacyResource := resourcePulsarSink()
+	legacyResource.Schema[resourceSinkInputSpecsKey] = sinkV013InputSpecsSchema()
+	legacyData := schema.TestResourceDataRaw(t, legacyResource.Schema, config)
+	require.NoError(t, legacyData.Set(resourceSinkInputSpecsKey, inputSpecs))
+	legacyData.SetId("public/default/sink-1")
+
+	return legacyData.State()
+}
+
+func sinkCurrentDataFromState(t *testing.T, state *terraform.InstanceState) *schema.ResourceData {
+	t.Helper()
+
+	d, err := schema.InternalMap(resourcePulsarSink().Schema).Data(state, nil)
+	require.NoError(t, err)
+	return d
+}
+
+func sinkLegacyInputConfig(topic string) map[string]interface{} {
+	return sinkConfigWithBase(map[string]interface{}{
+		resourceSinkInputsKey:  []interface{}{topic},
+		resourceSinkAutoACKKey: true,
+	})
 }
 
 // The point of #218: tuning the queue size must not force the user to also name a schema type and
@@ -230,6 +288,112 @@ func TestMarshalSinkInputSpecsFilterLegacyOverlaps(t *testing.T) {
 	assert.Len(t, sinkConfig.InputSpecs, len(topics))
 }
 
+func TestMarshalSinkInputSpecsMergesLegacyTypes(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	tests := []struct {
+		name       string
+		serde      map[string]interface{}
+		schema     map[string]interface{}
+		wantSerde  string
+		wantSchema string
+	}{
+		{
+			name:      "serde",
+			serde:     map[string]interface{}{topic: "com.acme.Serde"},
+			wantSerde: "com.acme.Serde",
+		},
+		{
+			name:       "schema",
+			schema:     map[string]interface{}{topic: "AVRO"},
+			wantSchema: "AVRO",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			values := map[string]interface{}{
+				resourceSinkInputSpecsKey: []interface{}{
+					sinkInputSpec(topic, map[string]interface{}{
+						resourceSinkInputSpecsSubsetReceiverQueueSizeKey: 100,
+					}),
+				},
+			}
+			if test.serde != nil {
+				values[resourceSinkCustomSerdeInputsKey] = test.serde
+			}
+			if test.schema != nil {
+				values[resourceSinkCustomSchemaInputsKey] = test.schema
+			}
+
+			sinkConfig, err := marshalSinkConfig(sinkResourceData(t, values))
+			require.NoError(t, err)
+
+			spec := sinkConfig.InputSpecs[topic]
+			assert.Equal(t, 100, spec.ReceiverQueueSize)
+			assert.Equal(t, test.wantSerde, spec.SerdeClassName)
+			assert.Equal(t, test.wantSchema, spec.SchemaType)
+			assert.Nil(t, sinkConfig.TopicToSerdeClassName)
+			assert.Nil(t, sinkConfig.TopicToSchemaType)
+		})
+	}
+}
+
+func TestMarshalSinkInputSpecsRejectsAmbiguousLegacyTypes(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	tests := []struct {
+		name    string
+		spec    map[string]interface{}
+		serde   map[string]interface{}
+		schema  map[string]interface{}
+		wantErr string
+	}{
+		{
+			name:    "both legacy maps overlap queue-only spec",
+			spec:    sinkInputSpec(topic, nil),
+			serde:   map[string]interface{}{topic: "com.acme.Serde"},
+			schema:  map[string]interface{}{topic: "AVRO"},
+			wantErr: "overlaps both",
+		},
+		{
+			name: "conflicting serde values",
+			spec: sinkInputSpec(topic, map[string]interface{}{
+				resourceSinkInputSpecsSubsetSerdeClassNameKey: "com.acme.NewSerde",
+			}),
+			serde:   map[string]interface{}{topic: "com.acme.OldSerde"},
+			wantErr: "conflicting serde_class_name",
+		},
+		{
+			name: "conflicting schema values",
+			spec: sinkInputSpec(topic, map[string]interface{}{
+				resourceSinkInputSpecsSubsetSchemaTypeKey: "AVRO",
+			}),
+			schema:  map[string]interface{}{topic: "JSON"},
+			wantErr: "conflicting schema_type",
+		},
+		{
+			name: "schema and legacy serde conflict",
+			spec: sinkInputSpec(topic, map[string]interface{}{
+				resourceSinkInputSpecsSubsetSchemaTypeKey: "AVRO",
+			}),
+			serde:   map[string]interface{}{topic: "com.acme.Serde"},
+			wantErr: "cannot combine schema_type",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			d := sinkResourceData(t, map[string]interface{}{
+				resourceSinkInputSpecsKey:         []interface{}{test.spec},
+				resourceSinkCustomSerdeInputsKey:  test.serde,
+				resourceSinkCustomSchemaInputsKey: test.schema,
+			})
+
+			_, err := marshalSinkConfig(d)
+			require.ErrorContains(t, err, test.wantErr)
+		})
+	}
+}
+
 func TestSinkInputSpecsValidationDuringPlan(t *testing.T) {
 	res := resourcePulsarSink()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{})
@@ -246,6 +410,24 @@ func TestSinkInputSpecsValidationDuringPlan(t *testing.T) {
 
 	_, err := res.Diff(context.Background(), d.State(), terraform.NewResourceConfigRaw(config), nil)
 	require.ErrorContains(t, err, "duplicate")
+}
+
+func TestSinkInputSpecsLegacyOverlapValidationDuringPlan(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	res := resourcePulsarSink()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{})
+	config := sinkConfigWithBase(map[string]interface{}{
+		resourceSinkInputSpecsKey: []interface{}{sinkInputSpec(topic, nil)},
+		resourceSinkCustomSerdeInputsKey: map[string]interface{}{
+			topic: "com.acme.Serde",
+		},
+		resourceSinkCustomSchemaInputsKey: map[string]interface{}{
+			topic: "AVRO",
+		},
+	})
+
+	_, err := res.Diff(context.Background(), d.State(), terraform.NewResourceConfigRaw(config), nil)
+	require.ErrorContains(t, err, "overlaps both")
 }
 
 func TestUnmarshalSinkInputSpecsPreservesLegacyRepresentation(t *testing.T) {
@@ -415,15 +597,110 @@ func sinkInputSpecsDiff(t *testing.T, state, config map[string]interface{}) *ter
 	return diff
 }
 
+func sinkInputSpecsDiffContains(diff *terraform.InstanceDiff, want string) bool {
+	for key, attr := range diff.Attributes {
+		if strings.HasPrefix(key, resourceSinkInputSpecsKey+".") && attr != nil && attr.New == want {
+			return true
+		}
+	}
+
+	return false
+}
+
+func TestSinkV013ComputedInputSpecsPlanWithoutRefresh(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	legacyConfig := sinkLegacyInputConfig(topic)
+	legacyState := sinkV013StateWithComputedInputSpecs(t, legacyConfig, []interface{}{
+		sinkV013InputSpec(topic),
+	})
+
+	res := resourcePulsarSink()
+	assert.True(t, res.Schema[resourceSinkInputSpecsKey].Computed)
+
+	diff, err := res.Diff(context.Background(), legacyState,
+		terraform.NewResourceConfigRaw(legacyConfig), nil)
+	require.NoError(t, err)
+	if diff != nil {
+		assert.True(t, diff.Empty(), "legacy state re-planned: %#v", diff.Attributes)
+	}
+}
+
+func TestSinkV013ComputedInputSpecsRefreshPlansCleanly(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	legacyConfig := sinkLegacyInputConfig(topic)
+	legacyState := sinkV013StateWithComputedInputSpecs(t, legacyConfig, []interface{}{
+		sinkV013InputSpec(topic),
+	})
+
+	// ReadResource sends CurrentState but no configuration. Decode the frozen v0.13 flatmap through
+	// the current schema, then exercise the same input refresh helper that resourcePulsarSinkRead uses.
+	d := sinkCurrentDataFromState(t, legacyState)
+	require.NoError(t, unmarshalSinkInputSpecs(utils.SinkConfig{
+		InputSpecs: map[string]utils.ConsumerConfig{topic: {}},
+	}, d))
+	require.Len(t, d.Get(resourceSinkInputSpecsKey).(*schema.Set).List(), 1)
+
+	diff, err := resourcePulsarSink().Diff(context.Background(), d.State(),
+		terraform.NewResourceConfigRaw(legacyConfig), nil)
+	require.NoError(t, err)
+	if diff != nil {
+		assert.True(t, diff.Empty(), "refreshed legacy state re-planned: %#v", diff.Attributes)
+	}
+}
+
+func TestUnmarshalSinkInputSpecsUsesRawConfigOwnership(t *testing.T) {
+	topic := "persistent://public/default/in-1"
+	tests := []struct {
+		name      string
+		rawConfig cty.Value
+		wantSpecs int
+	}{
+		{
+			name: "legacy HCL omits input_specs",
+			rawConfig: cty.ObjectVal(map[string]cty.Value{
+				resourceSinkInputSpecsKey: cty.NullVal(cty.Set(cty.EmptyObject)),
+			}),
+		},
+		{
+			name: "explicit input_specs remains owned",
+			rawConfig: cty.ObjectVal(map[string]cty.Value{
+				resourceSinkInputSpecsKey: cty.SetVal([]cty.Value{
+					cty.ObjectVal(map[string]cty.Value{
+						resourceSinkInputSpecsSubsetTopicKey: cty.StringVal(topic),
+					}),
+				}),
+			}),
+			wantSpecs: 1,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			legacyState := sinkV013StateWithComputedInputSpecs(t, sinkLegacyInputConfig(topic), []interface{}{
+				sinkV013InputSpec(topic),
+			})
+			legacyState.RawConfig = test.rawConfig
+			d := sinkCurrentDataFromState(t, legacyState)
+
+			require.NoError(t, unmarshalSinkInputSpecs(utils.SinkConfig{
+				InputSpecs: map[string]utils.ConsumerConfig{topic: {}},
+			}, d))
+			assert.Len(t, d.Get(resourceSinkInputSpecsKey).(*schema.Set).List(), test.wantSpecs)
+		})
+	}
+}
+
 func TestSinkImportedLegacyInputPlansCleanly(t *testing.T) {
 	topic := "persistent://public/default/in-1"
 	res := resourcePulsarSink()
+	assert.True(t, res.Schema[resourceSinkInputSpecsKey].Computed)
 	d := schema.TestResourceDataRaw(t, res.Schema, sinkConfigWithBase(nil))
 	d.SetId("public/default/sink-1")
 
 	require.NoError(t, unmarshalSinkInputSpecs(utils.SinkConfig{
 		InputSpecs: map[string]utils.ConsumerConfig{topic: {}},
 	}, d))
+	assert.Empty(t, d.Get(resourceSinkInputSpecsKey).(*schema.Set).List())
 
 	config := sinkConfigWithBase(map[string]interface{}{
 		resourceSinkInputsKey: []interface{}{topic},
@@ -465,6 +742,7 @@ func TestSinkInputSpecsForceNew(t *testing.T) {
 		state       map[string]interface{}
 		config      map[string]interface{}
 		requiresNew bool
+		plans       string
 	}{
 		{
 			name: "queue size updates in place",
@@ -478,6 +756,7 @@ func TestSinkInputSpecsForceNew(t *testing.T) {
 					resourceSinkInputSpecsSubsetReceiverQueueSizeKey: 250,
 				})},
 			}),
+			plans: "250",
 		},
 		{
 			name: "adopting input_specs for an existing topic updates in place",
@@ -490,6 +769,7 @@ func TestSinkInputSpecsForceNew(t *testing.T) {
 					resourceSinkInputSpecsSubsetReceiverQueueSizeKey: 250,
 				})},
 			}),
+			plans: "250",
 		},
 		{
 			name: "renaming an input_specs topic replaces the sink",
@@ -521,6 +801,10 @@ func TestSinkInputSpecsForceNew(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			diff := sinkInputSpecsDiff(t, test.state, test.config)
 			assert.Equal(t, test.requiresNew, diff.RequiresNew())
+			if test.plans != "" {
+				assert.True(t, sinkInputSpecsDiffContains(diff, test.plans),
+					"input_specs diff does not contain %q: %#v", test.plans, diff.Attributes)
+			}
 		})
 	}
 }
