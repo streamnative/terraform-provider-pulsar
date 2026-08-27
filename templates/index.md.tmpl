@@ -48,4 +48,6 @@ For inline values, use `sensitive({...})`. Terraform then propagates the sensiti
 
 When upgrading existing `pulsar_sink` state with `-refresh=false`, some Terraform versions may show a one-time in-place change while recording the new resource schema version. This is a state-only migration and does not call Pulsar APIs. A normal refreshed plan, and subsequent `-refresh=false` plans after the migration, are clean.
 
+`pulsar_sink` and `pulsar_source` now reject malformed JSON at plan time in `configs`, `custom_runtime_options`, and `secrets`, as does `crypto_key_reader_config` on `pulsar_source`. Earlier releases accepted any string in these fields because the shared validator never returned an error. Empty values remain valid.
+
 {{ .SchemaMarkdown | trimspace }}
