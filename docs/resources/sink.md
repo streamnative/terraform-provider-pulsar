@@ -25,7 +25,7 @@ Manages Pulsar IO sinks through the Functions Worker API.
 ### Optional
 
 - `classname` (String) The sink's class name if archive is file-url-path (file://)
-- `configs` (String, Sensitive) User defined configs key/values (JSON string)
+- `configs` (String) User defined configs key/values (JSON string)
 - `cpu` (Number) The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)
 - `custom_runtime_options` (String) A string that encodes options to customize the runtime
 - `custom_schema_inputs` (Map of String) The map of input topics to Schema types or class names (as a JSON string)

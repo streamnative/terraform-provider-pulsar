@@ -564,7 +564,6 @@ func resourcePulsarFunction() *schema.Resource {
 			resourceFunctionUserConfig: {
 				Type:        schema.TypeMap,
 				Optional:    true,
-				Sensitive:   true,
 				Description: resourceFunctionDescriptions[resourceFunctionUserConfig],
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
@@ -586,7 +585,6 @@ func resourcePulsarFunction() *schema.Resource {
 							Type:        schema.TypeMap,
 							Optional:    true,
 							Computed:    true,
-							Sensitive:   true,
 							Description: "Sink-specific key/value options.",
 							Elem:        &schema.Schema{Type: schema.TypeString},
 						},
@@ -611,7 +609,6 @@ func resourcePulsarFunction() *schema.Resource {
 							Type:        schema.TypeMap,
 							Optional:    true,
 							Computed:    true,
-							Sensitive:   true,
 							Description: "Source-specific key/value options.",
 							Elem:        &schema.Schema{Type: schema.TypeString},
 						},

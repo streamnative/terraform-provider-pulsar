@@ -219,11 +219,11 @@ func resourcePulsarSource() *schema.Resource {
 				Description: resourceSourceDescriptions[resourceSourceDiskKey],
 			},
 			resourceSourceConfigsKey: {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				Sensitive:   true,
-				Description: resourceSourceDescriptions[resourceSourceConfigsKey],
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				Description:  resourceSourceDescriptions[resourceSourceConfigsKey],
+				ValidateFunc: jsonValidateFunc,
 			},
 			resourceSourceRuntimeFlagsKey: {
 				Type:        schema.TypeString,
@@ -627,7 +627,7 @@ func marshalSourceConfig(d *schema.ResourceData) (*utils.SourceConfig, error) {
 
 		err := json.Unmarshal([]byte(configsJSON), &configs)
 		if err != nil {
-			return nil, errors.Wrapf(err, "cannot unmarshal the configs: %s", configsJSON)
+			return nil, errors.Wrap(err, "cannot unmarshal configs")
 		}
 
 		sourceConfig.Configs = configs
