@@ -71,8 +71,13 @@ resource "pulsar_function" "function-1" {
   log_topic                       = "public/default/lt"
   timeout_ms                      = 6666
 
-  # Reset the output producer to the Function default while removing the other producer settings.
-  compression_type = "LZ4"
+  # Producer fields are Optional+Computed. Set reset values explicitly; omitting them preserves
+  # broker values from the prior configuration.
+  compression_type                       = "LZ4"
+  batch_builder                          = "DEFAULT"
+  max_pending_messages                   = 0
+  max_pending_messages_across_partitions = 0
+  use_thread_local_producers             = false
 
   custom_runtime_options = jsonencode(
     {

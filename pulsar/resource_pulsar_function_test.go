@@ -158,7 +158,7 @@ func TestFunction(t *testing.T) {
 
 					require.NotNil(t, config.ProducerConfig)
 					assert.Equal(t, "LZ4", config.ProducerConfig.CompressionType)
-					assert.Empty(t, config.ProducerConfig.BatchBuilder)
+					assert.Equal(t, "DEFAULT", config.ProducerConfig.BatchBuilder)
 					assert.Zero(t, config.ProducerConfig.MaxPendingMessages)
 					assert.Zero(t, config.ProducerConfig.MaxPendingMessagesAcrossPartitions)
 					assert.False(t, config.ProducerConfig.UseThreadLocalProducers)

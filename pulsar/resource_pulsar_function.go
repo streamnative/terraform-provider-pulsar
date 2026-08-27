@@ -534,21 +534,25 @@ func resourcePulsarFunction() *schema.Resource {
 			resourceFunctionPCMaxPendingMsgKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionPCMaxPendingMsgKey],
 			},
 			resourceFunctionPCMaxPendingMsgAcrossPartitionKey: {
 				Type:        schema.TypeInt,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionPCMaxPendingMsgAcrossPartitionKey],
 			},
 			resourceFunctionPCUseThreadLocalProducersKey: {
 				Type:        schema.TypeBool,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionPCUseThreadLocalProducersKey],
 			},
 			resourceFunctionPCBatchBuilderKey: {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: resourceFunctionDescriptions[resourceFunctionPCBatchBuilderKey],
 			},
 			resourceFunctionPCCompressionTypeKey: {
@@ -631,6 +635,13 @@ func resourcePulsarFunction() *schema.Resource {
 func resourcePulsarFunctionCustomizeDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
 	newSpecs := diff.Get(resourceFunctionInputSpecsKey)
 	if err := validateFunctionInputSpecs(newSpecs); err != nil {
+		return err
+	}
+	if err := validateFunctionInputSpecLegacyOverlaps(
+		newSpecs,
+		diff.Get(resourceFunctionCustomSerdeInputsKey),
+		diff.Get(resourceFunctionCustomSchemaInputsKey),
+	); err != nil {
 		return err
 	}
 
@@ -953,6 +964,86 @@ func functionLegacyInputMap(
 	return stringMap
 }
 
+// validateFunctionInputSpecLegacyOverlaps prevents input_specs from replacing a legacy custom
+// serde/schema entry with an incomplete ConsumerConfig. Pulsar applies input_specs last, so an
+// overlap is safe only when the block repeats every legacy setting that the older representation
+// contributes to the same topic.
+func validateFunctionInputSpecLegacyOverlaps(
+	inputSpecs, customSerdeInputs, customSchemaInputs interface{},
+) error {
+	specs := functionInputSpecsFromSchema(inputSpecs)
+	if len(specs) == 0 {
+		return nil
+	}
+
+	for topic, serdeClassName := range functionStringMap(customSerdeInputs) {
+		spec, overlaps := specs[topic]
+		if !overlaps {
+			continue
+		}
+
+		if spec.RegexPattern || spec.SchemaType != "" || spec.SerdeClassName != serdeClassName {
+			return fmt.Errorf(
+				"%s %q overlaps %s; %s must repeat its serde_class_name",
+				resourceFunctionCustomSerdeInputsKey,
+				topic,
+				resourceFunctionInputSpecsKey,
+				resourceFunctionInputSpecsKey,
+			)
+		}
+	}
+
+	for topic, serializedSchema := range functionStringMap(customSchemaInputs) {
+		spec, overlaps := specs[topic]
+		if !overlaps {
+			continue
+		}
+
+		legacySpec, err := functionLegacySchemaInput(serializedSchema)
+		if err != nil {
+			return fmt.Errorf("%s %q must contain a valid ConsumerConfig JSON object: %w",
+				resourceFunctionCustomSchemaInputsKey, topic, err)
+		}
+
+		if spec.RegexPattern || spec.SerdeClassName != "" || spec.SchemaType != legacySpec.SchemaType ||
+			!functionStringMapsEqual(spec.SchemaProperties, legacySpec.SchemaProperties) ||
+			!functionStringMapsEqual(spec.ConsumerProperties, legacySpec.ConsumerProperties) {
+			return fmt.Errorf(
+				"%s %q overlaps %s; %s must repeat its schema_type, schema_properties, and consumer_properties",
+				resourceFunctionCustomSchemaInputsKey,
+				topic,
+				resourceFunctionInputSpecsKey,
+				resourceFunctionInputSpecsKey,
+			)
+		}
+	}
+
+	return nil
+}
+
+func functionLegacySchemaInput(value string) (utils.ConsumerConfig, error) {
+	legacySpec := utils.ConsumerConfig{}
+	if err := json.Unmarshal([]byte(value), &legacySpec); err != nil {
+		return utils.ConsumerConfig{}, err
+	}
+
+	return legacySpec, nil
+}
+
+func functionStringMapsEqual(left, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+
+	for key, leftValue := range left {
+		if rightValue, ok := right[key]; !ok || rightValue != leftValue {
+			return false
+		}
+	}
+
+	return true
+}
+
 func resourcePulsarFunctionRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := getV3ClientFromMeta(meta).Functions()
 
@@ -1070,7 +1161,19 @@ func marshalFunctionConfig(d *schema.ResourceData) (*utils.FunctionConfig, error
 		functionConfig.Name = inter.(string)
 	}
 
-	inputSpecs := functionInputSpecsFromSchema(d.Get(resourceFunctionInputSpecsKey))
+	inputSpecsRaw := d.Get(resourceFunctionInputSpecsKey)
+	if err := validateFunctionInputSpecs(inputSpecsRaw); err != nil {
+		return nil, err
+	}
+	if err := validateFunctionInputSpecLegacyOverlaps(
+		inputSpecsRaw,
+		d.Get(resourceFunctionCustomSerdeInputsKey),
+		d.Get(resourceFunctionCustomSchemaInputsKey),
+	); err != nil {
+		return nil, err
+	}
+
+	inputSpecs := functionInputSpecsFromSchema(inputSpecsRaw)
 	if len(inputSpecs) != 0 {
 		functionConfig.InputSpecs = inputSpecs
 	}
@@ -1355,55 +1458,56 @@ func flattenFunctionInputSpec(topic string, consumerConfig utils.ConsumerConfig)
 	return spec
 }
 
-// marshalFunctionProducerConfig builds the output producer's configuration, mirroring how
-// pulsar_source populates the same struct. It returns nil when nothing is configured so the
-// request is unchanged for functions that do not set any of these.
+// marshalFunctionProducerConfig sends a producer configuration only when HCL explicitly manages a
+// producer attribute. All attributes are Optional+Computed, so omitted values remain broker-owned.
+// When an update changes one field, include the effective values of its peers because Pulsar
+// replaces the whole ProducerConfig rather than patching individual fields.
 func marshalFunctionProducerConfig(d *schema.ResourceData) *utils.ProducerConfig {
-	producerConfig := &utils.ProducerConfig{}
-	configured := false
+	for _, key := range functionProducerConfigKeys {
+		if functionProducerConfigAttributeConfigured(d, key) {
+			compressionType := d.Get(resourceFunctionPCCompressionTypeKey).(string)
+			if compressionType == "" {
+				// ProducerConfig serializes CompressionType even when empty, while Pulsar Functions
+				// defaults an omitted value to LZ4. Keep the provider's request valid when a new
+				// configuration manages another producer field but leaves compression_type unset.
+				compressionType = "LZ4"
+			}
 
-	if inter, ok := d.GetOk(resourceFunctionPCMaxPendingMsgKey); ok {
-		producerConfig.MaxPendingMessages = inter.(int)
-		configured = true
+			return &utils.ProducerConfig{
+				MaxPendingMessages:                 d.Get(resourceFunctionPCMaxPendingMsgKey).(int),
+				MaxPendingMessagesAcrossPartitions: d.Get(resourceFunctionPCMaxPendingMsgAcrossPartitionKey).(int),
+				UseThreadLocalProducers:            d.Get(resourceFunctionPCUseThreadLocalProducersKey).(bool),
+				BatchBuilder:                       d.Get(resourceFunctionPCBatchBuilderKey).(string),
+				CompressionType:                    compressionType,
+			}
+		}
 	}
 
-	if inter, ok := d.GetOk(resourceFunctionPCMaxPendingMsgAcrossPartitionKey); ok {
-		producerConfig.MaxPendingMessagesAcrossPartitions = inter.(int)
-		configured = true
-	}
-
-	if inter, ok := d.GetOk(resourceFunctionPCUseThreadLocalProducersKey); ok {
-		producerConfig.UseThreadLocalProducers = inter.(bool)
-		configured = true
-	}
-
-	if inter, ok := d.GetOk(resourceFunctionPCBatchBuilderKey); ok {
-		producerConfig.BatchBuilder = inter.(string)
-		configured = true
-	}
-
-	if inter, ok := d.GetOk(resourceFunctionPCCompressionTypeKey); ok {
-		producerConfig.CompressionType = inter.(string)
-		configured = true
-	}
-
-	if !configured && d.Id() != "" && d.HasChanges(functionProducerConfigKeys...) {
-		// FunctionConfigUtils.validateUpdate() preserves the existing producer config when the
-		// request field is nil. Send the Function default explicitly when the last configured
-		// producer attribute is removed so zero-valued settings are actually cleared.
-		return &utils.ProducerConfig{CompressionType: "LZ4"}
-	}
-
-	if !configured {
-		return nil
-	}
-
-	return producerConfig
+	return nil
 }
 
-// unmarshalFunctionProducerConfig writes the complete output producer configuration into state.
-// Zero values must be written too: skipping them leaves an earlier non-zero state value behind when
-// the producer configuration is removed or changed outside Terraform.
+func functionProducerConfigAttributeConfigured(d *schema.ResourceData, key string) bool {
+	if rawConfig := d.GetRawConfig(); !rawConfig.IsNull() {
+		return rawValueHasTopLevelAttribute(rawConfig, key)
+	}
+
+	if d.IsNewResource() {
+		// Legacy SDK apply tests do not carry RawConfig. GetOkExists is only a fallback here so
+		// explicit zero/false values remain distinguishable from computed values on creation.
+		//nolint:staticcheck // Required for SDKs that do not populate raw protocol config.
+		_, configured := d.GetOkExists(key)
+		return configured
+	}
+
+	// Without raw protocol config an update can safely send a producer config only for an actual
+	// producer-field diff. This preserves broker-owned values during unrelated updates.
+	return d.HasChange(key)
+}
+
+// unmarshalFunctionProducerConfig writes the complete output producer configuration into
+// Optional+Computed state. Zero values must be written too: skipping them leaves an earlier
+// non-zero state value behind when the producer configuration is removed or changed outside
+// Terraform.
 func unmarshalFunctionProducerConfig(functionConfig utils.FunctionConfig, d *schema.ResourceData) error {
 	producerConfig := functionConfig.ProducerConfig
 	if producerConfig == nil {
