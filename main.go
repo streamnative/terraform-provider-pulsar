@@ -24,7 +24,7 @@ import (
 )
 
 // Run "go generate" to generate the docs for the registry/website
-//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.13.0
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.13.0 generate --provider-name terraform-provider-pulsar --rendered-provider-name pulsar
 
 func main() {
 	plugin.Serve(&plugin.ServeOpts{
