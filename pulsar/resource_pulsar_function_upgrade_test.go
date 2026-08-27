@@ -105,16 +105,14 @@ provider_installation {
 	)
 	require.NoErrorf(t, err, "terraform init failed:\n%s", output)
 
-	// v0.13 state predates user_config's Sensitive schema flag. Terraform records the missing
-	// sensitive path as a state-only update; no Pulsar API operation must be planned or run.
+	// v0.13 state predates user_config's Sensitive schema flag. Terraform 1.2.x can absorb the
+	// metadata change with an empty plan, while newer releases may report a one-time state-only
+	// update. Neither path may call Pulsar.
 	output, err = runNamespaceUpgradeTerraformWithCurrentProvider(
 		t, terraformPath, workingDir, terraformEnv,
 		"plan", "-refresh=false", "-detailed-exitcode", "-input=false", "-no-color",
 	)
-	require.Error(t, err, "v0.13 state must plan the sensitive metadata migration")
-	var exitErr *exec.ExitError
-	require.ErrorAs(t, err, &exitErr)
-	require.Equalf(t, 2, exitErr.ExitCode(), "unexpected plan result:\n%s", output)
+	migrationPlanned := terraformStateOnlyMigrationPlanned(t, err, output)
 	require.Zero(t, requestCount.Load(), "refresh=false plan must not call Pulsar APIs")
 
 	output, err = runNamespaceUpgradeTerraformWithCurrentProvider(
@@ -131,7 +129,9 @@ provider_installation {
 	require.NoErrorf(t, err, "migrated v0.13 state produced a non-empty refresh=false plan:\n%s", output)
 	require.Zero(t, requestCount.Load(), "post-migration plan must not call Pulsar APIs")
 
-	assertFunctionStateRecordsSensitiveUserConfig(t, filepath.Join(workingDir, "terraform.tfstate"))
+	if migrationPlanned {
+		assertFunctionStateRecordsSensitiveUserConfig(t, filepath.Join(workingDir, "terraform.tfstate"))
+	}
 }
 
 func assertFunctionStateRecordsSensitiveUserConfig(t *testing.T, statePath string) {
