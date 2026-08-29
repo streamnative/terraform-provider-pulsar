@@ -32,6 +32,7 @@ import (
 // NamespacePolicyClient provides namespace policy operations missing from the
 // pulsaradmin version currently used by the provider.
 type NamespacePolicyClient interface {
+	GetNamespaceBundles(context.Context, string) (*utils.BundlesData, error)
 	RemoveBacklogQuotaByType(context.Context, string, utils.BacklogQuotaType) error
 }
 
@@ -63,6 +64,27 @@ func NewNamespacePolicyClient(c *PulsarAdminConfig) (NamespacePolicyClient, erro
 		},
 		apiVersion: c.Config.PulsarAPIVersion,
 	}, nil
+}
+
+func (c *namespacePolicyClient) GetNamespaceBundles(
+	ctx context.Context,
+	namespace string,
+) (*utils.BundlesData, error) {
+	ns, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid namespace")
+	}
+
+	endpoint := path.Join(
+		utils.MakeHTTPPath(c.apiVersion.String(), "/namespaces"),
+		ns.String(),
+		"bundles",
+	)
+	bundles := new(utils.BundlesData)
+	if err := c.client.GetWithContext(ctx, endpoint, bundles); err != nil {
+		return nil, err
+	}
+	return bundles, nil
 }
 
 func (c *namespacePolicyClient) RemoveBacklogQuotaByType(

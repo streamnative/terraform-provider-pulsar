@@ -21,6 +21,7 @@ Manages Pulsar namespaces and namespace-level policies.
 ### Optional
 
 - `backlog_quota` (Block Set) Manages configured backlog quota types. During `terraform import`, broker values are recorded without claiming ownership. Terraform leaves unowned types unchanged and removes only types it previously applied. (see [below for nested schema](#nestedblock--backlog_quota))
+- `bundles` (Number) Number of namespace bundles. If omitted, Pulsar uses the broker default. Changing this value recreates the namespace.
 - `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace. During `terraform import`, the provider records the broker policy. Omitting the block preserves that policy; configure the block to update it. (see [below for nested schema](#nestedblock--dispatch_rate))
 - `enable_deduplication` (Boolean)
 - `inactive_topic` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--inactive_topic))
