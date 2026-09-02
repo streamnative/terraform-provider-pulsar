@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
 	"github.com/streamnative/terraform-provider-pulsar/hashcode"
 	"github.com/streamnative/terraform-provider-pulsar/types"
@@ -72,7 +74,7 @@ func resourcePulsarNamespace() *schema.Resource {
 			},
 		},
 		Importer: &schema.ResourceImporter{
-			StateContext: func(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 				importID := d.Id()
 				ns, err := utils.GetNamespaceName(importID)
 				if err != nil {
@@ -82,7 +84,7 @@ func resourcePulsarNamespace() *schema.Resource {
 				_ = d.Set("tenant", nsParts[0])
 				_ = d.Set("namespace", nsParts[1])
 
-				diags := resourcePulsarNamespaceReadWithMode(d, meta, namespaceReadImport)
+				diags := resourcePulsarNamespaceReadWithMode(ctx, d, meta, namespaceReadImport)
 				if diags.HasError() {
 					return nil, fmt.Errorf("import %q: %s", importID, diags[0].Summary)
 				}
@@ -111,6 +113,15 @@ func resourcePulsarNamespace() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: descriptions["tenant"],
+			},
+			"bundles": {
+				Type:         schema.TypeInt,
+				Optional:     true,
+				Computed:     true,
+				ForceNew:     true,
+				ValidateFunc: validation.IntBetween(1, math.MaxInt32),
+				Description: "Number of namespace bundles. If omitted, Pulsar uses the broker default. " +
+					"Changing this value recreates the namespace.",
 			},
 			"enable_deduplication": {
 				Type:     schema.TypeBool,
@@ -558,8 +569,16 @@ func resourcePulsarNamespaceCreate(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(fmt.Errorf("ERROR_PARSE_NAMESPACE_NAME: %w", err))
 	}
 
-	if err := client.CreateNamespace(ns.String()); err != nil {
-		return diag.FromErr(fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", err))
+	var createErr error
+	if bundles, ok := d.GetOk("bundles"); ok {
+		policies := utils.NewDefaultPolicies()
+		policies.Bundles = utils.NewBundlesDataWithNumBundles(bundles.(int))
+		createErr = client.CreateNsWithPolicesWithContext(ctx, ns.String(), *policies)
+	} else {
+		createErr = client.CreateNamespaceWithContext(ctx, ns.String())
+	}
+	if createErr != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_CREATE_NAMESPACE: %w", createErr))
 	}
 
 	if err := resourcePulsarNamespaceUpdate(ctx, d, meta); err != nil {
@@ -569,8 +588,8 @@ func resourcePulsarNamespaceCreate(ctx context.Context, d *schema.ResourceData, 
 	return nil
 }
 
-func resourcePulsarNamespaceRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	return resourcePulsarNamespaceReadWithMode(d, meta, namespaceReadRefresh)
+func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	return resourcePulsarNamespaceReadWithMode(ctx, d, meta, namespaceReadRefresh)
 }
 
 // resourcePulsarNamespaceReadWithMode refreshes a namespace into state. Import mode force-hydrates
@@ -578,6 +597,7 @@ func resourcePulsarNamespaceRead(_ context.Context, d *schema.ResourceData, meta
 // only reads blocks already tracked in state/config, preserving the v0.11 least-privilege behavior
 // for namespaces that do not manage these policies.
 func resourcePulsarNamespaceReadWithMode(
+	ctx context.Context,
 	d *schema.ResourceData,
 	meta interface{},
 	mode namespaceReadMode,
@@ -603,6 +623,17 @@ func resourcePulsarNamespaceReadWithMode(
 
 	_ = d.Set("namespace", namespace)
 	_ = d.Set("tenant", tenant)
+	bundleData, err := getNamespacePolicyClientFromMeta(meta).GetNamespaceBundles(ctx, ns.String())
+	if err != nil {
+		if isAdminNotFoundError(err) {
+			d.SetId("")
+			return nil
+		}
+		return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetNamespaceBundles: %w", err))
+	}
+	if err := d.Set("bundles", bundleData.NumBundles); err != nil {
+		return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: SetNamespaceBundlesState: %w", err))
+	}
 	if d.GetRawConfig().IsNull() {
 		if err := initializeBacklogQuotaManagedTypesState(d); err != nil {
 			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: SetBacklogQuotaOwnershipState: %w", err))
@@ -1637,6 +1668,7 @@ func resourcePulsarNamespaceDelete(ctx context.Context, d *schema.ResourceData, 
 
 	_ = d.Set("namespace", "")
 	_ = d.Set("tenant", "")
+	_ = d.Set("bundles", nil)
 	_ = d.Set("enable_deduplication", nil)
 	_ = d.Set("namespace_config", nil)
 	_ = d.Set("retention_policies", nil)

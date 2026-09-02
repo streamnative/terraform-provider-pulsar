@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"testing"
 
@@ -27,6 +28,26 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPulsarNamespaceBundlesSchema(t *testing.T) {
+	t.Parallel()
+
+	bundles := resourcePulsarNamespace().Schema["bundles"]
+	require.Equal(t, schema.TypeInt, bundles.Type)
+	require.True(t, bundles.Optional)
+	require.True(t, bundles.Computed)
+	require.True(t, bundles.ForceNew)
+	require.False(t, bundles.Required)
+
+	for _, valid := range []int{1, 3, 32, math.MaxInt32} {
+		_, errs := bundles.ValidateFunc(valid, "bundles")
+		require.Empty(t, errs, "bundles=%d should be valid", valid)
+	}
+	for _, invalid := range []int{-1, 0, math.MaxInt32 + 1} {
+		_, errs := bundles.ValidateFunc(invalid, "bundles")
+		require.NotEmpty(t, errs, "bundles=%d should be invalid", invalid)
+	}
+}
 
 func TestPulsarNamespaceStateUpgradeV0(t *testing.T) {
 	t.Parallel()

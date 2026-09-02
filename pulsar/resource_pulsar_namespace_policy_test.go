@@ -36,13 +36,20 @@ import (
 	provideradmin "github.com/streamnative/terraform-provider-pulsar/pkg/admin"
 )
 
-func TestResourcePulsarNamespaceRead_MinimalRefreshSkipsPolicyReads(t *testing.T) {
+func TestResourcePulsarNamespaceRead_MinimalRefreshOnlyReadsBundles(t *testing.T) {
 	t.Parallel()
 
 	var policyReads int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/admin/v2/namespaces/tenant" {
 			writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
+			return
+		}
+		if r.URL.Path == "/admin/v2/namespaces/tenant/namespace/bundles" {
+			writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{
+				"boundaries": []string{"0x00000000", "0xffffffff"},
+				"numBundles": 1,
+			})
 			return
 		}
 		policyReads++
@@ -52,10 +59,67 @@ func TestResourcePulsarNamespaceRead_MinimalRefreshSkipsPolicyReads(t *testing.T
 
 	d := namespacePolicyTestResourceData(t, nil)
 	diags := resourcePulsarNamespaceReadWithMode(
-		d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadRefresh,
+		context.Background(), d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadRefresh,
 	)
 	require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
 	require.Zero(t, policyReads)
+}
+
+func TestResourcePulsarNamespaceCreate_Bundles(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name            string
+		configured      interface{}
+		brokerBundles   int
+		wantRequestBody bool
+	}{
+		{name: "broker default", brokerBundles: 4},
+		{name: "explicit count", configured: 3, brokerBundles: 3, wantRequestBody: true},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPut && r.URL.Path == "/admin/v2/namespaces/tenant/namespace":
+					if test.wantRequestBody {
+						var policies utils.Policies
+						require.NoError(t, json.NewDecoder(r.Body).Decode(&policies))
+						require.NotNil(t, policies.Bundles)
+						require.Equal(t, test.brokerBundles, policies.Bundles.NumBundles)
+						require.NotNil(t, policies.ReplicationClusters)
+					} else {
+						require.Zero(t, r.ContentLength)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				case r.Method == http.MethodGet && r.URL.Path == "/admin/v2/namespaces/tenant":
+					writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
+				case r.Method == http.MethodGet && r.URL.Path == "/admin/v2/namespaces/tenant/namespace/bundles":
+					writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{"numBundles": test.brokerBundles})
+				default:
+					writeJSONResponse(t, w, http.StatusNotFound, map[string]string{"reason": "unexpected request"})
+				}
+			}))
+			defer server.Close()
+
+			config := map[string]interface{}{
+				"tenant":    "tenant",
+				"namespace": "namespace",
+			}
+			if test.configured != nil {
+				config["bundles"] = test.configured
+			}
+			d := schema.TestResourceDataRaw(t, resourcePulsarNamespace().Schema, config)
+			diags := resourcePulsarNamespaceCreate(
+				context.Background(), d, namespacePolicyTestClientBundle(t, server.URL),
+			)
+			require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
+			require.Equal(t, "tenant/namespace", d.Id())
+			require.Equal(t, test.brokerBundles, d.Get("bundles"))
+		})
+	}
 }
 
 func TestResourcePulsarNamespaceRead_ImportRequiresPolicyReads(t *testing.T) {
@@ -67,6 +131,10 @@ func TestResourcePulsarNamespaceRead_ImportRequiresPolicyReads(t *testing.T) {
 			writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
 			return
 		}
+		if r.URL.Path == "/admin/v2/namespaces/tenant/namespace/bundles" {
+			writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{"numBundles": 4})
+			return
+		}
 		policyReads++
 		writeJSONResponse(t, w, http.StatusForbidden, map[string]string{"reason": "policy read forbidden"})
 	}))
@@ -74,7 +142,7 @@ func TestResourcePulsarNamespaceRead_ImportRequiresPolicyReads(t *testing.T) {
 
 	d := namespacePolicyTestResourceData(t, nil)
 	diags := resourcePulsarNamespaceReadWithMode(
-		d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadImport,
+		context.Background(), d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadImport,
 	)
 	require.True(t, diags.HasError())
 	require.Equal(t, 1, policyReads)
@@ -101,13 +169,17 @@ func TestResourcePulsarNamespaceRead_UnsetPoliciesClearTrackedState(t *testing.T
 					writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
 					return
 				}
+				if r.URL.Path == "/admin/v2/namespaces/tenant/namespace/bundles" {
+					writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{"numBundles": 4})
+					return
+				}
 				writeJSONResponse(t, w, response.status, response.body)
 			}))
 			defer server.Close()
 
 			d := namespacePolicyTestResourceData(t, namespacePolicyTestBlocks())
 			diags := resourcePulsarNamespaceReadWithMode(
-				d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadRefresh,
+				context.Background(), d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadRefresh,
 			)
 			require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
 			require.Zero(t, d.Get("dispatch_rate").(*schema.Set).Len())
@@ -134,7 +206,7 @@ func TestResourcePulsarNamespaceRead_PolicyNotFoundMarksResourceMissing(t *testi
 		"persistence_policies": namespacePolicyTestBlocks()["persistence_policies"],
 	})
 	diags := resourcePulsarNamespaceReadWithMode(
-		d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadRefresh,
+		context.Background(), d, namespacePolicyTestClientBundle(t, server.URL), namespaceReadRefresh,
 	)
 	require.False(t, diags.HasError(), "unexpected diagnostics: %#v", diags)
 	require.Empty(t, d.Id())
@@ -413,6 +485,8 @@ func namespacePolicyConfiguredHandler(
 		switch r.URL.Path {
 		case "/admin/v2/namespaces/tenant":
 			writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
+		case "/admin/v2/namespaces/tenant/namespace/bundles":
+			writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{"numBundles": 4})
 		case "/admin/v2/namespaces/tenant/namespace/persistence":
 			writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{
 				"bookkeeperEnsemble":             2,

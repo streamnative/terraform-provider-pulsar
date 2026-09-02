@@ -67,3 +67,30 @@ func TestNamespacePolicyClientRemoveBacklogQuotaByType(t *testing.T) {
 		})
 	}
 }
+
+func TestNamespacePolicyClientGetNamespaceBundles(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/admin/v2/namespaces/public/default/bundles", r.URL.Path)
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		_, err := w.Write([]byte(`{
+			"boundaries":["0x00000000","0x40000000","0x80000000","0xc0000000","0xffffffff"],
+			"numBundles":4
+		}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client, err := NewNamespacePolicyClient(&PulsarAdminConfig{Config: &adminconfig.Config{
+		WebServiceURL: server.URL,
+		Token:         "test-token",
+	}})
+	require.NoError(t, err)
+
+	bundles, err := client.GetNamespaceBundles(context.Background(), "public/default")
+	require.NoError(t, err)
+	require.Equal(t, 4, bundles.NumBundles)
+	require.Len(t, bundles.Boundaries, 5)
+}
