@@ -25,7 +25,7 @@ Manages Pulsar IO sinks through the Functions Worker API.
 ### Optional
 
 - `classname` (String) The sink's class name if archive is file-url-path (file://)
-- `configs` (String) User defined configs key/values (JSON string)
+- `configs` (String) User defined configs key/values (JSON string). Values here are stored and returned in plaintext, including in the function metadata topic, `pulsar-admin sinks get` output and Terraform state, so use `secrets` for API keys, passwords and service-account keys rather than putting them here.
 - `cpu` (Number) The CPU that needs to be allocated per sink instance (applicable only to Docker runtime)
 - `custom_runtime_options` (String) A string that encodes options to customize the runtime
 - `custom_schema_inputs` (Map of String) The map of input topics to Schema types or class names (as a JSON string)
@@ -41,7 +41,7 @@ Manages Pulsar IO sinks through the Functions Worker API.
 - `ram_mb` (Number) The RAM that need to be allocated per sink instance (applicable only to the process and Docker runtimes)
 - `retain_key_ordering` (Boolean) Sink consumes and processes messages in key order
 - `retain_ordering` (Boolean) Sink consumes and sinks messages in order
-- `secrets` (String) The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider
+- `secrets` (String) The map of secretName to an object that encapsulates how the secret is fetched by the underlying secrets provider. Each entry maps the name the connector reads to a `{"path": ..., "key": ...}` reference, so only the reference is stored in connector config, function metadata and Terraform state - never the value. Note that these references are resolved only by a runtime whose secrets provider understands them, such as the Kubernetes runtime's KubernetesSecretsProviderConfigurator. Under the default ClearTextSecretsProvider used by the process and standalone runtimes, apply succeeds but the connector receives no value for the secret at runtime.
 - `sink_type` (String) The sinks's connector provider
 - `subscription_name` (String) Pulsar source subscription name if user wants a specific subscription-name for input-topic consumer
 - `subscription_position` (String) Pulsar source subscription position if user wants to consume messages from the specified location (Latest, Earliest). Default to Earliest.
