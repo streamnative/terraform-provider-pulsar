@@ -89,3 +89,31 @@ func initTestWebServiceURL() {
 
 	testWebServiceURL = url
 }
+
+func TestProviderClientSecretIsMutuallyExclusiveWithKeyFile(t *testing.T) {
+	p := Provider()
+	raw := map[string]interface{}{
+		"web_service_url": "http://localhost:8080",
+		"issuer_url":      "https://issuer.example.com",
+		"client_id":       "an-id",
+		"client_secret":   "a-secret",
+		"key_file_path":   "/tmp/key.json",
+	}
+	diags := p.Configure(context.Background(), terraform.NewResourceConfigRaw(raw))
+	if !diags.HasError() {
+		t.Fatal("expected an error when both client_secret and key_file_path are set")
+	}
+}
+
+func TestProviderClientSecretSchema(t *testing.T) {
+	s, ok := Provider().Schema["client_secret"]
+	if !ok {
+		t.Fatal("client_secret is not in the provider schema")
+	}
+	if !s.Sensitive {
+		t.Error("client_secret should be marked Sensitive")
+	}
+	if s.Required {
+		t.Error("client_secret should be optional")
+	}
+}

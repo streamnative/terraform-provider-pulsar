@@ -58,6 +58,7 @@ When upgrading existing `pulsar_sink` state with `-refresh=false`, some Terrafor
 - `api_version` (String) Pulsar admin API version. `0` selects the provider default.
 - `audience` (String) The OAuth 2.0 resource server identifier for the Pulsar cluster
 - `client_id` (String) The OAuth 2.0 client identifier
+- `client_secret` (String, Sensitive) The OAuth 2.0 client secret. Mutually exclusive with `key_file_path`.
 - `issuer_url` (String) The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token
 - `key_file_path` (String) The path of the private key file
 - `scope` (String) The OAuth 2.0 scope(s) to request
