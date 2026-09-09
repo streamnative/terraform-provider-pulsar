@@ -19,6 +19,8 @@ package pulsar
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -79,6 +81,7 @@ func init() {
 		"issuer_url":       "The OAuth 2.0 URL of the authentication provider which allows the Pulsar client to obtain an access token",
 		"audience":         "The OAuth 2.0 resource server identifier for the Pulsar cluster",
 		"client_id":        "The OAuth 2.0 client identifier",
+		"client_secret":    "The OAuth 2.0 client secret. Mutually exclusive with `key_file_path`.",
 		"scope":            "The OAuth 2.0 scope(s) to request",
 		"key_file_path":    "The path of the private key file",
 		"message_ttl":      "The message time to live in seconds",
@@ -158,6 +161,13 @@ func Provider() *schema.Provider {
 				Optional:    true,
 				Description: descriptions["client_id"],
 			},
+			"client_secret": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Sensitive:   true,
+				Description: descriptions["client_secret"],
+				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PULSAR_CLIENT_SECRET"}, ""),
+			},
 			"scope": {
 				Type:        schema.TypeString,
 				Optional:    true,
@@ -205,8 +215,29 @@ func providerConfigure(d *schema.ResourceData, tfVersion string) (interface{}, d
 	audience := d.Get("audience").(string)
 	scope := d.Get("scope").(string)
 	keyFilePath := d.Get("key_file_path").(string)
+	clientSecret := d.Get("client_secret").(string)
 	TLSCertFilePath := d.Get("tls_cert_file_path").(string)
 	TLSKeyFilePath := d.Get("tls_key_file_path").(string)
+
+	if clientSecret != "" {
+		if keyFilePath != "" {
+			return nil, diag.FromErr(errors.New(
+				"only one of key_file_path or client_secret may be set"))
+		}
+		keyFile, err := json.Marshal(map[string]string{
+			"type":          "client_credentials",
+			"client_id":     clientID,
+			"client_secret": clientSecret,
+			"issuer_url":    issuerEndpoint,
+		})
+		if err != nil {
+			return nil, diag.FromErr(errors.Wrap(err, "encoding client credentials"))
+		}
+		// The OAuth2 key file provider accepts a data URL as well as a path, so the
+		// credential is held in memory rather than written to disk.
+		keyFilePath = "data:application/json;base64," +
+			base64.StdEncoding.EncodeToString(keyFile)
+	}
 
 	if clusterURL == "" {
 		clusterURL = "http://localhost:8080"
