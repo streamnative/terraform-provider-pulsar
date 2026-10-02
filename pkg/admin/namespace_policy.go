@@ -98,7 +98,9 @@ func (c *namespacePolicyClient) RemoveNamespaceProperty(ctx context.Context, nam
 	if err != nil {
 		return err
 	}
-	endpoint.Path = path.Join(endpoint.Path, utils.MakeHTTPPath(c.apiVersion.String(), "/namespaces"), ns.String(), "property")
+	endpoint.Path = path.Join(
+		endpoint.Path, utils.MakeHTTPPath(c.apiVersion.String(), "/namespaces"), ns.String(), "property",
+	)
 	// The REST client's string-path helper drops RawPath; preserve escaped keys here.
 	endpoint.RawPath = endpoint.EscapedPath() + "/" + url.PathEscape(key)
 	endpoint.Path += "/" + key

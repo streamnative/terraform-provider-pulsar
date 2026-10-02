@@ -118,7 +118,8 @@ func resourcePulsarNamespace() *schema.Resource {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
-				Description: "Custom namespace properties. Only declared keys are managed; other remote properties are preserved. " +
+				Description: "Custom namespace properties. Only declared keys are managed; " +
+					"other remote properties are preserved. " +
 					"Removing a previously managed key deletes it from Pulsar. Import does not adopt existing properties; " +
 					"declare the keys to manage in configuration.",
 			},
