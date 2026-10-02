@@ -26,6 +26,7 @@ Manages Pulsar namespaces and namespace-level policies.
 - `enable_deduplication` (Boolean)
 - `inactive_topic` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--inactive_topic))
 - `namespace_config` (Block List) The namespace configuration (see [below for nested schema](#nestedblock--namespace_config))
+- `namespace_properties` (Map of String) Custom namespace properties. Only declared keys are managed; other remote properties are preserved. Removing a previously managed key deletes it from Pulsar. Import does not adopt existing properties; declare the keys to manage in configuration.
 - `permission_grant` (Block Set) Manages permissions within this namespace. **Warning:** Do not use this for roles that are already managed by the standalone pulsar_permission_grant resource, as it will cause conflicts. (see [below for nested schema](#nestedblock--permission_grant))
 - `persistence_policies` (Block Set, Max: 1) BookKeeper persistence settings for the topics under the given namespace. During `terraform import`, the provider records the broker policy. Omitting the block preserves that policy; configure the block to update it. (see [below for nested schema](#nestedblock--persistence_policies))
 - `retention_policies` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--retention_policies))
@@ -137,6 +138,28 @@ Optional:
 
 - `partitions` (Number) Partition count when type is `partitioned`.
 - `type` (String) Topic type. Defaults to `non-partitioned`.
+
+## Namespace Properties
+
+Use `namespace_properties` to manage custom properties, including StreamNative Lakehouse settings:
+
+```hcl
+resource "pulsar_namespace" "lakehouse" {
+  tenant    = "public"
+  namespace = "analytics"
+
+  namespace_properties = {
+    "my-cluster.sdt.enabled"      = "true"
+    "my-cluster.sdt.catalog.name" = "my-catalog"
+  }
+}
+```
+
+Replace `my-cluster` with the broker's cluster name and `my-catalog` with a catalog already configured for that cluster. These properties do not provision the cluster's Lakehouse integration or catalog. Topic-level properties override namespace-level settings.
+
+Configure these settings before creating topics that need Lakehouse ingestion. Reference `pulsar_namespace.lakehouse.namespace` from topic resources to order their creation after the namespace settings are applied. This does not retrofit existing topics.
+
+Terraform preserves undeclared remote keys. Removing a previously managed key, setting `namespace_properties = {}`, or removing the attribute deletes only the previously managed keys. Import does not adopt properties automatically; declare the keys you want Terraform to manage.
 
 ## Import
 
