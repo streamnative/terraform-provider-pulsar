@@ -20,6 +20,7 @@ package admin
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"path"
 
 	pulsaradmin "github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
@@ -34,6 +35,7 @@ import (
 type NamespacePolicyClient interface {
 	GetNamespaceBundles(context.Context, string) (*utils.BundlesData, error)
 	RemoveBacklogQuotaByType(context.Context, string, utils.BacklogQuotaType) error
+	RemoveNamespaceProperty(context.Context, string, string) error
 }
 
 type namespacePolicyClient struct {
@@ -85,6 +87,26 @@ func (c *namespacePolicyClient) GetNamespaceBundles(
 		return nil, err
 	}
 	return bundles, nil
+}
+
+func (c *namespacePolicyClient) RemoveNamespaceProperty(ctx context.Context, namespace, key string) error {
+	ns, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return errors.Wrap(err, "invalid namespace")
+	}
+	endpoint, err := url.Parse(c.client.ServiceURL)
+	if err != nil {
+		return err
+	}
+	endpoint.Path = path.Join(endpoint.Path, utils.MakeHTTPPath(c.apiVersion.String(), "/namespaces"), ns.String(), "property")
+	// The REST client's string-path helper drops RawPath; preserve escaped keys here.
+	endpoint.RawPath = endpoint.EscapedPath() + "/" + url.PathEscape(key)
+	endpoint.Path += "/" + key
+	response, err := c.client.MakeRequestWithURLWithContext(ctx, http.MethodDelete, endpoint)
+	if err != nil {
+		return err
+	}
+	return response.Body.Close()
 }
 
 func (c *namespacePolicyClient) RemoveBacklogQuotaByType(

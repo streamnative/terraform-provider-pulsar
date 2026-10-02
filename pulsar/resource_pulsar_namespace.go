@@ -114,6 +114,14 @@ func resourcePulsarNamespace() *schema.Resource {
 				Required:    true,
 				Description: descriptions["tenant"],
 			},
+			"namespace_properties": {
+				Type:     schema.TypeMap,
+				Optional: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+				Description: "Custom namespace properties. Only declared keys are managed; other remote properties are preserved. " +
+					"Removing a previously managed key deletes it from Pulsar. Import does not adopt existing properties; " +
+					"declare the keys to manage in configuration.",
+			},
 			"bundles": {
 				Type:         schema.TypeInt,
 				Optional:     true,
@@ -640,6 +648,22 @@ func resourcePulsarNamespaceReadWithMode(
 		}
 	}
 
+	if managed := d.Get("namespace_properties").(map[string]interface{}); len(managed) > 0 {
+		properties, err := client.GetPropertiesWithContext(ctx, *ns)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetProperties: %w", err))
+		}
+		state := make(map[string]string, len(managed))
+		for key := range managed {
+			if value, ok := properties[key]; ok {
+				state[key] = value
+			}
+		}
+		if err := d.Set("namespace_properties", state); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: SetPropertiesState: %w", err))
+		}
+	}
+
 	if _, ok := d.GetOk("namespace_config"); ok {
 		var namespaceConfig = make(map[string]interface{})
 		afgrp, err := client.GetNamespaceAntiAffinityGroup(ns.String())
@@ -928,6 +952,27 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 	}
 
 	var errs error
+
+	if d.HasChange("namespace_properties") {
+		oldValue, newValue := d.GetChange("namespace_properties")
+		properties := make(map[string]string)
+		for key, value := range newValue.(map[string]interface{}) {
+			properties[key] = value.(string)
+		}
+		// Write first: a failed write must not remove the previous settings.
+		if len(properties) > 0 {
+			if err := client.UpdatePropertiesWithContext(ctx, *nsName, properties); err != nil {
+				return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: UpdateProperties: %w", err))
+			}
+		}
+		for key := range oldValue.(map[string]interface{}) {
+			if _, keep := properties[key]; !keep {
+				if err := getNamespacePolicyClientFromMeta(meta).RemoveNamespaceProperty(ctx, nsName.String(), key); err != nil {
+					return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: RemoveNamespaceProperty(%s): %w", key, err))
+				}
+			}
+		}
+	}
 
 	if len(namespaceConfig) > 0 {
 		nsCfg := unmarshalNamespaceConfigList(namespaceConfig)

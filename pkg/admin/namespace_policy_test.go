@@ -68,6 +68,25 @@ func TestNamespacePolicyClientRemoveBacklogQuotaByType(t *testing.T) {
 	}
 }
 
+func TestNamespacePolicyClientRemoveNamespaceProperty(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/admin/v2/namespaces/public/default/property/cluster.key%2Fwith%20space%3F", r.URL.EscapedPath())
+		assert.Empty(t, r.URL.RawQuery)
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	client, err := NewNamespacePolicyClient(&PulsarAdminConfig{Config: &adminconfig.Config{
+		WebServiceURL: server.URL,
+		Token:         "test-token",
+	}})
+	require.NoError(t, err)
+	require.NoError(t, client.RemoveNamespaceProperty(context.Background(), "public/default", "cluster.key/with space?"))
+	require.Error(t, client.RemoveNamespaceProperty(context.Background(), "invalid", "key"))
+}
+
 func TestNamespacePolicyClientGetNamespaceBundles(t *testing.T) {
 	t.Parallel()
 
