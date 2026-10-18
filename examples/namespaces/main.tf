@@ -31,6 +31,12 @@ resource "pulsar_namespace" "example" {
   tenant    = "public"
   namespace = "terraform-example"
 
+  delayed_delivery {
+    enabled               = true
+    tick_duration_ms      = 100
+    max_delivery_delay_ms = 0
+  }
+
   namespace_config {
     max_producers_per_topic = 50
     replication_clusters    = ["standalone"]

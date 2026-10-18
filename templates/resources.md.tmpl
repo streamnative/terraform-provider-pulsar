@@ -31,7 +31,11 @@ terraform import pulsar_tenant.example public
 terraform import pulsar_namespace.example public/default
 ```
 
-Target namespace must exist. Import reads namespace listing, topic and subscription dispatch rates, persistence, and backlog quotas; credentials need read access to each. Other optional blocks are not hydrated.
+Target namespace must exist. Import reads namespace listing, topic and subscription dispatch rates, persistence, backlog quotas, and delayed delivery; credentials need read access to each. Other optional blocks are not hydrated.
+
+Import records only an explicit namespace delayed delivery policy, not inherited broker defaults. If a policy is imported, include a matching `delayed_delivery` block in configuration to retain it; omitting the block plans removal of the namespace override. Setting `enabled = false` disables delayed delivery at namespace level, whereas removing the block restores broker inheritance. Topic overrides take precedence. Policy writes require broker superuser permissions.
+
+The namespace tick duration does not configure the broker's shared timer or guarantee an end-to-end delivery SLA. Broker timer settings and the delayed delivery tracker implementation also affect precision. `time_partition_granularity` is not supported by the current namespace Admin API.
 
 ## Upgrade
 

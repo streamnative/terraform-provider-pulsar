@@ -127,6 +127,38 @@ func resourcePulsarNamespace() *schema.Resource {
 				Type:     schema.TypeBool,
 				Optional: true,
 			},
+			"delayed_delivery": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				MaxItems: 1,
+				Description: "Namespace delayed delivery policy. Removing this block restores broker inheritance. " +
+					"Import records an explicit namespace policy; retain the block to avoid removing it. " +
+					"Writes require broker superuser permissions. Topic policies can override these values. " +
+					"Tick duration alone does not guarantee delivery precision; broker timer settings also apply.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"enabled": {
+							Type:        schema.TypeBool,
+							Required:    true,
+							Description: "Whether delayed delivery is enabled for this namespace.",
+						},
+						"tick_duration_ms": {
+							// The admin client represents tickTime as float64; keep integers exactly representable.
+							Type:         schema.TypeInt,
+							Required:     true,
+							ValidateFunc: validation.IntBetween(1, 1<<53-1),
+							Description:  "Positive tick duration in milliseconds, at most 9007199254740991.",
+						},
+						"max_delivery_delay_ms": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      0,
+							ValidateFunc: validation.IntAtLeast(0),
+							Description:  "Maximum delivery delay in milliseconds. Defaults to 0 (unlimited).",
+						},
+					},
+				},
+			},
 			"dispatch_rate": {
 				Type: schema.TypeSet,
 				// Optional+Computed: the namespace-level dispatch rate is read back unconditionally, so
@@ -593,7 +625,7 @@ func resourcePulsarNamespaceRead(ctx context.Context, d *schema.ResourceData, me
 }
 
 // resourcePulsarNamespaceReadWithMode refreshes a namespace into state. Import mode force-hydrates
-// the Optional+Computed policy blocks because an import starts without prior state. Normal refresh
+// the policy blocks because an import starts without prior state. Normal refresh
 // only reads blocks already tracked in state/config, preserving the v0.11 least-privilege behavior
 // for namespaces that do not manage these policies.
 func resourcePulsarNamespaceReadWithMode(
@@ -895,6 +927,24 @@ func resourcePulsarNamespaceReadWithMode(
 		}
 	}
 
+	if shouldReadNamespacePolicyBlock(d, "delayed_delivery", mode) {
+		policy, err := client.GetDelayedDeliveryWithContext(ctx, ns.String())
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: GetDelayedDelivery: %w", err))
+		}
+		state := []interface{}{}
+		if policy != nil {
+			state = append(state, map[string]interface{}{
+				"enabled":               policy.Active,
+				"tick_duration_ms":      int(policy.TickTime),
+				"max_delivery_delay_ms": int(policy.MaxDelayInMillis),
+			})
+		}
+		if err := d.Set("delayed_delivery", state); err != nil {
+			return diag.FromErr(fmt.Errorf("ERROR_READ_NAMESPACE: SetDelayedDeliveryState: %w", err))
+		}
+	}
+
 	return nil
 }
 
@@ -1192,6 +1242,25 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		if oldCfg, ok := oldTopicAutoCreation.(*schema.Set); ok && oldCfg.Len() > 0 {
 			if err = client.RemoveTopicAutoCreation(*nsName); err != nil && !isIgnorableNotFoundError(err) {
 				errs = multierror.Append(errs, fmt.Errorf("RemoveTopicAutoCreation: %w", err))
+			}
+		}
+	}
+
+	if d.HasChange("delayed_delivery") {
+		config := d.Get("delayed_delivery").(*schema.Set)
+		if config.Len() > 0 {
+			data := config.List()[0].(map[string]interface{})
+			policy := utils.DelayedDeliveryData{
+				Active:           data["enabled"].(bool),
+				TickTime:         float64(data["tick_duration_ms"].(int)),
+				MaxDelayInMillis: int64(data["max_delivery_delay_ms"].(int)),
+			}
+			if err := client.SetDelayedDeliveryWithContext(ctx, nsName.String(), policy); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("SetDelayedDelivery: %w", err))
+			}
+		} else {
+			if err := client.RemoveDelayedDeliveryWithContext(ctx, nsName.String()); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("RemoveDelayedDelivery: %w", err))
 			}
 		}
 	}
