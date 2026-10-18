@@ -22,6 +22,7 @@ Manages Pulsar namespaces and namespace-level policies.
 
 - `backlog_quota` (Block Set) Manages configured backlog quota types. During `terraform import`, broker values are recorded without claiming ownership. Terraform leaves unowned types unchanged and removes only types it previously applied. (see [below for nested schema](#nestedblock--backlog_quota))
 - `bundles` (Number) Number of namespace bundles. If omitted, Pulsar uses the broker default. Changing this value recreates the namespace.
+- `delayed_delivery` (Block Set, Max: 1) Namespace delayed delivery policy. Removing this block restores broker inheritance. Import records an explicit namespace policy; retain the block to avoid removing it. Writes require broker superuser permissions. Topic policies can override these values. Tick duration alone does not guarantee delivery precision; broker timer settings also apply. (see [below for nested schema](#nestedblock--delayed_delivery))
 - `dispatch_rate` (Block Set, Max: 1) Data transfer rate for all the topics under the given namespace. During `terraform import`, the provider records the broker policy. Omitting the block preserves that policy; configure the block to update it. (see [below for nested schema](#nestedblock--dispatch_rate))
 - `enable_deduplication` (Boolean)
 - `inactive_topic` (Block Set, Max: 1) (see [below for nested schema](#nestedblock--inactive_topic))
@@ -46,6 +47,19 @@ Required:
 - `limit_seconds` (String)
 - `policy` (String)
 - `type` (String)
+
+
+<a id="nestedblock--delayed_delivery"></a>
+### Nested Schema for `delayed_delivery`
+
+Required:
+
+- `enabled` (Boolean) Whether delayed delivery is enabled for this namespace.
+- `tick_duration_ms` (Number) Positive tick duration in milliseconds, at most 9007199254740991.
+
+Optional:
+
+- `max_delivery_delay_ms` (Number) Maximum delivery delay in milliseconds. Defaults to 0 (unlimited).
 
 
 <a id="nestedblock--dispatch_rate"></a>
@@ -144,7 +158,11 @@ Optional:
 terraform import pulsar_namespace.example public/default
 ```
 
-Target namespace must exist. Import reads namespace listing, topic and subscription dispatch rates, persistence, and backlog quotas; credentials need read access to each. Other optional blocks are not hydrated.
+Target namespace must exist. Import reads namespace listing, topic and subscription dispatch rates, persistence, backlog quotas, and delayed delivery; credentials need read access to each. Other optional blocks are not hydrated.
+
+Import records only an explicit namespace delayed delivery policy, not inherited broker defaults. If a policy is imported, include a matching `delayed_delivery` block in configuration to retain it; omitting the block plans removal of the namespace override. Setting `enabled = false` disables delayed delivery at namespace level, whereas removing the block restores broker inheritance. Topic overrides take precedence. Policy writes require broker superuser permissions.
+
+The namespace tick duration does not configure the broker's shared timer or guarantee an end-to-end delivery SLA. Broker timer settings and the delayed delivery tracker implementation also affect precision. `time_partition_granularity` is not supported by the current namespace Admin API.
 
 ## Upgrade
 

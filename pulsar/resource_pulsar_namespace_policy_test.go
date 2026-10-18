@@ -487,6 +487,8 @@ func namespacePolicyConfiguredHandler(
 			writeJSONResponse(t, w, http.StatusOK, []string{"tenant/namespace"})
 		case "/admin/v2/namespaces/tenant/namespace/bundles":
 			writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{"numBundles": 4})
+		case "/admin/v2/namespaces/tenant/namespace/delayedDelivery":
+			w.WriteHeader(http.StatusNoContent)
 		case "/admin/v2/namespaces/tenant/namespace/persistence":
 			writeJSONResponse(t, w, http.StatusOK, map[string]interface{}{
 				"bookkeeperEnsemble":             2,
