@@ -159,6 +159,22 @@ Replace `my-cluster` with the broker's cluster name and `my-catalog` with a cata
 
 Configure these settings before creating topics that need Lakehouse ingestion. Reference `pulsar_namespace.lakehouse.namespace` from topic resources to order their creation after the namespace settings are applied. This does not retrofit existing topics.
 
+Topics take the same kind of keys through `topic_properties` on `pulsar_topic`. Keys may contain dots, and only the declared keys are managed there too:
+
+```hcl
+resource "pulsar_topic" "orders" {
+  tenant     = pulsar_namespace.lakehouse.tenant
+  namespace  = pulsar_namespace.lakehouse.namespace
+  topic_type = "persistent"
+  topic_name = "orders"
+  partitions = 0
+
+  topic_properties = {
+    "my-cluster.sdt.enabled" = "true"
+  }
+}
+```
+
 Terraform preserves undeclared remote keys. Removing a previously managed key, setting `namespace_properties = {}`, or removing the attribute deletes only the previously managed keys. Import does not adopt properties automatically; declare the keys you want Terraform to manage.
 
 ## Import

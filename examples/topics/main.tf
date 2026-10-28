@@ -39,5 +39,9 @@ resource "pulsar_topic" "example" {
   topic_properties = {
     owner = "data-engineering"
     env   = "development"
+
+    # Keys may contain dots, for example "<cluster>.<feature>.<setting>".
+    "standalone.feature.enabled" = "true"
+    "standalone.feature.name"    = "example"
   }
 }

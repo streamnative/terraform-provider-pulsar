@@ -135,6 +135,10 @@ Required:
 - `enable_delete_while_inactive` (Boolean)
 - `max_inactive_duration` (String) Inactive duration in seconds, for example `60s`.
 
+## Topic Properties
+
+`topic_properties` accepts dotted keys such as `<cluster>.<feature>.<setting>`. Only the declared keys are managed, so properties set outside Terraform are preserved. To apply the same keys to every topic in a namespace, see `namespace_properties` on `pulsar_namespace`.
+
 ## Import
 
 ```shell

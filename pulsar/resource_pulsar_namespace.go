@@ -968,7 +968,10 @@ func resourcePulsarNamespaceUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 		for key := range oldValue.(map[string]interface{}) {
 			if _, keep := properties[key]; !keep {
-				if err := getNamespacePolicyClientFromMeta(meta).RemoveNamespaceProperty(ctx, nsName.String(), key); err != nil {
+				// A key that is already gone (removed outside Terraform) is the desired end state.
+				if err := getNamespacePolicyClientFromMeta(meta).RemoveNamespaceProperty(
+					ctx, nsName.String(), key,
+				); err != nil && !isIgnorableNotFoundError(err) {
 					return diag.FromErr(fmt.Errorf("ERROR_UPDATE_NAMESPACE_CONFIG: RemoveNamespaceProperty(%s): %w", key, err))
 				}
 			}

@@ -48,4 +48,10 @@ resource "pulsar_namespace" "example" {
     type       = "partitioned"
     partitions = 3
   }
+
+  # Namespace-level properties. Only the declared keys are managed.
+  namespace_properties = {
+    "standalone.feature.enabled" = "true"
+    "standalone.feature.name"    = "example"
+  }
 }
